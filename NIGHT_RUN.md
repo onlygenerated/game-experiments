@@ -108,6 +108,29 @@ Cheap items first so a short night still banks the whole of category 1.
 
 ## Decisions log
 
+**Commit signatures are fine. Never rewrite history over them.** Commits here
+really are signed — every one carries a `gpgsig` header, checkable with
+`git cat-file commit HEAD`. What was missing was the ability to *verify* one:
+the environment's signer implements only `-Y sign`, and the image has no
+`ssh-keygen`, so git reported `N` ("no signature") or `B` ("bad") and the
+natural-looking conclusion was that the history needed redoing. It did not. A
+firing already lost a cycle to this.
+
+Fixed properly rather than documented around: `tools/ssh-sign-shim.py` is now
+`gpg.ssh.program`. It delegates `-Y sign` verbatim to the real helper (recorded
+in `signing.realprogram`) and implements `-Y verify` itself, with ed25519 in
+pure Python — `cryptography` is installed in this image but its native backend
+is broken, and a verifier that depends on an intact optional wheel is exactly
+the flakiness this is meant to remove. `tools/setup-signing.py` installs it
+from a `SessionStart` hook in `.claude/settings.json`, so every fresh firing
+configures itself. It self-tests against a real commit's signature before
+touching `gpg.ssh.program`, and leaves git config untouched if anything fails —
+a cosmetic verification setting must not be able to break committing.
+
+`git log --format='%h %G?'` now reports `G` for the whole history. If a future
+firing sees anything else, the fault is in the shim or the hook, not in the
+commits — check `tools/setup-signing.py` output before touching history.
+
 **Probe methodology was wrong and has been fixed.** Runs used to stop the moment
 the target was hit, so a ruleset with a higher target played more placements,
 scored more, and showed a mechanically wider skill gap that had nothing to do
