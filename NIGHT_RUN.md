@@ -11,13 +11,34 @@ plan state in context alone.
 ## Where things live
 
 - **Repo**: `onlygenerated/game-experiments`.
-  - `claude/new-session-1bu1l1` — the working branch. All night-run work goes here.
-  - `main` — created 2026-08-02 at the same commit, so fresh sessions have a
-    sane base to branch from. The repo previously had *only* the working branch,
-    which meant any session told to make a new branch had nothing to branch off.
-  - The repo's **default branch is still `claude/new-session-1bu1l1`**. Changing
-    it needs GitHub repo settings; the session proxy refuses settings writes
-    ("Repository settings writes are not permitted through this proxy").
+
+### Branching: work anywhere, merge into main
+
+A fired Routine session is handed its own auto-generated branch and cannot be
+talked out of it. Rather than fight that, each run **branches freely and merges
+into `main`**:
+
+    git fetch origin main
+    git reset --hard origin/main     # safe: the fresh branch has no work yet
+    ... do the work, commit ...
+    git fetch origin main
+    git rebase origin/main
+    git push origin HEAD:main
+    git push origin HEAD:claude/new-session-1bu1l1 || true   # best effort
+
+`main` is the mainline and the deliverable — it always holds the latest
+completed work, and the next run syncs onto it. `claude/new-session-1bu1l1` is
+kept in sync as a convenience because it is the branch already bookmarked; a
+failure to update it is not an error.
+
+Never force push. If a push to `main` is rejected because it moved, fetch,
+rebase and retry.
+
+**The repo's default branch is still `claude/new-session-1bu1l1`.** Changing it
+needs GitHub repository settings, and the session proxy refuses settings writes
+("Repository settings writes are not permitted through this proxy"). This does
+not matter given the sync-onto-main step above, which makes the run independent
+of whatever the session was branched from.
 - **Artifact**: https://claude.ai/code/artifact/6613c961-31a5-4a7b-8c61-abeb633d25e6
   Republish by passing that URL as the `url` parameter, so the link the user
   already has keeps working. A fresh session that omits it mints a new one.
@@ -30,7 +51,7 @@ plan state in context alone.
 
 - Each firing is now **hourly and cold** (a fresh session per fire), so aim to
   finish one whole queue item per firing rather than a slice of one.
-- Commit and push after **every** item. The container is ephemeral; anything
+- Merge into `main` after **every** item. The container is ephemeral; anything
   unpushed is lost if it is reclaimed.
 - Every new evaluator or structure gets tests before it counts as done, on the
   same standard as `hands.ts` and `cribbage.ts` — a silent bug in a scorer
