@@ -44,11 +44,18 @@ function settle(state: GameState, cfg: Config): GameState {
 export function newGame(seed: string, cfg: Config = CONFIG): GameState {
   const shuffled = shuffledDeck(seed);
 
-  const { drawn: anchorDraw, deck: afterAnchor } = draw(shuffled, 1);
-  const { r, c } = anchorCell(cfg);
-  const board = withCard(emptyBoard(cfg), r, c, anchorDraw[0], cfg);
+  // Without an anchor the centre card is never drawn, so it stays in the deck
+  // rather than being burned — the seed still produces a comparable run.
+  let board = emptyBoard(cfg);
+  let remaining = shuffled;
+  if (cfg.startWithAnchor) {
+    const { drawn, deck: afterAnchor } = draw(shuffled, 1);
+    const { r, c } = anchorCell(cfg);
+    board = withCard(board, r, c, drawn[0], cfg);
+    remaining = afterAnchor;
+  }
 
-  const { drawn: hand, deck } = draw(afterAnchor, cfg.handSize);
+  const { drawn: hand, deck } = draw(remaining, cfg.handSize);
 
   return settle(
     {

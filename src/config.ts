@@ -45,6 +45,13 @@ export interface Config {
   lensId: string;
 
   /**
+   * Whether a card is dealt to the centre before play. With it off the board
+   * starts empty and the first placement picks the origin, which is what any
+   * open-ended sprawl needs.
+   */
+  startWithAnchor: boolean;
+
+  /**
    * Cribbage lens. The count is additive, so these rates decide how fast a
    * growing structure runs away with the score.
    */
@@ -91,6 +98,7 @@ export const CONFIG: Config = {
   maxDiscardSelection: 5,
 
   lensId: 'poker',
+  startWithAnchor: true,
 
   rankChips: {
     2: 2,

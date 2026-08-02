@@ -45,7 +45,7 @@ Cheap items first so a short night still banks the whole of category 1.
 
 - [x] **1. Category 1 config variants** — the remaining 6 of 10 as data in
       `rulesets.ts`, probe-calibrated targets.
-- [ ] **2. Blank board (M6)** — no centre anchor; first placement picks the
+- [x] **2. Blank board (M6)** — no centre anchor; first placement picks the
       origin. Needed by the sprawl work.
 - [ ] **3. Hex Sprawl — engine** — axial coords, three axes, line extraction,
       legality, tests. The big one.
@@ -74,6 +74,14 @@ neighbours. Now reports the fewest legal cells seen after turn 5.
 **Probe kept as a tool** rather than rewritten each time: `tools/probe.test.ts`,
 run with `npm run probe`, excluded from `npm test`.
 
+**Blank board legality**: adjacency is unsatisfiable with nothing on the board,
+so an empty board makes every in-bounds cell legal. Made universal rather than
+gated on the anchor flag — with an anchor the branch is unreachable, so there is
+nothing to gate. One board test changed meaning as a result and was rewritten.
+
+**Would-be anchor card stays in the deck** when the anchor is off, rather than
+being drawn and discarded, so the same seed stays comparable across both.
+
 **Targets for the 7 new config variants** set to their measured greedy median,
 which lands them at 50-65% win. The 8 pre-existing rulesets stay frozen per the
 standing rules, so a few still read 100%.
@@ -100,6 +108,8 @@ Measured over 20 seeds with the corrected methodology.
 | cribbage-pure | 450 | 504 | 132 | **3.82** | **1.23** | 17% | 24.0 | 10 | 60% |
 | cribbage-lean | 500 | 522 | 240 | 2.17 | **1.21** | 42% | 6.0 | 10 | 60% |
 | cribbage-flush3 | 660 | 666 | 282 | 2.36 | 1.14 | 45% | 7.0 | 10 | 55% |
+| **cribbage-blank** | 550 | 555 | 228 | 2.43 | **1.31** | 35% | 5.0 | 5 | 45% |
+| poker-blank | 570 | 573 | 383 | 1.50 | 1.15 | 17% | 5.0 | 5 | 60% |
 
 ### Readings
 
@@ -114,3 +124,11 @@ Measured over 20 seeds with the corrected methodology.
   10 everywhere else. PRD criterion 3 answered: a tighter cap does choke.
 - **`partials-generous` has the best poker lift at 1.25**, the only poker variant
   competitive with cribbage on depth. Worth a human playtest.
+- **`cribbage-blank` has the highest lookahead lift measured so far: 1.31.**
+  Removing the centre anchor adds depth — the origin is a real decision and the
+  whole structure follows from it. Poker gains far less from the same change
+  (1.15), so this is not just "one more free choice", it interacts with the
+  additive scoring. Strongest single result of the night.
+- Blank boards are more **constrained**, not less: min legal cells drops to 5
+  against 10 anchored, because growth from an edge or corner has fewer
+  directions than growth from the centre.

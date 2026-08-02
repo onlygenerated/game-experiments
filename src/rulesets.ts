@@ -119,6 +119,22 @@ export const RULESETS: Ruleset[] = [
   },
 
   {
+    id: 'cribbage-blank',
+    name: 'Cribbage — blank board',
+    group: 'Cribbage',
+    blurb:
+      'No centre card. Your first placement picks the origin, so where the structure starts is a decision.',
+    config: cribbageBase({ startWithAnchor: false, targetScore: 550 }),
+  },
+  {
+    id: 'poker-blank',
+    name: 'Poker — blank board',
+    group: 'Poker tuning',
+    blurb: 'No centre card, poker scoring. The same origin question against the control lens.',
+    config: base({ startWithAnchor: false, targetScore: 570 }),
+  },
+
+  {
     id: 'cribbage',
     name: 'Cribbage',
     group: 'Cribbage',

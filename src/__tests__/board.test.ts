@@ -210,8 +210,23 @@ describe('legalCells', () => {
     expect(coordList(legalCells(board)).sort()).toEqual(['2,3', '3,2', '3,4', '4,3']);
   });
 
-  it('is empty on an empty board — nothing is adjacent to anything', () => {
-    expect(legalCells(emptyBoard())).toEqual([]);
+  it('opens the whole board when nothing has been placed yet', () => {
+    // Adjacency cannot be satisfied with zero cards down, so the opening
+    // placement picks the origin. Unreachable when an anchor is dealt.
+    expect(legalCells(emptyBoard())).toHaveLength(CONFIG.gridSize * CONFIG.gridSize);
+    expect(isLegalPlacement(emptyBoard(), 0, 0)).toBe(true);
+    expect(isLegalPlacement(emptyBoard(), 6, 6)).toBe(true);
+  });
+
+  it('still rejects off-board cells on an empty board', () => {
+    expect(isLegalPlacement(emptyBoard(), -1, 0)).toBe(false);
+    expect(isLegalPlacement(emptyBoard(), 0, 7)).toBe(false);
+  });
+
+  it('requires adjacency again the moment one card is down', () => {
+    const seeded = withCard(emptyBoard(), 0, 0, card('5H'));
+    expect(isLegalPlacement(seeded, 0, 1)).toBe(true);
+    expect(isLegalPlacement(seeded, 3, 3)).toBe(false);
   });
 });
 

@@ -47,6 +47,10 @@ export function isOccupied(board: Board, r: number, c: number, cfg: Config = CON
   return cellAt(board, r, c, cfg) !== null;
 }
 
+export function isBoardEmpty(board: Board): boolean {
+  return board.every((cell) => cell === null);
+}
+
 export function hasOccupiedNeighbor(
   board: Board,
   r: number,
@@ -138,7 +142,9 @@ export function isLegalPlacement(
 ): boolean {
   if (!inBounds(r, c, cfg)) return false;
   if (isOccupied(board, r, c, cfg)) return false;
-  if (!hasOccupiedNeighbor(board, r, c, cfg)) return false;
+  // Adjacency is unsatisfiable on an empty board, so the opening placement is
+  // free to go anywhere. With an anchor this branch is unreachable.
+  if (!hasOccupiedNeighbor(board, r, c, cfg) && !isBoardEmpty(board)) return false;
   if (projectedRunLength(board, r, c, 'row', cfg) > cfg.lineCap) return false;
   if (projectedRunLength(board, r, c, 'col', cfg) > cfg.lineCap) return false;
   return true;
