@@ -8,8 +8,21 @@ decisions, and the results have to live on disk instead of in my head.
 and push → update this file → republish the artifact → end turn. Never carry
 plan state in context alone.
 
+## Where things live
+
+- **Repo**: `onlygenerated/game-experiments`, branch `claude/new-session-1bu1l1`.
+- **Artifact**: https://claude.ai/code/artifact/6613c961-31a5-4a7b-8c61-abeb633d25e6
+  Republish by passing that URL as the `url` parameter, so the link the user
+  already has keeps working. A fresh session that omits it mints a new one.
+- **Build the artifact**: `npx vite build`, then inline `dist/assets/*.css` and
+  `*.js` into a single body-only HTML file (no doctype/html/head/body tags —
+  the host wraps it) and publish that. Nothing may reference an external host.
+- **Probe**: `npm run probe`. **Tests**: `npm test`.
+
 ## Standing rules
 
+- Each firing is now **hourly and cold** (a fresh session per fire), so aim to
+  finish one whole queue item per firing rather than a slice of one.
 - Commit and push after **every** item. The container is ephemeral; anything
   unpushed is lost if it is reclaimed.
 - Every new evaluator or structure gets tests before it counts as done, on the
