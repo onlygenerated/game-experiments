@@ -1,5 +1,6 @@
 import { anchorCell, CONFIG, type Config } from './config';
 import {
+  cashCell,
   emptyBoard,
   isLegalPlacement,
   legalCells,
@@ -44,3 +45,37 @@ export function placeCard(
 }
 
 export const discardCards = engine.discardCards;
+
+/**
+ * Bank the cross through (r, c) and lock both its lines. Costs one action from
+ * the same budget as a placement, which is the whole tension of the variant:
+ * every cash is a card you did not play.
+ *
+ * Returns the state unchanged whenever the cash is not available, so the UI and
+ * the probe can both call it without guarding first.
+ */
+export function cashCellAt(
+  state: GameState,
+  r: number,
+  c: number,
+  cfg: Config = CONFIG,
+): GameState {
+  if (state.status !== 'playing') return state;
+  if (!cfg.mechanics.lockAndCash) return state;
+  if (state.placementsLeft <= 0) return state;
+
+  const cashed = cashCell(state.board, r, c, cfg);
+  if (!cashed) return state;
+
+  const score = state.score + cashed.result.score;
+  return engine.settle(
+    {
+      ...state,
+      board: cashed.board,
+      score,
+      placementsLeft: state.placementsLeft - 1,
+      log: [...state.log, { ...cashed.result, n: state.log.length + 1, totalAfter: score }],
+    },
+    cfg,
+  );
+}

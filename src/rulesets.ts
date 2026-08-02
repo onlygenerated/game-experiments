@@ -278,6 +278,20 @@ export const RULESETS: Ruleset[] = [
   },
 
   {
+    id: 'mech-lock-cash',
+    name: 'Lock and cash',
+    group: 'Mechanics',
+    blurb:
+      'Placing banks nothing. Tap a card to cash its cross, which seals both its lines for good. Cashing costs an action, so every bank is a card you never played — and anything still uncashed at the end is worth nothing.',
+    config: cribbageBase({
+      mechanics: { ...CONFIG.mechanics, lockAndCash: true },
+      // Calibrated from the 2-ply median, not the greedy one. Greedy is not a
+      // valid agent for this ruleset — see the results log.
+      targetScore: 265,
+    }),
+  },
+
+  {
     id: 'cribbage-flush3',
     name: 'Cribbage — easy flushes',
     group: 'Cribbage',

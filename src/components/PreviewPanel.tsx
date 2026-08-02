@@ -85,10 +85,13 @@ export function PreviewPanel({
   preview,
   onPlace,
   onCancel,
+  actionLabel = 'Place',
 }: {
   preview: ScoredPlacement;
   onPlace?: () => void;
   onCancel?: () => void;
+  /** "Place" for a card going down, "Cash" for a cross being banked. */
+  actionLabel?: string;
 }) {
   const docked = Boolean(onPlace);
 
@@ -130,7 +133,7 @@ export function PreviewPanel({
             <span className="text-amber-200">{preview.mult}</span>
             <span className="text-emerald-200/70">=</span>
             <span className="text-lg font-black">{preview.score}</span>
-            <span className="ml-1 font-sans text-sm">Place</span>
+            <span className="ml-1 font-sans text-sm">{actionLabel}</span>
           </button>
         </div>
       ) : (

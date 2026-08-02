@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Config } from './config';
-import { isLegalPlacement, scorePlacement, type PlacementScore } from './board';
-import { discardCards, newGame, placeCard, type GameState } from './game';
+import { canCash, isLegalPlacement, scoreCross, scorePlacement, type PlacementScore } from './board';
+import { cashCellAt, discardCards, newGame, placeCard, type GameState } from './game';
 import {
   isLegalHexPlacement,
   scoreHexPlacement,
@@ -160,6 +160,42 @@ export default function App() {
     return scoreAt(activeTarget, activeCard);
   }, [playing, activeCard, activeTarget, isLegalKey, scoreAt]);
 
+  // --- lock-and-cash ----------------------------------------------------------
+  //
+  // Only this variant has anything to bank, so everything here collapses to an
+  // empty set and a null preview under every other ruleset.
+
+  const cashable = useMemo(() => {
+    const out = new Set<string>();
+    if (!playing || run.kind !== 'grid' || !cfg.mechanics.lockAndCash) return out;
+    for (let r = 0; r < cfg.gridSize; r++) {
+      for (let c = 0; c < cfg.gridSize; c++) {
+        if (canCash(run.s.board, r, c, cfg)) out.add(`${r},${c}`);
+      }
+    }
+    return out;
+  }, [playing, run, cfg]);
+
+  // A placement preview wins if there is one: hovering an occupied cell with a
+  // card in hand is not a legal placement, so the two can never both be live.
+  const cashPreview = useMemo(() => {
+    if (preview || drag || !target || !cashable.has(target)) return null;
+    if (run.kind !== 'grid') return null;
+    const { r, c } = parseGrid(target);
+    return scoreCross(run.s.board, r, c, cfg, undefined, 'cash');
+  }, [preview, drag, target, cashable, run, cfg]);
+
+  const cash = useCallback(
+    (key: string) => {
+      if (run.kind !== 'grid') return;
+      const { r, c } = parseGrid(key);
+      push({ kind: 'grid', s: cashCellAt(run.s, r, c, cfg) });
+    },
+    [push, run, cfg],
+  );
+
+  const shownPreview = preview ?? cashPreview;
+
   // --- log, normalised so both structures render identically ------------------
 
   const logRows: LogRow[] = useMemo(
@@ -256,6 +292,12 @@ export default function App() {
    * placing then takes a second tap or the footer's Place button.
    */
   function activateKey(key: string) {
+    // Cashing needs no card in hand, so it is checked before the selection.
+    if (cashable.has(key)) {
+      if (!touch || target === key) cash(key);
+      else setTarget(key);
+      return;
+    }
     if (selectedIndex === null) return;
     if (!touch || target === key) place(selectedIndex, key);
     else setTarget(key);
@@ -284,7 +326,11 @@ export default function App() {
   const n = activeSelection.size;
   const hint = drag
     ? 'Drop on a highlighted cell'
-    : soleCard
+    : cfg.mechanics.lockAndCash && n <= 1
+      ? touch
+        ? 'Tap a green cell to build, a gold card to cash'
+        : 'Place to build; click a gold card to cash its cross'
+      : soleCard
       ? touch
         ? 'Tap a green cell, or burn it'
         : 'Place it, or burn it'
@@ -381,6 +427,7 @@ export default function App() {
                 selectedCard={activeCard}
                 target={activeTarget ? parseGrid(activeTarget) : null}
                 preview={preview as PlacementScore | null}
+                cashable={cashable}
                 justPlaced={justPlacedKey ? parseGrid(justPlacedKey) : null}
                 onHoverCell={(cell) =>
                   !touch && !drag && setTarget(cell ? `${cell.r},${cell.c}` : null)
@@ -393,7 +440,9 @@ export default function App() {
 
             {/* The grid board positions its own side preview against the hovered
                 row; the hex board has no row to anchor to, so it sits here. */}
-            {run.kind === 'hex' && !docked && preview && <PreviewPanel preview={preview} />}
+            {!docked && ((run.kind === 'hex' && preview) || cashPreview) && (
+              <PreviewPanel preview={(cashPreview ?? preview)!} />
+            )}
           </div>
 
           {!docked && <div className="w-full">{handTray}</div>}
@@ -401,6 +450,9 @@ export default function App() {
           <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-[11px] text-neutral-500 min-[1280px]:justify-start">
             <span className="text-sky-400">chips axis</span>
             <span className="text-amber-400">mult axis</span>
+            {cfg.mechanics.lockAndCash && (
+              <span className="text-amber-300">gold cards can be cashed · grey lines are sealed</span>
+            )}
             {cfg.structure === 'hex' && <span className="text-violet-300">further out scores more</span>}
             {cfg.structure === 'hex' && <span>faded cards are outside the scoring window</span>}
           </div>
@@ -419,12 +471,14 @@ export default function App() {
           ref={footerRef}
           className="fixed inset-x-0 bottom-0 z-30 flex flex-col gap-2 border-t border-white/10 bg-[#0d1015]/95 p-2 backdrop-blur"
         >
-          {preview && (
+          {shownPreview && (
             <PreviewPanel
-              preview={preview}
-              onPlace={() =>
-                activeTarget && place(drag?.handIndex ?? selectedIndex ?? -1, activeTarget)
-              }
+              preview={shownPreview}
+              actionLabel={cashPreview ? 'Cash' : 'Place'}
+              onPlace={() => {
+                if (cashPreview && target) cash(target);
+                else if (activeTarget) place(drag?.handIndex ?? selectedIndex ?? -1, activeTarget);
+              }}
               onCancel={() => setTarget(null)}
             />
           )}

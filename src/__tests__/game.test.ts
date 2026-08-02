@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG, type Config } from '../config';
 import { isBoardEmpty, legalCells } from '../board';
-import { newGame, placeCard } from '../game';
+import { cashCellAt, newGame, placeCard } from '../game';
 
 const blank: Config = { ...CONFIG, startWithAnchor: false };
 
@@ -46,5 +46,53 @@ describe('newGame — anchor', () => {
     expect(s.log[0].card.id).toBe(card.id);
     expect(s.log[0].rowLine).toHaveLength(1);
     expect(s.log[0].mult).toBe(1);
+  });
+});
+
+describe('lock-and-cash run flow', () => {
+  const cash: Config = { ...CONFIG, mechanics: { ...CONFIG.mechanics, lockAndCash: true } };
+  const anchor = { r: Math.floor(CONFIG.gridSize / 2), c: Math.floor(CONFIG.gridSize / 2) };
+
+  /** Place one card next to the anchor so there is a real cross to cash. */
+  const built = () => placeCard(newGame('cash-seed', cash), 0, anchor.r, anchor.c + 1, cash);
+
+  it('banks nothing on a placement', () => {
+    const s = built();
+    expect(s.log).toHaveLength(1);
+    expect(s.score).toBe(0);
+  });
+
+  it('banks the cross and spends an action when cashing', () => {
+    const before = built();
+    const after = cashCellAt(before, anchor.r, anchor.c, cash);
+    expect(after.score).toBeGreaterThan(0);
+    // A cash costs an action from the same budget as a placement.
+    expect(after.placementsLeft).toBe(before.placementsLeft - 1);
+    // ...but not a card: cashing does not touch the hand.
+    expect(after.hand).toEqual(before.hand);
+  });
+
+  it('is a no-op on a cross that is already spent', () => {
+    const once = cashCellAt(built(), anchor.r, anchor.c, cash);
+    const twice = cashCellAt(once, anchor.r, anchor.c, cash);
+    expect(twice).toBe(once);
+  });
+
+  it('is a no-op under rules that do not have cashing', () => {
+    const s = placeCard(newGame('cash-seed'), 0, anchor.r, anchor.c + 1);
+    expect(cashCellAt(s, anchor.r, anchor.c)).toBe(s);
+  });
+
+  it('loses anything still uncashed when the actions run out', () => {
+    // Spend the whole budget placing and never cash: the board is full of
+    // value and the run banks zero. This is the tension the variant exists for.
+    let s = newGame('cash-seed', cash);
+    while (s.status === 'playing') {
+      const cell = legalCells(s.board, cash)[0];
+      s = placeCard(s, 0, cell.r, cell.c, cash);
+    }
+    expect(s.placementsLeft).toBe(0);
+    expect(s.score).toBe(0);
+    expect(s.status).toBe('lost');
   });
 });

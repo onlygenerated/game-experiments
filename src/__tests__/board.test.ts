@@ -4,15 +4,19 @@ import { RANK_LABEL, type Card, type Rank, type Suit } from '../deck';
 import {
   emptyBoard,
   idx,
+  canCash,
+  cashCell,
   isLegalPlacement,
   isLineComplete,
   legalCells,
   lineCards,
   lineCoords,
   projectedRunLength,
+  scoreCross,
   scorePlacement,
   withCard,
   type Board,
+  type PlacedCard,
 } from '../board';
 
 const rankOf: Record<string, Rank> = {
@@ -471,5 +475,79 @@ describe('mechanics.payOnCompleteOnly', () => {
     const r = scorePlacement(board, 0, 0, card('5H'));
     expect(r.score).toBe(r.chips * r.mult);
     expect(r.notes).toEqual([]);
+  });
+});
+
+describe('mechanics.lockAndCash', () => {
+  const cfg = mech({ lockAndCash: true });
+
+  it('shows a placement its value but banks nothing', () => {
+    const board = place(['.. 6D 7S']);
+    const r = scorePlacement(board, 0, 0, card('5H'), cfg);
+    expect(r.chips).toBeGreaterThan(0);
+    expect(r.score).toBe(0);
+    expect(r.notes).toEqual([{ label: 'Cash this cross to bank', points: 0 }]);
+  });
+
+  it('banks the same product when the cross is cashed', () => {
+    const board = place(['5H 6D 7S']);
+    const preview = scoreCross(board, 0, 0, cfg);
+    const cashed = cashCell(board, 0, 0, cfg)!;
+    expect(cashed.result.score).toBe(preview.chips * preview.mult);
+    expect(cashed.result.notes).toEqual([]);
+  });
+
+  it('locks both lines of the cross it cashed', () => {
+    const board = place(['5H 6D ..', '2C .. ..']);
+    const cashed = cashCell(board, 0, 0, cfg)!;
+    // Row run 5H-6D and column run 5H-2C are both sealed.
+    expect((cashed.board[idx(0, 0)] as PlacedCard).lockedRow).toBe(true);
+    expect((cashed.board[idx(0, 1)] as PlacedCard).lockedRow).toBe(true);
+    expect((cashed.board[idx(1, 0)] as PlacedCard).lockedCol).toBe(true);
+    // ...and only along the axis that was part of that run.
+    expect((cashed.board[idx(0, 1)] as PlacedCard).lockedCol).toBeUndefined();
+  });
+
+  it('refuses to extend a locked run', () => {
+    const board = place(['5H 6D ..', '2C .. ..']);
+    const cashed = cashCell(board, 0, 0, cfg)!;
+    // (0,2) would extend the sealed row.
+    expect(isLegalPlacement(cashed.board, 0, 2, cfg)).toBe(false);
+    // (2,0) would extend the sealed column.
+    expect(isLegalPlacement(cashed.board, 2, 0, cfg)).toBe(false);
+    // (1,1) touches 6D's column and 2C's row, neither of which was locked.
+    expect(isLegalPlacement(cashed.board, 1, 1, cfg)).toBe(true);
+  });
+
+  it('refuses to cash the same cross twice', () => {
+    const board = place(['5H 6D 7S']);
+    const once = cashCell(board, 0, 0, cfg)!;
+    expect(canCash(once.board, 0, 0, cfg)).toBe(false);
+    expect(cashCell(once.board, 0, 0, cfg)).toBeNull();
+    // Every cell of a cashed row is spent, not just the one that was tapped.
+    expect(cashCell(once.board, 0, 2, cfg)).toBeNull();
+  });
+
+  it('will not cash a lone card', () => {
+    // Sealing a one-card cross locks a single-cell run on both axes, walling
+    // off all four neighbours. On an anchored board that ends the run on turn
+    // one for a couple of points, and a greedy agent takes it every time.
+    const lone = withCard(emptyBoard(), 3, 3, card('5H'));
+    expect(canCash(lone, 3, 3, cfg)).toBe(false);
+    expect(cashCell(lone, 3, 3, cfg)).toBeNull();
+
+    // Two cards is a line, and cashable.
+    const pair = withCard(lone, 3, 4, card('6D'));
+    expect(canCash(pair, 3, 3, cfg)).toBe(true);
+  });
+
+  it('will not cash an empty cell', () => {
+    expect(cashCell(emptyBoard(), 3, 3, cfg)).toBeNull();
+    expect(canCash(emptyBoard(), 3, 3, cfg)).toBe(false);
+  });
+
+  it('leaves legality alone when nothing has been cashed', () => {
+    const board = place(['5H 6D ..']);
+    expect(isLegalPlacement(board, 0, 2, cfg)).toBe(true);
   });
 });

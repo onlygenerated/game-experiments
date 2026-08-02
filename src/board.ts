@@ -10,7 +10,18 @@ import {
   type ScoreItem,
 } from './lens';
 
-export type Cell = Card | null;
+/**
+ * A card sitting on the board, which unlike a card in hand belongs to lines and
+ * so can have those lines locked. The flags live here rather than on `Card`
+ * because a card in hand has no lines for the idea to mean anything.
+ */
+export interface PlacedCard extends Card {
+  /** Its row run has been cashed and can never be extended again. */
+  lockedRow?: boolean;
+  lockedCol?: boolean;
+}
+
+export type Cell = PlacedCard | null;
 /** Row-major, length gridSize * gridSize. */
 export type Board = readonly Cell[];
 
@@ -164,7 +175,74 @@ export function isLegalPlacement(
   }
   if (projectedRunLength(board, r, c, 'row', cfg) > cfg.lineCap) return false;
   if (projectedRunLength(board, r, c, 'col', cfg) > cfg.lineCap) return false;
+  if (extendsLockedRun(board, r, c, 'row', cfg)) return false;
+  if (extendsLockedRun(board, r, c, 'col', cfg)) return false;
   return true;
+}
+
+/**
+ * Would a card here join a run that has already been cashed? Runs are
+ * contiguous, so only the two immediate neighbours along the axis can be part
+ * of one. A no-op until something is actually locked.
+ */
+export function extendsLockedRun(
+  board: Board,
+  r: number,
+  c: number,
+  axis: Axis,
+  cfg: Config = CONFIG,
+): boolean {
+  const dr = axis === 'col' ? 1 : 0;
+  const dc = axis === 'row' ? 1 : 0;
+  const flag = axis === 'row' ? 'lockedRow' : 'lockedCol';
+  return Boolean(
+    cellAt(board, r - dr, c - dc, cfg)?.[flag] || cellAt(board, r + dr, c + dc, cfg)?.[flag],
+  );
+}
+
+/**
+ * A cross can be cashed once, while neither of its lines is locked, and only
+ * if it is actually a line.
+ *
+ * That last clause is not fussiness. Sealing a lone card locks a one-cell run
+ * on *both* axes, which walls off all four of its neighbours; on an anchored
+ * board, cashing the opening card for a couple of points therefore ends the run
+ * immediately. A value-maximising agent walks straight into it.
+ */
+export function canCash(board: Board, r: number, c: number, cfg: Config = CONFIG): boolean {
+  const cell = cellAt(board, r, c, cfg);
+  if (!cell || cell.lockedRow || cell.lockedCol) return false;
+  // The centre cell is counted by both lines, so 3 here means 2 distinct cards.
+  const span =
+    lineCoords(board, r, c, 'row', cfg).length + lineCoords(board, r, c, 'col', cfg).length;
+  return span >= 3;
+}
+
+/**
+ * Bank the cross through (r, c) and lock both its runs, so neither can ever be
+ * extended or cashed again. Returns null when there is nothing to cash, so the
+ * caller never has to guard twice.
+ */
+export function cashCell(
+  board: Board,
+  r: number,
+  c: number,
+  cfg: Config = CONFIG,
+  lens: Lens = getLens(cfg.lensId),
+): { board: Board; result: PlacementScore } | null {
+  if (!canCash(board, r, c, cfg)) return null;
+
+  const result = scoreCross(board, r, c, cfg, lens, 'cash');
+  const next = board.slice();
+  for (const p of result.rowCoords) {
+    const i = idx(p.r, p.c, cfg);
+    next[i] = { ...(next[i] as PlacedCard), lockedRow: true };
+  }
+  for (const p of result.colCoords) {
+    const i = idx(p.r, p.c, cfg);
+    next[i] = { ...(next[i] as PlacedCard), lockedCol: true };
+  }
+  return { board: next, result };
 }
 
 export function legalCells(board: Board, cfg: Config = CONFIG): Coord[] {
@@ -219,7 +297,27 @@ export function scorePlacement(
   cfg: Config = CONFIG,
   lens: Lens = getLens(cfg.lensId),
 ): PlacementScore {
-  const next = withCard(board, r, c, card, cfg);
+  return scoreCross(withCard(board, r, c, card, cfg), r, c, cfg, lens);
+}
+
+/**
+ * Score the cross of lines through an occupied cell.
+ *
+ * Split out from `scorePlacement` so that cashing a cross runs the identical
+ * code, rather than a parallel implementation that could drift from it. `mode`
+ * only decides whether the value banks now: under lock-and-cash a placement
+ * shows what it *would* be worth and banks nothing until cashed.
+ */
+export function scoreCross(
+  board: Board,
+  r: number,
+  c: number,
+  cfg: Config = CONFIG,
+  lens: Lens = getLens(cfg.lensId),
+  mode: 'place' | 'cash' = 'place',
+): PlacementScore {
+  const next = board;
+  const card = cellAt(board, r, c, cfg) as Card;
 
   const rowCoords = lineCoords(next, r, c, 'row', cfg);
   const colCoords = lineCoords(next, r, c, 'col', cfg);
@@ -281,12 +379,19 @@ export function scorePlacement(
     mult = multLine.value;
   }
 
-  // Deferred payout: a line pays only once it can never grow again.
-  const complete = rowCoords.length >= cfg.lineCap || colCoords.length >= cfg.lineCap;
-  const payout = payOnCompleteOnly && !complete ? 0 : 1;
-  const notes: ScoreItem[] = payOnCompleteOnly
-    ? [{ label: complete ? 'Line complete — banks' : 'No line complete', points: payout }]
-    : [];
+  // Whether this cross banks its value now, expressed as a x0/x1 note — the
+  // same multiplier semantics `notes` already carries for the hex ring bonus,
+  // so the preview renders it without knowing what any of these mean.
+  let payout = 1;
+  const notes: ScoreItem[] = [];
+  if (cfg.mechanics.lockAndCash && mode === 'place') {
+    payout = 0;
+    notes.push({ label: 'Cash this cross to bank', points: 0 });
+  } else if (payOnCompleteOnly) {
+    const complete = rowCoords.length >= cfg.lineCap || colCoords.length >= cfg.lineCap;
+    payout = complete ? 1 : 0;
+    notes.push({ label: complete ? 'Line complete — banks' : 'No line complete', points: payout });
+  }
 
   // `rowEval`/`colEval` are the per-axis evaluations in their scoring role, so
   // consumers that reach for them directly still get a meaningful number.

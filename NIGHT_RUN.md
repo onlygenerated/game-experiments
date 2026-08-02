@@ -49,6 +49,12 @@ of whatever the session was branched from.
   `*.js` into a single body-only HTML file (no doctype/html/head/body tags —
   the host wraps it) and publish that. Nothing may reference an external host.
 - **Probe**: `npm run probe`. **Tests**: `npm test`.
+- **Driving the app in a browser**: `import { launch } from './tools/browser.mjs'`.
+  Chromium is pre-installed but the npm `playwright` package pins a different
+  browser build than the image ships, so the automatic lookup fails and an
+  explicit `executablePath` is required — the helper resolves it. Never run
+  `playwright install`. Scripts must live inside the repo, or node cannot
+  resolve `playwright` from `node_modules`.
 
 ## Standing rules
 
@@ -100,8 +106,10 @@ Cheap items first so a short night still banks the whole of category 1.
       differ only in six board calls. Deliberate duplication for now — see
       decisions log.
 - [x] **6. One-Card Draft** — no hand; reveal one card, place or burn.
-- [ ] **7. Category 2 mechanic variants** — both-axes, suit-sets-axis,
-      deferred scoring, lock-and-cash, free placement.
+- [x] **7. Category 2 mechanic variants** — both-axes, suit-sets-axis,
+      deferred scoring, lock-and-cash, free placement. All five ship under a
+      Mechanics group. Lock-and-cash is the only one that needed engine and UI
+      work; the other four are config read by `scorePlacement`.
 - [ ] **8. Metrics page** — every ruleset ranked by skill gap, lookahead lift,
       mult participation, spread, choke turn. Poker Squares as the reference.
 - [ ] **9. Morning summary** — findings and a recommended shortlist.
@@ -269,6 +277,7 @@ Measured over 20 seeds with the corrected methodology.
 | mech-suit-axis | 665 | 663 | 267 | 2.48 | 1.18 | **12%** | 6.0 | 10 | 45% |
 | **mech-deferred** | 150 | 147 | 51 | 2.88 | **1.67** | 26% | **0.0** | 8 | 45% |
 | mech-free | 610 | 612 | 81 | *7.56* | 1.24 | 40% | 11.0 | **31** | 50% |
+| mech-lock-cash | 265 | *9* | *21* | *0.43* | *29.33* | 3% | 3.0 | **0** | *0%* |
 
 ### Readings
 
@@ -349,3 +358,24 @@ Measured over 20 seeds with the corrected methodology.
   quantile "careless" pick lands in that worthless mass, which inflates the
   ratio without good play having improved at all. Read skill gap alongside min
   cells; the two rulesets are not measuring the same decision.
+
+- **Lock-and-cash: every number in its row is italicised, because greedy is not
+  a valid agent for it.** Under this variant a placement is worth 0 by design,
+  so a value-maximising agent has no gradient to build on and cashes the
+  smallest available cross every single turn. Each cash seals its cross, and
+  after a handful of those the structure is sealed shut — min legal cells 0,
+  run over, greedy 9. That is why greedy scores *worse than careless* (0.43),
+  and why the 29.33 "lookahead lift" is not a measurement of planning value but
+  of how far greedy falls over. Its target is calibrated from the **2-ply
+  median (264)** instead, which is a deviation from the standing rule and is
+  recorded as such. The `win%` column reads 0% because it is derived from
+  greedy runs; ignore it for this row.
+- The one real design bug this surfaced was worth the trip: cashing a *lone*
+  card locks a one-cell run on both axes, which walls off all four of its
+  neighbours. On an anchored board a greedy agent cashed the opening card for 3
+  points and ended the run on turn one. Cashing now requires a cross of at
+  least two cards, with a test pinning it.
+- Whether lock-and-cash is *good* is still an open question a human has to
+  answer by playing it. What the probe establishes is only that it is not
+  degenerate in the way the others can be measured for — and that it punishes
+  naive play harder than anything else here.

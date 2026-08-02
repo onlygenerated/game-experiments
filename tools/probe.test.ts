@@ -18,8 +18,8 @@
  */
 import { it } from 'vitest';
 import type { Config } from '../src/config';
-import { legalCells, scorePlacement } from '../src/board';
-import { newGame, placeCard, type GameState } from '../src/game';
+import { canCash, legalCells, scoreCross, scorePlacement } from '../src/board';
+import { cashCellAt, newGame, placeCard, type GameState } from '../src/game';
 import { legalHexCells, scoreHexPlacement } from '../src/hex/board';
 import { newHexGame, placeHexCard, type HexGameState } from '../src/hex/game';
 import { hexKey, parseHex } from '../src/hex/coords';
@@ -36,19 +36,45 @@ function api(cfg: Config) {
       hex
         ? legalHexCells((s as HexGameState).board, cfg).map(hexKey)
         : legalCells((s as GameState).board, cfg).map((p) => `${p.r},${p.c}`),
+    /**
+     * Crosses that can still be banked. Empty for every ruleset but
+     * lock-and-cash, where cashing is a move like any other and has to be
+     * enumerated, or the agents would build all run and score nothing.
+     */
+    cashes: (s: AnyRun): string[] => {
+      if (hex || !cfg.mechanics.lockAndCash) return [];
+      const out: string[] = [];
+      for (let r = 0; r < cfg.gridSize; r++) {
+        for (let c = 0; c < cfg.gridSize; c++) {
+          if (canCash((s as GameState).board, r, c, cfg)) out.push(`${r},${c}`);
+        }
+      }
+      return out;
+    },
     score: (s: AnyRun, key: string, i: number) => {
+      if (i === CASH) {
+        const [r, c] = key.split(',').map(Number);
+        return scoreCross((s as GameState).board, r, c, cfg, undefined, 'cash');
+      }
       const card = s.hand[i];
       if (hex) return scoreHexPlacement((s as HexGameState).board, parseHex(key), card, cfg);
       const [r, c] = key.split(',').map(Number);
       return scorePlacement((s as GameState).board, r, c, card, cfg);
     },
     play: (s: AnyRun, i: number, key: string): AnyRun => {
+      if (i === CASH) {
+        const [r, c] = key.split(',').map(Number);
+        return cashCellAt(s as GameState, r, c, cfg);
+      }
       if (hex) return placeHexCard(s as HexGameState, i, parseHex(key), cfg);
       const [r, c] = key.split(',').map(Number);
       return placeCard(s as GameState, i, r, c, cfg);
     },
   };
 }
+
+/** Sentinel hand index meaning "cash the cross here" rather than "play hand[i]". */
+const CASH = -1;
 
 interface Move {
   i: number;
@@ -62,6 +88,7 @@ function moves(s: AnyRun, a: ReturnType<typeof api>): Move[] {
   for (let i = 0; i < s.hand.length; i++) {
     for (const key of cells) out.push({ i, key, v: a.score(s, key, i).score });
   }
+  for (const key of a.cashes(s)) out.push({ i: CASH, key, v: a.score(s, key, CASH).score });
   return out.sort((x, y) => y.v - x.v);
 }
 

@@ -26,6 +26,7 @@ export function BoardGrid({
   selectedCard,
   target,
   preview,
+  cashable,
   justPlaced,
   onHoverCell,
   onActivateCell,
@@ -37,6 +38,8 @@ export function BoardGrid({
   selectedCard: Card | null;
   target: Coord | null;
   preview: PlacementScore | null;
+  /** Cells whose cross can still be banked. Empty unless lock-and-cash is on. */
+  cashable: ReadonlySet<string>;
   /** Cell of the most recent placement, for the drop-in animation. */
   justPlaced: Coord | null;
   onHoverCell: (cell: Coord | null) => void;
@@ -109,12 +112,18 @@ export function BoardGrid({
 
           const isLegal = legal.has(k);
           const selectable = interactive && isLegal && selectedCard !== null;
+          const isCashable = interactive && cashable.has(k);
           const isTarget = target?.r === r && target?.c === c;
           const isJustPlaced = justPlaced?.r === r && justPlaced?.c === c;
 
+          // A cashed line is sealed: it can never be extended or banked again,
+          // which is a stronger statement than merely being full.
+          const lockedRow = Boolean(card?.lockedRow);
+          const lockedCol = Boolean(card?.lockedCol);
+
           // Complete lines can never be extended. Mark the run's edges.
-          const rowComplete = card !== null && isLineComplete(board, r, c, 'row', cfg);
-          const colComplete = card !== null && isLineComplete(board, r, c, 'col', cfg);
+          const rowComplete = !lockedRow && card !== null && isLineComplete(board, r, c, 'row', cfg);
+          const colComplete = !lockedCol && card !== null && isLineComplete(board, r, c, 'col', cfg);
 
           const inRowPreview = rowPreview.has(k) && !isTarget;
           const inColPreview = colPreview.has(k) && !isTarget;
@@ -140,16 +149,25 @@ export function BoardGrid({
           // Painted front-to-back. Line markers sit above the well shading so
           // they stay legible on an occupied cell.
           const shadows = [
-            rowComplete
-              ? 'inset 0 3px 0 0 rgba(167,139,250,.75), inset 0 -3px 0 0 rgba(167,139,250,.75)'
-              : '',
-            colComplete
-              ? 'inset 3px 0 0 0 rgba(244,114,182,.75), inset -3px 0 0 0 rgba(244,114,182,.75)'
-              : '',
+            lockedRow
+              ? 'inset 0 3px 0 0 rgba(120,113,108,.85), inset 0 -3px 0 0 rgba(120,113,108,.85)'
+              : rowComplete
+                ? 'inset 0 3px 0 0 rgba(167,139,250,.75), inset 0 -3px 0 0 rgba(167,139,250,.75)'
+                : '',
+            lockedCol
+              ? 'inset 3px 0 0 0 rgba(120,113,108,.85), inset -3px 0 0 0 rgba(120,113,108,.85)'
+              : colComplete
+                ? 'inset 3px 0 0 0 rgba(244,114,182,.75), inset -3px 0 0 0 rgba(244,114,182,.75)'
+                : '',
             ring ? `inset 0 0 0 2px ${ring}` : '',
             // A legal cell has to read at a glance — it is the whole affordance.
             selectable && !ring
               ? 'inset 0 0 0 1.5px rgba(52,211,153,.55), 0 0 14px rgba(16,185,129,.28)'
+              : '',
+            // Bankable crosses get the same treatment in gold, since under
+            // lock-and-cash they are an affordance too, not just scenery.
+            isCashable && !ring
+              ? 'inset 0 0 0 1.5px rgba(251,191,36,.6), 0 0 14px rgba(245,158,11,.3)'
               : '',
             // Every cell is a shallow well with a lit rim, so the grid stays
             // legible; occupied ones are shallower since the card's own shadow
@@ -164,9 +182,9 @@ export function BoardGrid({
               key={k}
               data-cell={k}
               onMouseEnter={() => onHoverCell({ r, c })}
-              onClick={() => selectable && onActivateCell({ r, c })}
+              onClick={() => (selectable || isCashable) && onActivateCell({ r, c })}
               className={`flex items-center justify-center rounded-md transition-[background-color,box-shadow] duration-150 ${
-                selectable ? 'cursor-pointer' : ''
+                selectable || isCashable ? 'cursor-pointer' : ''
               }`}
               style={{
                 width: 'var(--cell)',

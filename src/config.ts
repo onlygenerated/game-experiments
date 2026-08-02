@@ -97,6 +97,17 @@ export interface Config {
      * this a puzzle rather than a sequence of independent draws.
      */
     requireAdjacency: boolean;
+    /**
+     * Placements bank nothing on their own. Instead you cash a cross — its
+     * chips x mult — which locks both of its lines against ever being extended
+     * or cashed again, and which costs one action from the same budget as a
+     * placement. So every cash is a card you did not play, and every card you
+     * play is a cross that has not been banked yet. Anything left uncashed when
+     * the actions run out is worth nothing.
+     *
+     * Grid-only, like the two above.
+     */
+    lockAndCash: boolean;
   };
 
   /**
@@ -151,6 +162,7 @@ export const CONFIG: Config = {
     axisMode: 'split',
     payOnCompleteOnly: false,
     requireAdjacency: true,
+    lockAndCash: false,
   },
   structure: 'grid',
   hexRadius: 4,

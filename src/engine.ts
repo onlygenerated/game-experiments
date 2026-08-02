@@ -147,5 +147,7 @@ export function createEngine<TBoard, TCoord, TScore extends Placed<TCoord>>(
     );
   }
 
-  return { newGame, placeCard, discardCards };
+  // `settle` is exported so a structure can add an action of its own — the grid
+  // adds cashing — without reimplementing the run-over rules.
+  return { newGame, placeCard, discardCards, settle };
 }
