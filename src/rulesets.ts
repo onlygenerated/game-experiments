@@ -119,6 +119,29 @@ export const RULESETS: Ruleset[] = [
   },
 
   {
+    id: 'hex-sprawl',
+    name: 'Hex Sprawl',
+    group: 'Hex',
+    blurb:
+      'Hex board, three axes per placement, no line cap — only your best five along each line scores. Further from the centre is worth more.',
+    config: cribbageBase({ structure: 'hex', startWithAnchor: true, targetScore: 1200 }),
+  },
+  {
+    id: 'hex-sprawl-blank',
+    name: 'Hex Sprawl — blank',
+    group: 'Hex',
+    blurb: 'Same, but no centre card. Your first placement chooses where the whole structure grows from.',
+    config: cribbageBase({ structure: 'hex', startWithAnchor: false, targetScore: 1120 }),
+  },
+  {
+    id: 'hex-sprawl-flat',
+    name: 'Hex Sprawl — no distance bonus',
+    group: 'Hex',
+    blurb: 'Ring bonus off. Isolates whether building outward is worth it on its own.',
+    config: cribbageBase({ structure: 'hex', hexRingBonus: 0, targetScore: 965 }),
+  },
+
+  {
     id: 'cribbage-blank',
     name: 'Cribbage — blank board',
     group: 'Cribbage',

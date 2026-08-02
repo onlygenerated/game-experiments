@@ -44,6 +44,9 @@ export interface Config {
   /** Which scoring lens converts a line of cards into chips or mult. */
   lensId: string;
 
+  /** Board topology. 'grid' is the square board; 'hex' is the sprawl. */
+  structure: 'grid' | 'hex';
+
   /** Hex structures only: how many rings out the playable area extends. */
   hexRadius: number;
   /**
@@ -109,6 +112,7 @@ export const CONFIG: Config = {
 
   lensId: 'poker',
   startWithAnchor: true,
+  structure: 'grid',
   hexRadius: 4,
   hexWindow: 5,
   hexRingBonus: 0.1,

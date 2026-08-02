@@ -62,8 +62,12 @@ Cheap items first so a short night still banks the whole of category 1.
       origin. Needed by the sprawl work.
 - [x] **3. Hex Sprawl — engine** — axial coords, three axes, line extraction,
       legality, tests. The big one.
-- [ ] **4. Hex Sprawl — board UI** — hex rendering, drag and preview reuse.
-- [ ] **5. Hex Sprawl — ring bonus** — distance multiplier + frontier growth.
+- [x] **4. Hex Sprawl — board UI** — hex rendering, drag and preview reuse.
+- [x] **5. Hex Sprawl — ring bonus** — landed with item 4; three hex rulesets ship,
+      including one with the bonus off as a control.
+- [ ] **5b. Unify game.ts and hex/game.ts** behind a Structure interface. They
+      differ only in six board calls. Deliberate duplication for now — see
+      decisions log.
 - [ ] **6. One-Card Draft** — no hand; reveal one card, place or burn.
 - [ ] **7. Category 2 mechanic variants** — both-axes, suit-sets-axis,
       deferred scoring, lock-and-cash, free placement.
@@ -110,6 +114,30 @@ five here". The full run is still highlighted; only the window scores.
 **Hex board is a sparse Map**, not a dense array, because a sprawl has no fixed
 extent. `hexRadius` (4, so 61 hexes) bounds it for rendering only.
 
+**Coordinates travel as string keys through the UI.** "r,c" on a grid, "q,r" on
+hexes. Drag, preview, targeting, the docked footer and the score log are all one
+code path as a result, and each board view only does set membership on those
+keys for highlighting. This is what kept the hex board from needing a parallel
+copy of the whole app shell.
+
+**`ScoredLine` / `ScoredPlacement` normalise scoring output** so the preview and
+log render two grid axes or three hex axes without knowing which they have.
+Grid lines report window == whole line; hex lines report a shorter window, and
+the views fade the cards outside it.
+
+**`hex/game.ts` deliberately mirrors `game.ts` rather than sharing.** They differ
+only in six board calls, so a `Structure` interface would remove the
+duplication — but that refactor touches the module all 18 existing rulesets
+depend on, and a half-finished version overnight would be far worse than two
+small parallel files. Queued as 5b, not forgotten.
+
+**Every hex gets a lit rim.** `clip-path` clips borders as well as the shape, so
+rims have to be drawn as an inset layer. Without one the empty hexes vanished
+and the disc read as a lopsided smear rather than a board.
+
+**The probe now dispatches on structure.** It would otherwise have measured hex
+rulesets with grid functions and produced plausible, entirely wrong numbers.
+
 **Targets for the 7 new config variants** set to their measured greedy median,
 which lands them at 50-65% win. The 8 pre-existing rulesets stay frozen per the
 standing rules, so a few still read 100%.
@@ -138,6 +166,9 @@ Measured over 20 seeds with the corrected methodology.
 | cribbage-flush3 | 660 | 666 | 282 | 2.36 | 1.14 | 45% | 7.0 | 10 | 55% |
 | **cribbage-blank** | 550 | 555 | 228 | 2.43 | **1.31** | 35% | 5.0 | 5 | 45% |
 | poker-blank | 570 | 573 | 383 | 1.50 | 1.15 | 17% | 5.0 | 5 | 60% |
+| **hex-sprawl** | 1200 | 1201 | 224 | **5.36** | **1.26** | 29% | 15.5 | 13 | ~50% |
+| hex-sprawl-blank | 1120 | 1118 | 248 | 4.51 | **1.03** | 26% | 13.3 | 11 | ~50% |
+| hex-sprawl-flat | 965 | 966 | 216 | 4.47 | 1.23 | 30% | 16.0 | 13 | ~50% |
 
 ### Readings
 
@@ -157,6 +188,21 @@ Measured over 20 seeds with the corrected methodology.
   whole structure follows from it. Poker gains far less from the same change
   (1.15), so this is not just "one more free choice", it interacts with the
   additive scoring. Strongest single result of the night.
+- **Hex sprawl has the widest skill gap measured: 5.36**, against cribbage's
+  2.41 and poker's 1.67, with a lookahead lift of 1.26. Three axes per placement
+  and uncapped lines both pull in the same direction.
+- **But its choice spread is 15.5**, against a healthy 7.0 for grid cribbage.
+  The best move is fifteen times the median one, so most hexes are near-dead and
+  a few are enormous. That is the `cribbage-pure` failure mode returning by a
+  different route, and it is the first thing to check by hand — high skill gap
+  and obvious-best-move look identical in the numbers.
+- **Blank board HURTS on hex (lift 1.03) where it helped on grid (1.31).** On a
+  61-hex disc the origin barely constrains anything — you can always sprawl —
+  so the choice that mattered on a 7x7 grid evaporates. Opposite sign from the
+  grid result, and a caution against assuming findings transfer across
+  structures.
+- **The ring bonus is doing real work**: removing it drops the skill gap from
+  5.36 to 4.47.
 - Blank boards are more **constrained**, not less: min legal cells drops to 5
   against 10 anchored, because growth from an edge or corner has fewer
   directions than growth from the centre.

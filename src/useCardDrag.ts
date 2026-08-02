@@ -1,15 +1,14 @@
 import { useCallback, useRef, useState } from 'react';
-import type { Coord } from './board';
 import type { Card } from './deck';
 
-export interface DragState {
+export interface DragState<C> {
   handIndex: number;
   card: Card;
   /** Viewport coords of the pointer, for positioning the ghost. */
   x: number;
   y: number;
   /** Legal cell currently under the pointer, if any. */
-  over: Coord | null;
+  over: C | null;
 }
 
 /** Below this, the gesture is a click/tap rather than a drag. */
@@ -20,19 +19,19 @@ const THRESHOLD = 6;
  * A press that never moves far falls through to onTap, so selecting a card by
  * clicking still works exactly as before.
  */
-export function useCardDrag({
+export function useCardDrag<C>({
   cellAt,
   onDrop,
   onTap,
   enabled,
 }: {
   /** Maps viewport coords to a legal cell, or null. */
-  cellAt: (x: number, y: number) => Coord | null;
-  onDrop: (handIndex: number, cell: Coord) => void;
+  cellAt: (x: number, y: number) => C | null;
+  onDrop: (handIndex: number, cell: C) => void;
   onTap: (handIndex: number) => void;
   enabled: boolean;
 }) {
-  const [drag, setDrag] = useState<DragState | null>(null);
+  const [drag, setDrag] = useState<DragState<C> | null>(null);
   const pending = useRef<{
     startX: number;
     startY: number;

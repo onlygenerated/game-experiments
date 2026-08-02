@@ -298,16 +298,22 @@ describe('scoreHexPlacement', () => {
 
   it('scores all three axes', () => {
     const r = scoreHexPlacement(emptyHexBoard(), ORIGIN, card('5H'), cfg);
-    expect(r.lines).toHaveLength(3);
-    expect(r.lines.map((l) => l.name)).toEqual(['E–W', 'NE–SW', 'NW–SE']);
+    expect(r.hexLines).toHaveLength(3);
+    expect(r.hexLines.map((l) => l.name)).toEqual(['E–W', 'NE–SW', 'NW–SE']);
+    // The normalised view the preview renders from carries the same three.
+    expect(r.lines.map((l) => l.label)).toEqual([
+      'E–W → chips',
+      'NE–SW → mult',
+      'NW–SE → mult',
+    ]);
   });
 
   it('takes chips from axis 0 only', () => {
     // A fifteen on the E-W axis; the diagonals are bare.
     const b = withHexCard(emptyHexBoard(), { q: -1, r: 0 }, card('7H'));
     const r = scoreHexPlacement(b, ORIGIN, card('8S'), cfg);
-    expect(r.lines[0].window.cards).toHaveLength(2);
-    expect(r.chips).toBe(r.lines[0].window.result.value);
+    expect(r.hexLines[0].window.cards).toHaveLength(2);
+    expect(r.chips).toBe(r.hexLines[0].window.result.value);
     expect(r.mult).toBe(1);
   });
 
@@ -354,7 +360,10 @@ describe('scoreHexPlacement', () => {
       '2H', '2S', '2D', '2C', '9H', '9S', '9D',
     ]);
     const r = scoreHexPlacement(b, { q: 3, r: 0 }, card('9C'), cfg);
-    expect(r.lines[0].coords).toHaveLength(8); // whole run highlighted
-    expect(r.lines[0].window.cards).toHaveLength(cfg.hexWindow); // only five scored
+    expect(r.hexLines[0].coords).toHaveLength(8); // whole run highlighted
+    expect(r.hexLines[0].window.cards).toHaveLength(cfg.hexWindow); // only five scored
+    // and the normalised line reports both extents for the view to highlight
+    expect(r.lines[0].cellKeys).toHaveLength(8);
+    expect(r.lines[0].windowKeys).toHaveLength(cfg.hexWindow);
   });
 });

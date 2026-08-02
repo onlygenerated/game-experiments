@@ -1,25 +1,49 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { isLegalPlacement, scorePlacement, type Coord } from './board';
+import type { Config } from './config';
+import { isLegalPlacement, scorePlacement, type PlacementScore } from './board';
 import { discardCards, newGame, placeCard, type GameState } from './game';
+import {
+  isLegalHexPlacement,
+  scoreHexPlacement,
+  type HexPlacementScore,
+} from './hex/board';
+import { discardHexCards, newHexGame, placeHexCard, type HexGameState } from './hex/game';
+import { parseHex, type Hex } from './hex/coords';
 import { DEFAULT_RULESET, getRuleset } from './rulesets';
-import { getLens } from './lens';
+import { getLens, type ScoredPlacement } from './lens';
 import { RulesetMenu } from './components/RulesetMenu';
 import type { Card } from './deck';
 import { TOUCH_QUERY, useMediaQuery, WIDE_QUERY } from './useMediaQuery';
 import { useCardDrag } from './useCardDrag';
 import { BoardGrid } from './components/BoardGrid';
+import { HexBoardView } from './components/HexBoardView';
 import { CardFace } from './components/CardFace';
 import { DevControls } from './components/DevControls';
 import { HandTray } from './components/HandTray';
 import { PreviewPanel } from './components/PreviewPanel';
-import { ScoreLog } from './components/ScoreLog';
+import { ScoreLog, type LogRow } from './components/ScoreLog';
 import { StatusBar } from './components/StatusBar';
 
 const DEFAULT_SEED = 'grid-poker-1';
 const DISCARD_MS = 420;
 const DEAL_MS = 520;
 
-const sameCell = (a: Coord | null, b: Coord | null) => !!a && !!b && a.r === b.r && a.c === b.c;
+/**
+ * A run is one structure or the other. Coordinates travel through the UI as
+ * opaque string keys — "r,c" on a grid, "q,r" on hexes — so drag, preview,
+ * targeting and the whole footer stay a single code path.
+ */
+type Run = { kind: 'grid'; s: GameState } | { kind: 'hex'; s: HexGameState };
+
+const startRun = (seed: string, cfg: Config): Run =>
+  cfg.structure === 'hex'
+    ? { kind: 'hex', s: newHexGame(seed, cfg) }
+    : { kind: 'grid', s: newGame(seed, cfg) };
+
+const parseGrid = (key: string) => {
+  const [r, c] = key.split(',').map(Number);
+  return { r, c };
+};
 
 /** A discarded card, frozen at the screen position it left from. */
 interface FlyingCard {
@@ -32,39 +56,62 @@ interface FlyingCard {
 }
 
 export default function App() {
-  // Undo is just a stack of whole states — every field rolls back together.
-  const [history, setHistory] = useState<GameState[]>(() => [newGame(DEFAULT_SEED, getRuleset(DEFAULT_RULESET).config)]);
-  const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
-  const [target, setTarget] = useState<Coord | null>(null);
-  const [devOpen, setDevOpen] = useState(false);
   const [rulesetId, setRulesetId] = useState(DEFAULT_RULESET);
-
   const ruleset = getRuleset(rulesetId);
   const cfg = ruleset.config;
+
+  // Undo is just a stack of whole states — every field rolls back together.
+  const [history, setHistory] = useState<Run[]>(() => [
+    startRun(DEFAULT_SEED, getRuleset(DEFAULT_RULESET).config),
+  ]);
+  const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
+  const [target, setTarget] = useState<string | null>(null);
+  const [devOpen, setDevOpen] = useState(false);
 
   const wide = useMediaQuery(WIDE_QUERY);
   const touch = useMediaQuery(TOUCH_QUERY);
 
-  const state = history[history.length - 1];
+  const run = history[history.length - 1];
+  const state = run.s;
   const playing = state.status === 'playing';
 
   const selectedIndex = selected.size === 1 ? [...selected][0] : null;
   const selectedCard = selectedIndex === null ? null : (state.hand[selectedIndex] ?? null);
 
-  // --- actions ---------------------------------------------------------------
+  // --- structure-dispatched actions ------------------------------------------
 
-  const push = useCallback(
-    (next: GameState) => {
-      setHistory((h) => (next === h[h.length - 1] ? h : [...h, next]));
-      setSelected(new Set());
-      setTarget(null);
-    },
-    [],
+  const isLegalKey = useCallback(
+    (key: string): boolean =>
+      run.kind === 'hex'
+        ? isLegalHexPlacement(run.s.board, parseHex(key), cfg)
+        : isLegalPlacement(run.s.board, parseGrid(key).r, parseGrid(key).c, cfg),
+    [run, cfg],
   );
 
+  const scoreAt = useCallback(
+    (key: string, card: Card): ScoredPlacement =>
+      run.kind === 'hex'
+        ? scoreHexPlacement(run.s.board, parseHex(key), card, cfg)
+        : scorePlacement(run.s.board, parseGrid(key).r, parseGrid(key).c, card, cfg),
+    [run, cfg],
+  );
+
+  const push = useCallback((next: Run) => {
+    setHistory((h) => (next.s === h[h.length - 1].s ? h : [...h, next]));
+    setSelected(new Set());
+    setTarget(null);
+  }, []);
+
   const place = useCallback(
-    (handIndex: number, cell: Coord) => push(placeCard(state, handIndex, cell.r, cell.c, cfg)),
-    [push, state, cfg],
+    (handIndex: number, key: string) => {
+      if (run.kind === 'hex') {
+        push({ kind: 'hex', s: placeHexCard(run.s, handIndex, parseHex(key), cfg) });
+      } else {
+        const { r, c } = parseGrid(key);
+        push({ kind: 'grid', s: placeCard(run.s, handIndex, r, c, cfg) });
+      }
+    },
+    [push, run, cfg],
   );
 
   const toggle = useCallback((i: number) => {
@@ -79,16 +126,16 @@ export default function App() {
   // --- drag ------------------------------------------------------------------
 
   const cellAt = useCallback(
-    (x: number, y: number): Coord | null => {
-      const el = document.elementFromPoint(x, y)?.closest('[data-cell]');
-      const [r, c] = (el?.getAttribute('data-cell') ?? '').split(',').map(Number);
-      if (!Number.isFinite(r) || !Number.isFinite(c)) return null;
-      return isLegalPlacement(state.board, r, c, cfg) ? { r, c } : null;
+    (x: number, y: number): string | null => {
+      const el = document.elementFromPoint(x, y)?.closest('[data-cell],[data-hex]');
+      const key = el?.getAttribute('data-cell') ?? el?.getAttribute('data-hex');
+      if (!key) return null;
+      return isLegalKey(key) ? key : null;
     },
-    [state.board, cfg],
+    [isLegalKey],
   );
 
-  const { drag, onPointerDown, onPointerMove, onPointerUp, onPointerCancel } = useCardDrag({
+  const { drag, onPointerDown, onPointerMove, onPointerUp, onPointerCancel } = useCardDrag<string>({
     cellAt,
     onDrop: place,
     onTap: toggle,
@@ -101,9 +148,25 @@ export default function App() {
 
   const preview = useMemo(() => {
     if (!playing || !activeCard || !activeTarget) return null;
-    if (!isLegalPlacement(state.board, activeTarget.r, activeTarget.c, cfg)) return null;
-    return scorePlacement(state.board, activeTarget.r, activeTarget.c, activeCard, cfg);
-  }, [playing, activeCard, activeTarget, state.board, cfg]);
+    if (!isLegalKey(activeTarget)) return null;
+    return scoreAt(activeTarget, activeCard);
+  }, [playing, activeCard, activeTarget, isLegalKey, scoreAt]);
+
+  // --- log, normalised so both structures render identically ------------------
+
+  const logRows: LogRow[] = useMemo(
+    () =>
+      run.kind === 'hex'
+        ? run.s.log.map((e) => ({ ...e, atLabel: `${e.at.q},${e.at.r}` }))
+        : run.s.log.map((e) => ({ ...e, atLabel: `${e.at.r},${e.at.c}` })),
+    [run],
+  );
+
+  const justPlacedKey = run.s.log.length
+    ? run.kind === 'hex'
+      ? `${(run.s.log.at(-1) as { at: Hex }).at.q},${(run.s.log.at(-1) as { at: Hex }).at.r}`
+      : `${run.s.log.at(-1)!.at.r},${run.s.log.at(-1)!.at.c}`
+    : null;
 
   // --- animation bookkeeping -------------------------------------------------
 
@@ -130,9 +193,7 @@ export default function App() {
     const leaving = [...selected]
       .sort((a, b) => a - b)
       .map((i, order) => {
-        const rect = document
-          .querySelector(`[data-hand-index="${i}"]`)
-          ?.getBoundingClientRect();
+        const rect = document.querySelector(`[data-hand-index="${i}"]`)?.getBoundingClientRect();
         const card = state.hand[i];
         return rect && card
           ? { card, x: rect.x, y: rect.y, w: rect.width, h: rect.height, order }
@@ -144,15 +205,16 @@ export default function App() {
     if (flyTimer.current) clearTimeout(flyTimer.current);
     flyTimer.current = setTimeout(() => setFlying([]), DISCARD_MS + leaving.length * 45);
 
-    push(discardCards(state, [...selected], cfg));
+    const idx = [...selected];
+    push(
+      run.kind === 'hex'
+        ? { kind: 'hex', s: discardHexCards(run.s, idx, cfg) }
+        : { kind: 'grid', s: discardCards(run.s, idx, cfg) },
+    );
   }
-
-  const justPlaced = state.log.length ? state.log[state.log.length - 1].at : null;
 
   // --- layout ----------------------------------------------------------------
 
-  // Below the wide breakpoint the preview and hand dock to the bottom of the
-  // screen, so the board can scroll without either going out of reach.
   const docked = !wide;
   const footerRef = useRef<HTMLDivElement>(null);
   const [footerH, setFooterH] = useState(0);
@@ -169,8 +231,6 @@ export default function App() {
     return () => ro.disconnect();
   }, [docked]);
 
-  // Cells use this as scroll-margin, so a targeted cell scrolls clear of the
-  // footer rather than ending up behind it.
   useEffect(() => {
     document.documentElement.style.setProperty('--footer-h', `${docked ? footerH : 0}px`);
   }, [docked, footerH]);
@@ -178,7 +238,7 @@ export default function App() {
   useEffect(() => {
     if (!docked || !target) return;
     document
-      .querySelector(`[data-cell="${target.r},${target.c}"]`)
+      .querySelector(`[data-cell="${target}"],[data-hex="${target}"]`)
       ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [docked, target]);
 
@@ -187,21 +247,21 @@ export default function App() {
    * A finger has not, so the first tap targets the cell and shows the preview;
    * placing then takes a second tap or the footer's Place button.
    */
-  function activateCell(cell: Coord) {
+  function activateKey(key: string) {
     if (selectedIndex === null) return;
-    if (!touch || sameCell(target, cell)) place(selectedIndex, cell);
-    else setTarget(cell);
+    if (!touch || target === key) place(selectedIndex, key);
+    else setTarget(key);
   }
 
   function handleNewRun(seed: string) {
-    setHistory([newGame(seed || DEFAULT_SEED, cfg)]);
+    setHistory([startRun(seed || DEFAULT_SEED, cfg)]);
     setSelected(new Set());
     setTarget(null);
   }
 
   function handleRuleset(id: string) {
     setRulesetId(id);
-    setHistory([newGame(state.seed, getRuleset(id).config)]);
+    setHistory([startRun(state.seed, getRuleset(id).config)]);
     setSelected(new Set());
     setTarget(null);
   }
@@ -256,11 +316,11 @@ export default function App() {
             Grid Poker <span className="text-neutral-500">prototype</span>
           </h1>
           <span className="truncate text-[11px] text-neutral-500">
-            {getLens(cfg.lensId).name.toLowerCase()} · row → chips · col → mult ·{' '}
-            {cfg.lineCap}-card cap
+            {getLens(cfg.lensId).name.toLowerCase()} ·{' '}
+            {cfg.structure === 'hex'
+              ? `hex, 3 axes, best ${cfg.hexWindow}`
+              : `row → chips · col → mult · ${cfg.lineCap}-card cap`}
           </span>
-          {/* Dev tools are a tuning aid, not gameplay — they cost too much of a
-              phone screen to leave open by default. */}
           <button
             onClick={() => setDevOpen((v) => !v)}
             aria-expanded={devOpen}
@@ -283,44 +343,53 @@ export default function App() {
       </header>
 
       <main className="flex min-h-0 flex-1 flex-col gap-3 min-[1280px]:flex-row min-[1280px]:gap-4">
-        {/* Status reads first when the log is pushed below the fold. */}
         <div className="min-[1280px]:hidden">
           <StatusBar state={state} cfg={cfg} />
         </div>
 
         <section className="flex flex-col items-center gap-3 min-[1280px]:items-start">
-          <BoardGrid
-            cfg={cfg}
-            board={state.board}
-            selectedCard={activeCard}
-            target={activeTarget}
-            preview={preview}
-            justPlaced={justPlaced}
-            onHoverCell={(cell) => !touch && !drag && setTarget(cell)}
-            onActivateCell={activateCell}
-            interactive={playing}
-            docked={docked}
-          />
+          <div className="flex items-start gap-4">
+            {run.kind === 'hex' ? (
+              <HexBoardView
+                cfg={cfg}
+                board={run.s.board}
+                selectedCard={activeCard}
+                target={activeTarget ? parseHex(activeTarget) : null}
+                preview={preview as HexPlacementScore | null}
+                justPlaced={justPlacedKey ? parseHex(justPlacedKey) : null}
+                onHoverCell={(h) => !touch && !drag && setTarget(h ? `${h.q},${h.r}` : null)}
+                onActivateCell={(h) => activateKey(`${h.q},${h.r}`)}
+                interactive={playing}
+              />
+            ) : (
+              <BoardGrid
+                cfg={cfg}
+                board={run.s.board}
+                selectedCard={activeCard}
+                target={activeTarget ? parseGrid(activeTarget) : null}
+                preview={preview as PlacementScore | null}
+                justPlaced={justPlacedKey ? parseGrid(justPlacedKey) : null}
+                onHoverCell={(cell) =>
+                  !touch && !drag && setTarget(cell ? `${cell.r},${cell.c}` : null)
+                }
+                onActivateCell={(cell) => activateKey(`${cell.r},${cell.c}`)}
+                interactive={playing}
+                docked={docked}
+              />
+            )}
+
+            {/* The grid board positions its own side preview against the hovered
+                row; the hex board has no row to anchor to, so it sits here. */}
+            {run.kind === 'hex' && !docked && preview && <PreviewPanel preview={preview} />}
+          </div>
 
           {!docked && <div className="w-full">{handTray}</div>}
 
           <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-[11px] text-neutral-500 min-[1280px]:justify-start">
-            <span>
-              <span
-                className="mr-1 inline-block h-2 w-4 rounded-sm align-middle"
-                style={{ background: 'rgba(167,139,250,.75)' }}
-              />
-              row line complete
-            </span>
-            <span>
-              <span
-                className="mr-1 inline-block h-2 w-4 rounded-sm align-middle"
-                style={{ background: 'rgba(244,114,182,.75)' }}
-              />
-              col line complete
-            </span>
-            <span className="text-sky-400">row = chips</span>
-            <span className="text-amber-400">col = mult</span>
+            <span className="text-sky-400">chips axis</span>
+            <span className="text-amber-400">mult axis</span>
+            {cfg.structure === 'hex' && <span className="text-violet-300">further out scores more</span>}
+            {cfg.structure === 'hex' && <span>faded cards are outside the scoring window</span>}
           </div>
         </section>
 
@@ -328,7 +397,7 @@ export default function App() {
           <div className="hidden min-[1280px]:block">
             <StatusBar state={state} cfg={cfg} />
           </div>
-          <ScoreLog log={state.log} />
+          <ScoreLog log={logRows} />
         </aside>
       </main>
 
@@ -340,7 +409,9 @@ export default function App() {
           {preview && (
             <PreviewPanel
               preview={preview}
-              onPlace={() => place(drag?.handIndex ?? selectedIndex ?? -1, preview.at)}
+              onPlace={() =>
+                activeTarget && place(drag?.handIndex ?? selectedIndex ?? -1, activeTarget)
+              }
               onCancel={() => setTarget(null)}
             />
           )}
@@ -348,13 +419,8 @@ export default function App() {
         </div>
       )}
 
-      {/* Discarded cards, frozen where they left and animating away. */}
       {flying.map((f) => (
-        <div
-          key={f.card.id}
-          className="pointer-events-none fixed z-40"
-          style={{ left: f.x, top: f.y }}
-        >
+        <div key={f.card.id} className="pointer-events-none fixed z-40" style={{ left: f.x, top: f.y }}>
           <CardFace
             card={f.card}
             size="lg"
@@ -369,7 +435,6 @@ export default function App() {
         </div>
       ))}
 
-      {/* The dragged card itself, tracking the pointer. */}
       {drag && (
         <div
           className="pointer-events-none fixed z-50"

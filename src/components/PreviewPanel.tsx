@@ -1,35 +1,34 @@
-import type { PlacementScore } from '../board';
-import type { Card } from '../deck';
-import type { LineEval } from '../lens';
+import type { ScoredLine, ScoredPlacement } from '../lens';
 import { CardChip } from './CardFace';
+
+const ACCENT = { chips: 'text-sky-400', mult: 'text-amber-400' } as const;
 
 /**
  * Side variant stacks label / cards / breakdown over several rows. Docked
  * variant flattens the same information, because vertical space on a phone is
  * the scarcest thing on the screen.
  *
- * The itemisation comes from the lens, so this renders poker hands and cribbage
- * counts without knowing anything about either.
+ * Driven entirely by ScoredLine, so it renders two grid axes or three hex axes,
+ * with poker hands or cribbage counts, without knowing which it has.
  */
 function LineRow({
-  axis,
-  cards,
-  result,
-  value,
-  accent,
+  line,
   compact,
 }: {
-  axis: string;
-  cards: Card[];
-  result: LineEval;
-  value: string;
-  accent: string;
+  line: ScoredLine;
   compact: boolean;
 }) {
+  const accent = ACCENT[line.role];
+  const value = line.role === 'mult' ? `×${line.value}` : String(line.value);
+  // Uncapped lines can score only part of themselves.
+  const clipped = line.windowKeys.length < line.cellKeys.length;
+
   const chips = (
     <span className="flex flex-wrap gap-0.5">
-      {cards.map((c, i) => (
-        <CardChip key={`${c.id}-${i}`} card={c} />
+      {line.cards.map((c, i) => (
+        <span key={`${c.id}-${i}`} className={clipped && !line.windowKeys.includes(line.cellKeys[i]) ? 'opacity-40' : ''}>
+          <CardChip card={c} />
+        </span>
       ))}
     </span>
   );
@@ -37,10 +36,10 @@ function LineRow({
   if (compact) {
     return (
       <div className="panel-inset flex items-center gap-2 rounded px-2 py-1.5">
-        <span className={`shrink-0 text-[10px] font-bold uppercase ${accent}`}>{axis}</span>
+        <span className={`shrink-0 text-[10px] font-bold uppercase ${accent}`}>{line.label}</span>
         {chips}
         <span className="ml-auto shrink-0 text-right">
-          <span className="mr-1.5 text-[11px] text-neutral-400">{result.name}</span>
+          <span className="mr-1.5 text-[11px] text-neutral-400">{line.result.name}</span>
           <span className={`font-mono text-base font-bold ${accent}`}>{value}</span>
         </span>
       </div>
@@ -50,16 +49,18 @@ function LineRow({
   return (
     <div className="panel-inset rounded p-2">
       <div className="flex items-baseline justify-between">
-        <span className={`text-[10px] font-bold uppercase tracking-wider ${accent}`}>{axis}</span>
+        <span className={`text-[10px] font-bold uppercase tracking-wider ${accent}`}>
+          {line.label}
+        </span>
         <span className="text-[10px] uppercase tracking-wider text-neutral-500">
-          {cards.length} card{cards.length === 1 ? '' : 's'}
+          {clipped ? `best ${line.windowKeys.length} of ${line.cellKeys.length}` : `${line.cards.length} card${line.cards.length === 1 ? '' : 's'}`}
         </span>
       </div>
       <div className="mt-1">{chips}</div>
 
-      {result.items.length > 0 && (
+      {line.result.items.length > 0 && (
         <div className="mt-1.5 space-y-0.5 border-t border-white/5 pt-1.5">
-          {result.items.map((item, i) => (
+          {line.result.items.map((item, i) => (
             <div key={i} className="flex justify-between text-[11px]">
               <span className="text-neutral-400">{item.label}</span>
               <span className="font-mono text-neutral-300">{item.points}</span>
@@ -69,7 +70,7 @@ function LineRow({
       )}
 
       <div className="mt-1 flex items-baseline justify-between border-t border-white/5 pt-1">
-        <span className="text-xs text-neutral-300">{result.name}</span>
+        <span className="text-xs text-neutral-300">{line.result.name}</span>
         <span className={`font-mono text-lg font-bold ${accent}`}>{value}</span>
       </div>
     </div>
@@ -78,18 +79,14 @@ function LineRow({
 
 /**
  * The non-negotiable UI element: what this placement scores, before committing.
- * Row-line drives chips, col-line drives mult, and the product is spelled out.
- *
- * On a pointer device this floats beside the board and hover drives it. On
- * touch it docks to the bottom of the screen and gets explicit actions, since
- * a tap has to both target a cell and leave the preview readable.
+ * The product is always spelled out, whatever feeds it.
  */
 export function PreviewPanel({
   preview,
   onPlace,
   onCancel,
 }: {
-  preview: PlacementScore;
+  preview: ScoredPlacement;
   onPlace?: () => void;
   onCancel?: () => void;
 }) {
@@ -101,22 +98,20 @@ export function PreviewPanel({
         docked ? 'w-full' : 'w-72 space-y-2 p-3'
       }`}
     >
-      <LineRow
-        compact={docked}
-        axis="Row → chips"
-        cards={preview.rowLine}
-        result={preview.rowEval}
-        value={String(preview.chips)}
-        accent="text-sky-400"
-      />
-      <LineRow
-        compact={docked}
-        axis="Col → mult"
-        cards={preview.colLine}
-        result={preview.colEval}
-        value={`×${preview.mult}`}
-        accent="text-amber-400"
-      />
+      {preview.lines.map((line, i) => (
+        <LineRow key={i} line={line} compact={docked} />
+      ))}
+
+      {preview.notes.length > 0 && (
+        <div className="panel-inset rounded px-2 py-1">
+          {preview.notes.map((n, i) => (
+            <div key={i} className="flex justify-between text-[11px]">
+              <span className="text-violet-300">{n.label}</span>
+              <span className="font-mono text-violet-200">×{n.points}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {docked ? (
         <div className="flex gap-2">

@@ -1,6 +1,6 @@
 import { CONFIG, type Config } from './config';
 import type { Card } from './deck';
-import { getLens, type Lens, type LineEval } from './lens';
+import { getLens, type Lens, type LineEval, type ScoredLine, type ScoredPlacement } from './lens';
 
 export type Cell = Card | null;
 /** Row-major, length gridSize * gridSize. */
@@ -171,7 +171,7 @@ export function isLineComplete(
   return lineCoords(board, r, c, axis, cfg).length >= cfg.lineCap;
 }
 
-export interface PlacementScore {
+export interface PlacementScore extends ScoredPlacement {
   card: Card;
   at: Coord;
   rowLine: Card[];
@@ -182,9 +182,6 @@ export interface PlacementScore {
   rowEval: LineEval;
   /** Col-line evaluation. Feeds mult. */
   colEval: LineEval;
-  chips: number;
-  mult: number;
-  score: number;
 }
 
 /**
@@ -213,7 +210,32 @@ export function scorePlacement(
   const rowEval = lens.evaluate(rowLine, 'chips', cfg);
   const colEval = lens.evaluate(colLine, 'mult', cfg);
 
+  const keys = (ps: Coord[]) => ps.map((p) => `${p.r},${p.c}`);
+  // A capped grid line always scores in full, so the window is the whole line.
+  const lines: ScoredLine[] = [
+    {
+      label: 'Row → chips',
+      role: 'chips',
+      cards: rowLine,
+      cellKeys: keys(rowCoords),
+      windowKeys: keys(rowCoords),
+      result: rowEval,
+      value: rowEval.value,
+    },
+    {
+      label: 'Col → mult',
+      role: 'mult',
+      cards: colLine,
+      cellKeys: keys(colCoords),
+      windowKeys: keys(colCoords),
+      result: colEval,
+      value: colEval.value,
+    },
+  ];
+
   return {
+    lines,
+    notes: [],
     card,
     at: { r, c },
     rowLine,

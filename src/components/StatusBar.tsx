@@ -1,5 +1,14 @@
 import type { Config } from '../config';
-import type { GameState } from '../game';
+
+/** Structural minimum, so grid and hex runs both satisfy it. */
+export interface RunSummary {
+  score: number;
+  deck: readonly unknown[];
+  placementsLeft: number;
+  discardsLeft: number;
+  status: 'playing' | 'won' | 'lost';
+  log: readonly unknown[];
+}
 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
@@ -16,7 +25,7 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   );
 }
 
-export function StatusBar({ state, cfg }: { state: GameState; cfg: Config }) {
+export function StatusBar({ state, cfg }: { state: RunSummary; cfg: Config }) {
   const pct = Math.min(100, (state.score / cfg.targetScore) * 100);
 
   return (

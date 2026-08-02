@@ -1,6 +1,6 @@
 import { CONFIG, type Config } from '../config';
 import type { Card } from '../deck';
-import { getLens, type Lens, type LineEval } from '../lens';
+import { getLens, type Lens, type LineEval, type ScoredLine, type ScoredPlacement } from '../lens';
 import {
   hexAdd,
   hexDistance,
@@ -131,12 +131,9 @@ export interface HexLineScore {
   window: HexWindow;
 }
 
-export interface HexPlacementScore {
-  card: Card;
+export interface HexPlacementScore extends ScoredPlacement {
   at: Hex;
-  lines: HexLineScore[];
-  chips: number;
-  mult: number;
+  hexLines: HexLineScore[];
   /** Steps from the origin. Feeds the distance bonus. */
   ring: number;
   /** Multiplier applied for building outward. */
@@ -160,7 +157,7 @@ export function scoreHexPlacement(
 ): HexPlacementScore {
   const next = withHexCard(board, h, card);
 
-  const lines: HexLineScore[] = ([0, 1, 2] as HexAxis[]).map((axis) => {
+  const hexLines: HexLineScore[] = ([0, 1, 2] as HexAxis[]).map((axis) => {
     const coords = hexLineCoords(next, h, axis);
     const cards = coords.map((p) => hexAt(next, p) as Card);
     const role = axis === 0 ? 'chips' : 'mult';
@@ -172,16 +169,28 @@ export function scoreHexPlacement(
     };
   });
 
-  const chips = lines[0].window.result.value;
-  const mult = Math.max(1, lines[1].window.result.value + lines[2].window.result.value - 1);
+  const chips = hexLines[0].window.result.value;
+  const mult = Math.max(1, hexLines[1].window.result.value + hexLines[2].window.result.value - 1);
 
   const ring = hexDistance(h, ORIGIN);
   const ringBonus = 1 + ring * cfg.hexRingBonus;
 
+  const lines: ScoredLine[] = hexLines.map((l, i) => ({
+    label: `${l.name} → ${i === 0 ? 'chips' : 'mult'}`,
+    role: i === 0 ? ('chips' as const) : ('mult' as const),
+    cards: l.coords.map((p) => hexAt(next, p) as Card),
+    cellKeys: l.coords.map(hexKey),
+    windowKeys: l.window.coords.map(hexKey),
+    result: l.window.result,
+    value: l.window.result.value,
+  }));
+
   return {
     card,
     at: h,
+    hexLines,
     lines,
+    notes: ring > 0 ? [{ label: `Ring ${ring} bonus`, points: Math.round(ringBonus * 100) / 100 }] : [],
     chips,
     mult,
     ring,

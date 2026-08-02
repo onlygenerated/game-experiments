@@ -30,3 +30,35 @@ export interface Lens {
   blurb: string;
   evaluate(cards: readonly Card[], role: AxisRole, cfg: Config): LineEval;
 }
+
+/**
+ * A scored line, normalised so the preview and the board views never need to
+ * know whether they are looking at a square grid or a hex sprawl.
+ *
+ * Coordinates travel as opaque cell keys — "r,c" on a grid, "q,r" on hexes —
+ * because the only thing a view does with them is set membership for
+ * highlighting.
+ */
+export interface ScoredLine {
+  /** Shown in the preview, e.g. "Row -> chips" or "E-W -> chips". */
+  label: string;
+  role: AxisRole;
+  /** The whole contiguous run, for highlighting. */
+  cards: Card[];
+  cellKeys: string[];
+  /** The stretch that actually scored. Same as cellKeys when uncapped lines are off. */
+  windowKeys: string[];
+  result: LineEval;
+  value: number;
+}
+
+/** What a placement is worth, structure-agnostic. */
+export interface ScoredPlacement {
+  card: Card;
+  lines: ScoredLine[];
+  chips: number;
+  mult: number;
+  score: number;
+  /** Structure-specific extras shown under the total, e.g. a distance bonus. */
+  notes: ScoreItem[];
+}
