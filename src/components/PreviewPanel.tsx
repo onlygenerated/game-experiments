@@ -1,28 +1,28 @@
 import type { PlacementScore } from '../board';
 import type { Card } from '../deck';
+import type { LineEval } from '../lens';
 import { CardChip } from './CardFace';
 
 /**
- * Side variant stacks label / cards / hand+value over three rows. Docked
- * variant flattens the same information onto one line, because vertical space
- * on a phone is the scarcest thing on the screen.
+ * Side variant stacks label / cards / breakdown over several rows. Docked
+ * variant flattens the same information, because vertical space on a phone is
+ * the scarcest thing on the screen.
+ *
+ * The itemisation comes from the lens, so this renders poker hands and cribbage
+ * counts without knowing anything about either.
  */
 function LineRow({
   axis,
   cards,
-  handName,
-  partial,
+  result,
   value,
-  valueLabel,
   accent,
   compact,
 }: {
   axis: string;
   cards: Card[];
-  handName: string;
-  partial: boolean;
+  result: LineEval;
   value: string;
-  valueLabel: string;
   accent: string;
   compact: boolean;
 }) {
@@ -40,10 +40,7 @@ function LineRow({
         <span className={`shrink-0 text-[10px] font-bold uppercase ${accent}`}>{axis}</span>
         {chips}
         <span className="ml-auto shrink-0 text-right">
-          <span className="mr-1.5 text-[11px] text-neutral-400">
-            {handName}
-            {partial && <span className="ml-1 text-amber-400">·p</span>}
-          </span>
+          <span className="mr-1.5 text-[11px] text-neutral-400">{result.name}</span>
           <span className={`font-mono text-base font-bold ${accent}`}>{value}</span>
         </span>
       </div>
@@ -54,15 +51,25 @@ function LineRow({
     <div className="panel-inset rounded p-2">
       <div className="flex items-baseline justify-between">
         <span className={`text-[10px] font-bold uppercase tracking-wider ${accent}`}>{axis}</span>
-        <span className="text-[10px] uppercase tracking-wider text-neutral-500">{valueLabel}</span>
+        <span className="text-[10px] uppercase tracking-wider text-neutral-500">
+          {cards.length} card{cards.length === 1 ? '' : 's'}
+        </span>
       </div>
       <div className="mt-1">{chips}</div>
-      <div className="mt-1 flex items-baseline justify-between">
-        <span className="text-xs text-neutral-300">
-          {handName}
-          {partial && <span className="ml-1 text-[10px] text-amber-400">partial</span>}
-          <span className="ml-1 text-neutral-600">({cards.length})</span>
-        </span>
+
+      {result.items.length > 0 && (
+        <div className="mt-1.5 space-y-0.5 border-t border-white/5 pt-1.5">
+          {result.items.map((item, i) => (
+            <div key={i} className="flex justify-between text-[11px]">
+              <span className="text-neutral-400">{item.label}</span>
+              <span className="font-mono text-neutral-300">{item.points}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-1 flex items-baseline justify-between border-t border-white/5 pt-1">
+        <span className="text-xs text-neutral-300">{result.name}</span>
         <span className={`font-mono text-lg font-bold ${accent}`}>{value}</span>
       </div>
     </div>
@@ -86,8 +93,6 @@ export function PreviewPanel({
   onPlace?: () => void;
   onCancel?: () => void;
 }) {
-  const loneRow = preview.rowLine.length === 1;
-  const loneCol = preview.colLine.length === 1;
   const docked = Boolean(onPlace);
 
   return (
@@ -98,26 +103,18 @@ export function PreviewPanel({
     >
       <LineRow
         compact={docked}
-        axis="Row"
+        axis="Row → chips"
         cards={preview.rowLine}
-        handName={loneRow ? 'High Card (no bonus)' : preview.rowHand.handName}
-        partial={!loneRow && preview.rowHand.partial}
+        result={preview.rowEval}
         value={String(preview.chips)}
-        valueLabel={
-          loneRow
-            ? `ranks ${preview.rankChipTotal}`
-            : `${preview.handChips} + ${preview.rankChipTotal}`
-        }
         accent="text-sky-400"
       />
       <LineRow
         compact={docked}
-        axis="Col"
+        axis="Col → mult"
         cards={preview.colLine}
-        handName={loneCol ? 'High Card' : preview.colHand.handName}
-        partial={!loneCol && preview.colHand.partial}
+        result={preview.colEval}
         value={`×${preview.mult}`}
-        valueLabel="mult"
         accent="text-amber-400"
       />
 

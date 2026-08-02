@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { CONFIG } from '../config';
+import type { Config } from '../config';
 import {
   idx,
   isLegalPlacement,
@@ -21,6 +21,7 @@ const TRAY_PAD = 8;
 const key = (r: number, c: number) => `${r},${c}`;
 
 export function BoardGrid({
+  cfg,
   board,
   selectedCard,
   target,
@@ -31,6 +32,7 @@ export function BoardGrid({
   interactive,
   docked,
 }: {
+  cfg: Config;
   board: Board;
   selectedCard: Card | null;
   target: Coord | null;
@@ -43,17 +45,17 @@ export function BoardGrid({
   /** True when the preview lives in a docked sheet instead of beside the board. */
   docked: boolean;
 }) {
-  const size = CONFIG.gridSize;
+  const size = cfg.gridSize;
 
   const legal = useMemo(() => {
     const s = new Set<string>();
     for (let r = 0; r < size; r++) {
       for (let c = 0; c < size; c++) {
-        if (isLegalPlacement(board, r, c)) s.add(key(r, c));
+        if (isLegalPlacement(board, r, c, cfg)) s.add(key(r, c));
       }
     }
     return s;
-  }, [board, size]);
+  }, [board, size, cfg]);
 
   const rowPreview = useMemo(
     () => new Set(preview?.rowCoords.map((p) => key(p.r, p.c)) ?? []),
@@ -93,13 +95,16 @@ export function BoardGrid({
           gap: GAP,
           width: trayWidth,
           padding: TRAY_PAD,
+          // Ruleset can change the board size, so --cell is derived here rather
+          // than from the 7-wide default in index.css.
+          ['--cell' as string]: `min(76px, calc((100vw - 2rem - ${gapTotal + TRAY_PAD * 2}px) / ${size}))`,
         }}
         onMouseLeave={() => onHoverCell(null)}
       >
         {Array.from({ length: size * size }, (_, i) => {
           const r = Math.floor(i / size);
           const c = i % size;
-          const card = board[idx(r, c)];
+          const card = board[idx(r, c, cfg)];
           const k = key(r, c);
 
           const isLegal = legal.has(k);
@@ -108,8 +113,8 @@ export function BoardGrid({
           const isJustPlaced = justPlaced?.r === r && justPlaced?.c === c;
 
           // Complete lines can never be extended. Mark the run's edges.
-          const rowComplete = card !== null && isLineComplete(board, r, c, 'row');
-          const colComplete = card !== null && isLineComplete(board, r, c, 'col');
+          const rowComplete = card !== null && isLineComplete(board, r, c, 'row', cfg);
+          const colComplete = card !== null && isLineComplete(board, r, c, 'col', cfg);
 
           const inRowPreview = rowPreview.has(k) && !isTarget;
           const inColPreview = colPreview.has(k) && !isTarget;
@@ -166,10 +171,14 @@ export function BoardGrid({
               style={{
                 width: 'var(--cell)',
                 height: 'var(--cell)',
-                background: card
-                  ? 'linear-gradient(180deg, rgba(0,0,0,.25), rgba(255,255,255,.03))'
-                  : 'linear-gradient(180deg, rgba(0,0,0,.3), rgba(255,255,255,.05))',
-                backgroundColor: bg,
+                // One shorthand only — React warns when `background` and
+                // `backgroundColor` both target the same value. The tint rides
+                // as the final layer, which is where the shorthand takes a colour.
+                background: `${
+                  card
+                    ? 'linear-gradient(180deg, rgba(0,0,0,.25), rgba(255,255,255,.03))'
+                    : 'linear-gradient(180deg, rgba(0,0,0,.3), rgba(255,255,255,.05))'
+                }, ${bg}`,
                 boxShadow: shadows.join(', '),
               }}
             >

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CONFIG } from './config';
 import { isLegalPlacement, scorePlacement, type Coord } from './board';
 import { discardCards, newGame, placeCard, type GameState } from './game';
+import { DEFAULT_RULESET, getRuleset } from './rulesets';
+import { getLens } from './lens';
+import { RulesetMenu } from './components/RulesetMenu';
 import type { Card } from './deck';
 import { TOUCH_QUERY, useMediaQuery, WIDE_QUERY } from './useMediaQuery';
 import { useCardDrag } from './useCardDrag';
@@ -31,10 +33,14 @@ interface FlyingCard {
 
 export default function App() {
   // Undo is just a stack of whole states — every field rolls back together.
-  const [history, setHistory] = useState<GameState[]>(() => [newGame(DEFAULT_SEED)]);
+  const [history, setHistory] = useState<GameState[]>(() => [newGame(DEFAULT_SEED, getRuleset(DEFAULT_RULESET).config)]);
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
   const [target, setTarget] = useState<Coord | null>(null);
   const [devOpen, setDevOpen] = useState(false);
+  const [rulesetId, setRulesetId] = useState(DEFAULT_RULESET);
+
+  const ruleset = getRuleset(rulesetId);
+  const cfg = ruleset.config;
 
   const wide = useMediaQuery(WIDE_QUERY);
   const touch = useMediaQuery(TOUCH_QUERY);
@@ -57,8 +63,8 @@ export default function App() {
   );
 
   const place = useCallback(
-    (handIndex: number, cell: Coord) => push(placeCard(state, handIndex, cell.r, cell.c)),
-    [push, state],
+    (handIndex: number, cell: Coord) => push(placeCard(state, handIndex, cell.r, cell.c, cfg)),
+    [push, state, cfg],
   );
 
   const toggle = useCallback((i: number) => {
@@ -77,9 +83,9 @@ export default function App() {
       const el = document.elementFromPoint(x, y)?.closest('[data-cell]');
       const [r, c] = (el?.getAttribute('data-cell') ?? '').split(',').map(Number);
       if (!Number.isFinite(r) || !Number.isFinite(c)) return null;
-      return isLegalPlacement(state.board, r, c) ? { r, c } : null;
+      return isLegalPlacement(state.board, r, c, cfg) ? { r, c } : null;
     },
-    [state.board],
+    [state.board, cfg],
   );
 
   const { drag, onPointerDown, onPointerMove, onPointerUp, onPointerCancel } = useCardDrag({
@@ -95,9 +101,9 @@ export default function App() {
 
   const preview = useMemo(() => {
     if (!playing || !activeCard || !activeTarget) return null;
-    if (!isLegalPlacement(state.board, activeTarget.r, activeTarget.c)) return null;
-    return scorePlacement(state.board, activeTarget.r, activeTarget.c, activeCard);
-  }, [playing, activeCard, activeTarget, state.board]);
+    if (!isLegalPlacement(state.board, activeTarget.r, activeTarget.c, cfg)) return null;
+    return scorePlacement(state.board, activeTarget.r, activeTarget.c, activeCard, cfg);
+  }, [playing, activeCard, activeTarget, state.board, cfg]);
 
   // --- animation bookkeeping -------------------------------------------------
 
@@ -138,7 +144,7 @@ export default function App() {
     if (flyTimer.current) clearTimeout(flyTimer.current);
     flyTimer.current = setTimeout(() => setFlying([]), DISCARD_MS + leaving.length * 45);
 
-    push(discardCards(state, [...selected]));
+    push(discardCards(state, [...selected], cfg));
   }
 
   const justPlaced = state.log.length ? state.log[state.log.length - 1].at : null;
@@ -188,7 +194,14 @@ export default function App() {
   }
 
   function handleNewRun(seed: string) {
-    setHistory([newGame(seed || DEFAULT_SEED)]);
+    setHistory([newGame(seed || DEFAULT_SEED, cfg)]);
+    setSelected(new Set());
+    setTarget(null);
+  }
+
+  function handleRuleset(id: string) {
+    setRulesetId(id);
+    setHistory([newGame(state.seed, getRuleset(id).config)]);
     setSelected(new Set());
     setTarget(null);
   }
@@ -215,6 +228,7 @@ export default function App() {
 
   const handTray = (
     <HandTray
+      cfg={cfg}
       hand={state.hand}
       selected={selected}
       onToggle={toggle}
@@ -242,8 +256,8 @@ export default function App() {
             Grid Poker <span className="text-neutral-500">prototype</span>
           </h1>
           <span className="truncate text-[11px] text-neutral-500">
-            row → chips · col → mult · {CONFIG.lineCap}-card cap
-            {CONFIG.partialHands.enabled && ' · partials ON'}
+            {getLens(cfg.lensId).name.toLowerCase()} · row → chips · col → mult ·{' '}
+            {cfg.lineCap}-card cap
           </span>
           {/* Dev tools are a tuning aid, not gameplay — they cost too much of a
               phone screen to leave open by default. */}
@@ -255,7 +269,10 @@ export default function App() {
             Dev {devOpen ? '▲' : '▼'}
           </button>
         </div>
-        <div className={`min-[1280px]:ml-auto ${devOpen ? '' : 'hidden min-[1280px]:block'}`}>
+        <div
+          className={`flex flex-col gap-2 min-[1280px]:ml-auto min-[1280px]:flex-row min-[1280px]:items-center ${devOpen ? '' : 'hidden min-[1280px]:flex'}`}
+        >
+          <RulesetMenu current={ruleset} onSelect={handleRuleset} />
           <DevControls
             seed={state.seed}
             onNewRun={handleNewRun}
@@ -268,11 +285,12 @@ export default function App() {
       <main className="flex min-h-0 flex-1 flex-col gap-3 min-[1280px]:flex-row min-[1280px]:gap-4">
         {/* Status reads first when the log is pushed below the fold. */}
         <div className="min-[1280px]:hidden">
-          <StatusBar state={state} />
+          <StatusBar state={state} cfg={cfg} />
         </div>
 
         <section className="flex flex-col items-center gap-3 min-[1280px]:items-start">
           <BoardGrid
+            cfg={cfg}
             board={state.board}
             selectedCard={activeCard}
             target={activeTarget}
@@ -308,7 +326,7 @@ export default function App() {
 
         <aside className="flex flex-col gap-3 min-[1280px]:min-h-0 min-[1280px]:w-96">
           <div className="hidden min-[1280px]:block">
-            <StatusBar state={state} />
+            <StatusBar state={state} cfg={cfg} />
           </div>
           <ScoreLog log={state.log} />
         </aside>

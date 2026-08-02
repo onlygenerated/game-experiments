@@ -1,18 +1,17 @@
 import type { LogEntry } from '../game';
 import type { Card } from '../deck';
+import type { LineEval } from '../lens';
 import { CardChip } from './CardFace';
 
 function Line({
   label,
   cards,
-  handName,
-  partial,
+  result,
   accent,
 }: {
   label: string;
   cards: Card[];
-  handName: string;
-  partial: boolean;
+  result: LineEval;
   accent: string;
 }) {
   return (
@@ -23,9 +22,8 @@ function Line({
           <CardChip key={`${c.id}-${i}`} card={c} />
         ))}
       </span>
-      <span className="ml-auto shrink-0 text-[11px] text-neutral-400">
-        {handName}
-        {partial && <span className="ml-1 text-amber-400">·p</span>}
+      <span className="ml-auto shrink-0 text-[11px] text-neutral-400" title={result.items.map((i) => `${i.label} ${i.points}`).join(' · ')}>
+        {result.name}
       </span>
     </div>
   );
@@ -64,27 +62,12 @@ export function ScoreLog({ log }: { log: LogEntry[] }) {
               </div>
 
               <div className="space-y-1">
-                <Line
-                  label="Row"
-                  cards={e.rowLine}
-                  handName={e.rowLine.length === 1 ? 'High Card (no bonus)' : e.rowHand.handName}
-                  partial={e.rowLine.length > 1 && e.rowHand.partial}
-                  accent="text-sky-400"
-                />
-                <Line
-                  label="Col"
-                  cards={e.colLine}
-                  handName={e.colLine.length === 1 ? 'High Card' : e.colHand.handName}
-                  partial={e.colLine.length > 1 && e.colHand.partial}
-                  accent="text-amber-400"
-                />
+                <Line label="Row" cards={e.rowLine} result={e.rowEval} accent="text-sky-400" />
+                <Line label="Col" cards={e.colLine} result={e.colEval} accent="text-amber-400" />
               </div>
 
               <div className="mt-1.5 flex items-baseline gap-1.5 border-t border-white/5 pt-1.5 font-mono text-sm">
                 <span className="font-bold text-sky-400">{e.chips}</span>
-                <span className="text-[10px] text-neutral-600">
-                  ({e.handChips}+{e.rankChipTotal})
-                </span>
                 <span className="text-neutral-500">×</span>
                 <span className="font-bold text-amber-400">{e.mult}</span>
                 <span className="text-neutral-500">=</span>

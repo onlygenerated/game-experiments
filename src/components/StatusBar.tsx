@@ -1,4 +1,4 @@
-import { CONFIG } from '../config';
+import type { Config } from '../config';
 import type { GameState } from '../game';
 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: string }) {
@@ -16,16 +16,16 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   );
 }
 
-export function StatusBar({ state }: { state: GameState }) {
-  const pct = Math.min(100, (state.score / CONFIG.targetScore) * 100);
+export function StatusBar({ state, cfg }: { state: GameState; cfg: Config }) {
+  const pct = Math.min(100, (state.score / cfg.targetScore) * 100);
 
   return (
     <div className="panel rounded-lg p-2 min-[1280px]:p-3">
       <div className="flex items-end justify-between gap-4">
         <Stat
           label="Score / Target"
-          value={`${state.score} / ${CONFIG.targetScore}`}
-          accent={state.score >= CONFIG.targetScore ? 'text-emerald-400' : 'text-neutral-100'}
+          value={`${state.score} / ${cfg.targetScore}`}
+          accent={state.score >= cfg.targetScore ? 'text-emerald-400' : 'text-neutral-100'}
         />
         <Stat label="Placements" value={String(state.placementsLeft)} />
         <Stat label="Discards" value={String(state.discardsLeft)} />
@@ -34,7 +34,7 @@ export function StatusBar({ state }: { state: GameState }) {
 
       <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded bg-black/50 shadow-[inset_0_1px_2px_rgba(0,0,0,.6)]">
         <div
-          className={`h-full rounded shadow-[0_0_8px_currentColor] ${state.score >= CONFIG.targetScore ? 'bg-emerald-400 text-emerald-400/50' : 'bg-sky-500 text-sky-500/50'}`}
+          className={`h-full rounded shadow-[0_0_8px_currentColor] ${state.score >= cfg.targetScore ? 'bg-emerald-400 text-emerald-400/50' : 'bg-sky-500 text-sky-500/50'}`}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -47,7 +47,7 @@ export function StatusBar({ state }: { state: GameState }) {
         >
           {state.status === 'won'
             ? `WIN — ${state.score} in ${state.log.length} placements`
-            : `LOSS — ${state.score} / ${CONFIG.targetScore}`}
+            : `LOSS — ${state.score} / ${cfg.targetScore}`}
         </div>
       )}
     </div>

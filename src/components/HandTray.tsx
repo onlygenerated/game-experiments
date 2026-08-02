@@ -1,4 +1,4 @@
-import { CONFIG } from '../config';
+import type { Config } from '../config';
 import type { Card } from '../deck';
 import { CardFace } from './CardFace';
 
@@ -8,6 +8,7 @@ import { CardFace } from './CardFace';
  * click-to-select flow changed.
  */
 export function HandTray({
+  cfg,
   hand,
   selected,
   onToggle,
@@ -22,6 +23,7 @@ export function HandTray({
   onCardPointerUp,
   onCardPointerCancel,
 }: {
+  cfg: Config;
   hand: Card[];
   selected: ReadonlySet<number>;
   onToggle: (i: number) => void;
@@ -42,8 +44,8 @@ export function HandTray({
   const canDiscard =
     !disabled &&
     discardsLeft > 0 &&
-    n >= CONFIG.minDiscardSelection &&
-    n <= CONFIG.maxDiscardSelection;
+    n >= cfg.minDiscardSelection &&
+    n <= cfg.maxDiscardSelection;
 
   return (
     <div className="panel flex flex-col gap-3 rounded-lg p-3 min-[1280px]:flex-row min-[1280px]:items-center">

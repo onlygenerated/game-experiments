@@ -251,10 +251,12 @@ describe('scorePlacement', () => {
 
     expect(labels(r.rowLine)).toEqual(['5H', '6D', '9C']);
     expect(labels(r.colLine)).toEqual(['9C', '9D']);
-    expect(r.rowHand.handName).toBe('High Card');
-    expect(r.colHand.handName).toBe('Pair');
-    expect(r.handChips).toBe(5);
-    expect(r.rankChipTotal).toBe(20);
+    expect(r.rowEval.name).toBe('High Card');
+    expect(r.colEval.name).toBe('Pair');
+    expect(r.rowEval.items).toEqual([
+      { label: 'High Card', points: 5 },
+      { label: 'Ranks (3)', points: 20 },
+    ]);
     expect(r.chips).toBe(25);
     expect(r.mult).toBe(2);
     expect(r.score).toBe(50);
@@ -268,9 +270,9 @@ describe('scorePlacement', () => {
     ]);
     const r = scorePlacement(board, 2, 2, card('KS'));
     expect(r.rowLine).toHaveLength(1);
-    expect(r.handChips).toBe(0);
+    expect(r.rowEval.items).toEqual([{ label: 'Ranks (1)', points: 10 }]);
     expect(r.chips).toBe(10); // K = 10, no High Card bonus
-    expect(r.colHand.handName).toBe('High Card');
+    expect(r.colEval.name).toBe('High Card');
     expect(r.mult).toBe(1);
     expect(r.score).toBe(10);
   });
@@ -294,7 +296,7 @@ describe('scorePlacement', () => {
       '.. .. .. .. .. .. ..',
     ]);
     const r = scorePlacement(board, 3, 2, card('9C'));
-    expect(r.colHand.handName).toBe('Four of a Kind');
+    expect(r.colEval.name).toBe('Four of a Kind');
     expect(r.rowLine).toHaveLength(1);
     expect(r.chips).toBe(9); // rank value of the placed 9 only
     expect(r.mult).toBe(7);
@@ -310,8 +312,8 @@ describe('scorePlacement', () => {
       '.. .. .. .. 6S .. ..',
     ]);
     const r = scorePlacement(board, 0, 4, card('6H'));
-    expect(r.rowHand.handName).toBe('Straight Flush');
-    expect(r.colHand.handName).toBe('Three of a Kind');
+    expect(r.rowEval.name).toBe('Straight Flush');
+    expect(r.colEval.name).toBe('Three of a Kind');
     expect(r.chips).toBe(120);
     expect(r.mult).toBe(3);
     expect(r.score).toBe(360);

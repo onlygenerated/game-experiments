@@ -41,6 +41,28 @@ export interface Config {
 
   hands: Record<HandName, HandEntry>;
 
+  /** Which scoring lens converts a line of cards into chips or mult. */
+  lensId: string;
+
+  /**
+   * Cribbage lens. The count is additive, so these rates decide how fast a
+   * growing structure runs away with the score.
+   */
+  cribbage: {
+    /** chips = count x this */
+    chipsPerPoint: number;
+    /**
+     * Flat chips per card in the line, before the count. Without this a line
+     * with no count scores literally zero, so half of every turn's moves are
+     * worth nothing and a placement can be a wasted turn.
+     */
+    baseChipsPerCard: number;
+    /** mult = 1 + floor(count / this) */
+    multPerPoint: number;
+    /** Shortest all-one-suit line that counts as a flush. Cribbage uses 4. */
+    flushMin: number;
+  };
+
   /**
    * Open tuning question from the PRD. With a 5-card cap, true straights and
    * flushes are rare, which risks a dead mult axis. Flip `enabled` to true to
@@ -67,6 +89,8 @@ export const CONFIG: Config = {
   handSize: 7,
   minDiscardSelection: 1,
   maxDiscardSelection: 5,
+
+  lensId: 'poker',
 
   rankChips: {
     2: 2,
@@ -100,6 +124,13 @@ export const CONFIG: Config = {
     enabled: false,
     minCards: 3,
     scaleByLength: { 3: 0.5, 4: 0.75 },
+  },
+
+  cribbage: {
+    chipsPerPoint: 6,
+    baseChipsPerCard: 3,
+    multPerPoint: 2,
+    flushMin: 4,
   },
 };
 

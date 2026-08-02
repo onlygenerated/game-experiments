@@ -1,6 +1,6 @@
 import { CONFIG, type Config } from './config';
-import { rankChips, type Card } from './deck';
-import { evaluateHand, type HandResult } from './hands';
+import type { Card } from './deck';
+import { getLens, type Lens, type LineEval } from './lens';
 
 export type Cell = Card | null;
 /** Row-major, length gridSize * gridSize. */
@@ -172,15 +172,11 @@ export interface PlacementScore {
   colLine: Card[];
   rowCoords: Coord[];
   colCoords: Coord[];
-  rowHand: HandResult;
-  colHand: HandResult;
-  /** Hand-bonus half of chips. Zero for a length-1 row-line. */
-  handChips: number;
-  /** Summed rank chip values of every card in the row-line. */
-  rankChipTotal: number;
-  /** Row-line hand base chips + every rank chip value in the row-line. */
+  /** Row-line evaluation. Feeds chips. */
+  rowEval: LineEval;
+  /** Col-line evaluation. Feeds mult. */
+  colEval: LineEval;
   chips: number;
-  /** Col-line hand mult, nothing else. */
   mult: number;
   score: number;
 }
@@ -189,8 +185,9 @@ export interface PlacementScore {
  * Score a placement. Chips come from the row-line only, mult from the col-line
  * only. This is the whole experiment: the two axes are separate resources.
  *
- * Works on a hypothetical placement, so the preview overlay and the real
- * placement run through the identical code path.
+ * The lens decides how a line of cards becomes a number — swapping poker for
+ * cribbage changes nothing here. Works on a hypothetical placement, so the
+ * preview overlay and the real placement run the identical code path.
  */
 export function scorePlacement(
   board: Board,
@@ -198,6 +195,7 @@ export function scorePlacement(
   c: number,
   card: Card,
   cfg: Config = CONFIG,
+  lens: Lens = getLens(cfg.lensId),
 ): PlacementScore {
   const next = withCard(board, r, c, card, cfg);
 
@@ -206,15 +204,8 @@ export function scorePlacement(
   const rowLine = rowCoords.map((p) => next[idx(p.r, p.c, cfg)] as Card);
   const colLine = colCoords.map((p) => next[idx(p.r, p.c, cfg)] as Card);
 
-  const rowHand = evaluateHand(rowLine, cfg);
-  const colHand = evaluateHand(colLine, cfg);
-
-  const rankChipTotal = rowLine.reduce((sum, x) => sum + rankChips(x.rank, cfg), 0);
-  // Length-1 row-line: the placed card's rank value only, no hand bonus.
-  const handChips = rowLine.length === 1 ? 0 : rowHand.chips;
-  const chips = handChips + rankChipTotal;
-  // Length-1 col-line: mult is 1.
-  const mult = colLine.length === 1 ? 1 : colHand.mult;
+  const rowEval = lens.evaluate(rowLine, 'chips', cfg);
+  const colEval = lens.evaluate(colLine, 'mult', cfg);
 
   return {
     card,
@@ -223,12 +214,10 @@ export function scorePlacement(
     colLine,
     rowCoords,
     colCoords,
-    rowHand,
-    colHand,
-    handChips,
-    rankChipTotal,
-    chips,
-    mult,
-    score: chips * mult,
+    rowEval,
+    colEval,
+    chips: rowEval.value,
+    mult: colEval.value,
+    score: rowEval.value * colEval.value,
   };
 }

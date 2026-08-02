@@ -1,10 +1,13 @@
-# Grid Poker Prototype
+# Grid Card Prototype
 
 A mechanics test, not a game. Built to answer two questions:
 
 1. Does placing a single card and scoring **every line it joins** produce satisfying decisions?
 2. Does splitting chips onto the horizontal axis and mult onto the vertical axis create real
    positional tension, or does it collapse into "always play at intersections"?
+
+The spine never changes — place a card, it joins lines, the lines score. What swaps is the
+**lens**: how a line of cards becomes a number. Poker was the first; cribbage is the second.
 
 ```bash
 npm install
@@ -64,13 +67,40 @@ Pure logic is fully isolated from React — no React import below `App.tsx`.
 |---|---|
 | `src/config.ts` | Every tunable number. Target, counts, grid size, line cap, hand table, rank values, partials toggle. |
 | `src/deck.ts` | Card types, mulberry32 PRNG, seeded shuffle, draw. |
-| `src/hands.ts` | Pure evaluator. `Card[]` → `{ handName, chips, mult, partial, scale }`. |
+| `src/hands.ts` | Poker hand evaluator. `Card[]` → `{ handName, chips, mult, partial, scale }`. |
+| `src/lens/` | Scoring lenses. `Card[]` + role → `{ name, items, value }`. `poker.ts`, `cribbage.ts`. |
+| `src/rulesets.ts` | Every variant, as data. A variant is a `Config`, not a branch. |
 | `src/board.ts` | Board state, legality, line extraction, placement scoring. |
 | `src/game.ts` | Pure run-state transitions (`newGame` / `placeCard` / `discardCards`). |
 | `src/App.tsx`, `src/components/` | Rendering and interaction only. |
 
 Every pure function takes an optional `Config` as its last argument, so a retuned table can be
 tested without touching the global.
+
+## Lenses
+
+A lens converts one line of cards into either chips (row) or mult (column). `board.ts` never
+knows which is in use, so swapping poker for cribbage changes no board, drag, or preview code
+— the preview renders whatever itemisation the lens returns.
+
+**Cribbage** counts fifteens, pairs, runs and flushes. Unlike poker's single best-hand
+category it is *additive and combinatorial*, so a line's value grows faster than its length,
+and a two-card line already scores if it makes a fifteen or a pair.
+
+Getting cribbage right means two rank orderings that must not be confused: face cards are
+worth **10** towards fifteens but sit at **11/12/13** in a run, and the ace is low only, so
+K-A-2 is not a run. Both are covered by tests, along with the perfect-29 hand and double runs.
+
+A flat `baseChipsPerCard` sits under the count. Without it a line with no count scores
+literally zero, half of every turn's moves are worthless, and the choice spread blows out to
+24× — measured, not assumed. The `Cribbage — pure count` ruleset turns it off so the
+trade-off stays visible.
+
+## Rulesets
+
+Every experiment is a `Config` in `src/rulesets.ts`, picked from the **Rules** menu.
+Switching restarts the run on the same seed, so two variants can be played back to back on an
+identical deck.
 
 ## Tuning
 
@@ -92,27 +122,29 @@ Straight Flush; a 3-card trips was already a real Three of a Kind and is never s
 Note the evaluator reads a *whole line* as one hand, so a 5-card line containing a 4-card
 straight is not a straight — same as poker. Partials are about short lines, not sub-hands.
 
-## First playtest reading
+## Measured comparison
 
-A greedy-max probe over 40 seeds (written, run, then deleted — an in-game solver is out of
-scope) put the score curve here:
+A probe over 20 seeds ran three agents per ruleset — greedy (best move now), careless
+(samples across the move distribution), and a 2-ply lookahead — then was deleted, since an
+in-game solver is out of scope. Medians:
 
-| | min | median | max | win rate |
-|---|---|---|---|---|
-| Greedy | 300 | 329 | 389 | 100% |
-| Deliberately naive | 222 | 281 | 322 | 33% |
+| ruleset | target | greedy | careless | **skill gap** | 2-ply lift | mult live | spread | win |
+|---|---|---|---|---|---|---|---|---|
+| poker — baseline | 300 | 336 | 310 | **1.08** | 1.07 | 13% | 5.1 | 100% |
+| poker — mult amplified | 620 | 654 | 385 | **1.70** | 1.15 | 46% | 4.0 | 85% |
+| **cribbage** | 600 | 606 | 246 | **2.46** | 1.14 | 42% | 7.0 | 55% |
+| cribbage — unbound (cap 7) | 1050 | 1032 | 207 | **4.99** | 1.18 | 27% | 15.0 | 45% |
+| cribbage — pure count | 450 | 456 | 84 | **5.43** | 1.17 | 15% | 24.0 | 60% |
 
-Two things worth knowing before the first human run:
-
-- **The 300 target is the right order of magnitude** — criterion 4 passes, tuning does not
-  need to move first.
-- **But it may be too soft to discriminate.** Greedy clears it in ~9 of the 15 placements,
-  and a player choosing badly on purpose still lands at 281. The gap between "playing well"
-  and "playing badly" is only about 18%. If the first runs feel tensionless, raise
-  `targetScore` (400–450) or cut `placementsPerRun` before concluding the mechanic is flat.
-- Best single placement was a median of 68 and a max of 120, which suggests **chips are
-  carrying the score and the mult axis is quiet** — the exact failure mode question 2 is
-  about, and the reason the partials toggle exists.
+- **Skill gap** (greedy ÷ careless) is the headline. Poker's 1.08 means playing well was worth
+  8% — the flatness that motivated all of this. Cribbage's 2.46 means it is worth 2.5×.
+- **Mult live** (placements where mult > 1) went from 13% to 42%. Poker's dead `High Card ×1`
+  column is fixed, because a two-card cribbage line can already count.
+- **Spread** (best move ÷ median move) is the guard rail in the other direction. Cribbage sits
+  at 7 against poker's 5 — noticeably sharper without being degenerate. `pure count` at 24 is
+  what "most moves are worthless" looks like, which is why the flat base exists.
+- Win rates are calibrated so a greedy player lands near the target and has to actually play
+  well to clear it. Poker's baseline stays at 100% deliberately — it is the control.
 
 ## Presentation
 
