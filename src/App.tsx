@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CONFIG } from './config';
 import { isLegalPlacement, scorePlacement, type Coord } from './board';
 import { discardCards, newGame, placeCard, type GameState } from './game';
+import type { Card } from './deck';
 import { TOUCH_QUERY, useMediaQuery, WIDE_QUERY } from './useMediaQuery';
+import { useCardDrag } from './useCardDrag';
 import { BoardGrid } from './components/BoardGrid';
+import { CardFace } from './components/CardFace';
 import { DevControls } from './components/DevControls';
 import { HandTray } from './components/HandTray';
 import { PreviewPanel } from './components/PreviewPanel';
@@ -11,8 +14,20 @@ import { ScoreLog } from './components/ScoreLog';
 import { StatusBar } from './components/StatusBar';
 
 const DEFAULT_SEED = 'grid-poker-1';
+const DISCARD_MS = 420;
+const DEAL_MS = 520;
 
 const sameCell = (a: Coord | null, b: Coord | null) => !!a && !!b && a.r === b.r && a.c === b.c;
+
+/** A discarded card, frozen at the screen position it left from. */
+interface FlyingCard {
+  card: Card;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  order: number;
+}
 
 export default function App() {
   // Undo is just a stack of whole states — every field rolls back together.
@@ -30,11 +45,105 @@ export default function App() {
   const selectedIndex = selected.size === 1 ? [...selected][0] : null;
   const selectedCard = selectedIndex === null ? null : (state.hand[selectedIndex] ?? null);
 
+  // --- actions ---------------------------------------------------------------
+
+  const push = useCallback(
+    (next: GameState) => {
+      setHistory((h) => (next === h[h.length - 1] ? h : [...h, next]));
+      setSelected(new Set());
+      setTarget(null);
+    },
+    [],
+  );
+
+  const place = useCallback(
+    (handIndex: number, cell: Coord) => push(placeCard(state, handIndex, cell.r, cell.c)),
+    [push, state],
+  );
+
+  const toggle = useCallback((i: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  }, []);
+
+  // --- drag ------------------------------------------------------------------
+
+  const cellAt = useCallback(
+    (x: number, y: number): Coord | null => {
+      const el = document.elementFromPoint(x, y)?.closest('[data-cell]');
+      const [r, c] = (el?.getAttribute('data-cell') ?? '').split(',').map(Number);
+      if (!Number.isFinite(r) || !Number.isFinite(c)) return null;
+      return isLegalPlacement(state.board, r, c) ? { r, c } : null;
+    },
+    [state.board],
+  );
+
+  const { drag, onPointerDown, onPointerMove, onPointerUp, onPointerCancel } = useCardDrag({
+    cellAt,
+    onDrop: place,
+    onTap: toggle,
+    enabled: playing,
+  });
+
+  // A dragged card drives the preview even though it was never "selected".
+  const activeCard = drag?.card ?? selectedCard;
+  const activeTarget = drag ? drag.over : target;
+
   const preview = useMemo(() => {
-    if (!playing || !selectedCard || !target) return null;
-    if (!isLegalPlacement(state.board, target.r, target.c)) return null;
-    return scorePlacement(state.board, target.r, target.c, selectedCard);
-  }, [playing, selectedCard, target, state.board]);
+    if (!playing || !activeCard || !activeTarget) return null;
+    if (!isLegalPlacement(state.board, activeTarget.r, activeTarget.c)) return null;
+    return scorePlacement(state.board, activeTarget.r, activeTarget.c, activeCard);
+  }, [playing, activeCard, activeTarget, state.board]);
+
+  // --- animation bookkeeping -------------------------------------------------
+
+  const [dealtIds, setDealtIds] = useState<ReadonlySet<string>>(new Set());
+  const prevHandIds = useRef<string[]>([]);
+
+  useEffect(() => {
+    const ids = state.hand.map((c) => c.id);
+    const fresh = ids.filter((id) => !prevHandIds.current.includes(id));
+    prevHandIds.current = ids;
+    if (!fresh.length) return;
+    setDealtIds(new Set(fresh));
+    const t = setTimeout(() => setDealtIds(new Set()), DEAL_MS);
+    return () => clearTimeout(t);
+  }, [state.hand]);
+
+  const [flying, setFlying] = useState<FlyingCard[]>([]);
+  const flyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => void (flyTimer.current && clearTimeout(flyTimer.current)), []);
+
+  function handleDiscard() {
+    // Freeze the outgoing cards where they sat, then let the hand refill under
+    // them — the fly-away is purely decorative and never gates the state change.
+    const leaving = [...selected]
+      .sort((a, b) => a - b)
+      .map((i, order) => {
+        const rect = document
+          .querySelector(`[data-hand-index="${i}"]`)
+          ?.getBoundingClientRect();
+        const card = state.hand[i];
+        return rect && card
+          ? { card, x: rect.x, y: rect.y, w: rect.width, h: rect.height, order }
+          : null;
+      })
+      .filter((v): v is FlyingCard => v !== null);
+
+    setFlying(leaving);
+    if (flyTimer.current) clearTimeout(flyTimer.current);
+    flyTimer.current = setTimeout(() => setFlying([]), DISCARD_MS + leaving.length * 45);
+
+    push(discardCards(state, [...selected]));
+  }
+
+  const justPlaced = state.log.length ? state.log[state.log.length - 1].at : null;
+
+  // --- layout ----------------------------------------------------------------
 
   // Below the wide breakpoint the preview and hand dock to the bottom of the
   // screen, so the board can scroll without either going out of reach.
@@ -67,35 +176,15 @@ export default function App() {
       ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [docked, target]);
 
-  function push(next: GameState) {
-    if (next === state) return;
-    setHistory((h) => [...h, next]);
-    setSelected(new Set());
-    setTarget(null);
-  }
-
-  function commit(cell: Coord) {
-    if (selectedIndex === null) return;
-    push(placeCard(state, selectedIndex, cell.r, cell.c));
-  }
-
   /**
    * A pointer has already previewed the cell by hovering it, so a click places.
    * A finger has not, so the first tap targets the cell and shows the preview;
    * placing then takes a second tap or the footer's Place button.
    */
   function activateCell(cell: Coord) {
-    if (!touch || sameCell(target, cell)) commit(cell);
+    if (selectedIndex === null) return;
+    if (!touch || sameCell(target, cell)) place(selectedIndex, cell);
     else setTarget(cell);
-  }
-
-  function toggle(i: number) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
-      return next;
-    });
   }
 
   function handleNewRun(seed: string) {
@@ -112,9 +201,12 @@ export default function App() {
   }
 
   const n = selected.size;
-  const hint =
-    n === 0
-      ? 'Select a card'
+  const hint = drag
+    ? 'Drop on a highlighted cell'
+    : n === 0
+      ? touch
+        ? 'Tap or drag a card'
+        : 'Click or drag a card'
       : n === 1
         ? touch
           ? 'Tap a green cell'
@@ -126,10 +218,16 @@ export default function App() {
       hand={state.hand}
       selected={selected}
       onToggle={toggle}
-      onDiscard={() => push(discardCards(state, [...selected]))}
+      onDiscard={handleDiscard}
       discardsLeft={state.discardsLeft}
       disabled={!playing}
       hint={hint}
+      dragIndex={drag?.handIndex ?? null}
+      dealtIds={dealtIds}
+      onCardPointerDown={onPointerDown}
+      onCardPointerMove={onPointerMove}
+      onCardPointerUp={onPointerUp}
+      onCardPointerCancel={onPointerCancel}
     />
   );
 
@@ -176,10 +274,11 @@ export default function App() {
         <section className="flex flex-col items-center gap-3 min-[1280px]:items-start">
           <BoardGrid
             board={state.board}
-            selectedCard={selectedCard}
-            target={target}
+            selectedCard={activeCard}
+            target={activeTarget}
             preview={preview}
-            onHoverCell={(cell) => !touch && setTarget(cell)}
+            justPlaced={justPlaced}
+            onHoverCell={(cell) => !touch && !drag && setTarget(cell)}
             onActivateCell={activateCell}
             interactive={playing}
             docked={docked}
@@ -191,14 +290,14 @@ export default function App() {
             <span>
               <span
                 className="mr-1 inline-block h-2 w-4 rounded-sm align-middle"
-                style={{ background: 'rgba(167,139,250,.65)' }}
+                style={{ background: 'rgba(167,139,250,.75)' }}
               />
               row line complete
             </span>
             <span>
               <span
                 className="mr-1 inline-block h-2 w-4 rounded-sm align-middle"
-                style={{ background: 'rgba(244,114,182,.65)' }}
+                style={{ background: 'rgba(244,114,182,.75)' }}
               />
               col line complete
             </span>
@@ -218,16 +317,52 @@ export default function App() {
       {docked && (
         <div
           ref={footerRef}
-          className="fixed inset-x-0 bottom-0 z-30 flex flex-col gap-2 border-t border-neutral-800 bg-neutral-950/95 p-2 backdrop-blur"
+          className="fixed inset-x-0 bottom-0 z-30 flex flex-col gap-2 border-t border-white/10 bg-[#0d1015]/95 p-2 backdrop-blur"
         >
           {preview && (
             <PreviewPanel
               preview={preview}
-              onPlace={() => commit(preview.at)}
+              onPlace={() => place(drag?.handIndex ?? selectedIndex ?? -1, preview.at)}
               onCancel={() => setTarget(null)}
             />
           )}
           {handTray}
+        </div>
+      )}
+
+      {/* Discarded cards, frozen where they left and animating away. */}
+      {flying.map((f) => (
+        <div
+          key={f.card.id}
+          className="pointer-events-none fixed z-40"
+          style={{ left: f.x, top: f.y }}
+        >
+          <CardFace
+            card={f.card}
+            size="lg"
+            className="animate-discard"
+            style={{
+              width: f.w,
+              height: f.h,
+              fontSize: f.w * 0.22,
+              animationDelay: `${f.order * 45}ms`,
+            }}
+          />
+        </div>
+      ))}
+
+      {/* The dragged card itself, tracking the pointer. */}
+      {drag && (
+        <div
+          className="pointer-events-none fixed z-50"
+          style={{
+            left: drag.x,
+            top: drag.y,
+            transform: 'translate(-50%, -60%) rotate(-4deg) scale(1.12)',
+            filter: 'drop-shadow(0 12px 18px rgba(0,0,0,.6))',
+          }}
+        >
+          <CardFace card={drag.card} size="lg" />
         </div>
       )}
     </div>

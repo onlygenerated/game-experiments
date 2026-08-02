@@ -16,9 +16,10 @@ Runs on desktop and on a phone. No backend, no persistence.
 
 ## How to play
 
-- Tap or click a hand card to select it. Legal cells light up green.
-- Target a legal cell — the preview shows the resulting row-line, col-line, and
-  `chips × mult = score` before you commit.
+- **Drag a card straight onto the board** — the preview updates live as you pass over cells,
+  and dropping on a highlighted one places it. Works with a mouse or a finger.
+- Or click/tap a card to select it, then target a legal cell. The preview shows the resulting
+  row-line, col-line, and `chips × mult = score` before you commit.
 - Commit to place. The score log records the breakdown.
 - Select 1–5 cards and hit **Discard** to cycle them. Costs a discard charge, not a placement.
 - Seed box + **New run** replays an identical deck. **Undo** rolls back board, hand, deck,
@@ -33,6 +34,11 @@ committing are separate steps there:
 |---|---|---|
 | Mouse | hover | click |
 | Touch | first tap | **Place** button, or tap the same cell again |
+| Either | drag over a cell | release on it |
+
+Drag is one pointer-events path for mouse and touch — no HTML5 drag-and-drop, which has no
+touch story. A press that moves less than 6px falls through to selection, so click-to-select
+is untouched.
 
 You always see the score before the card lands. On touch, **Cancel** clears the target, and
 tapping a different hand card re-scores the same cell — which is the fastest way to compare
@@ -108,10 +114,27 @@ Two things worth knowing before the first human run:
   carrying the score and the mult axis is quiet** — the exact failure mode question 2 is
   about, and the reason the partials toggle exists.
 
+## Presentation
+
+Depth comes from three repeated moves, defined once in `index.css` as `.card-face`,
+`.board-tray`, `.panel`, and `.panel-inset`: a top-lit gradient, a 1px light seam on the top
+edge, and a shadow separating each layer from the one behind it. Cards sit on the board; the
+board is recessed into the page.
+
+Three animations, all decorative — no state change ever waits on one:
+
+| | Trigger |
+|---|---|
+| `deal-in` | a card id appears in hand that was not there last render, staggered by slot |
+| `discard-fly` | discarded cards are frozen at their screen position and animate away while the hand refills underneath |
+| `place-drop` | the cell named by the newest log entry |
+
+All of it collapses under `prefers-reduced-motion`.
+
 ## Deliberately absent
 
 Jokers, consumables, shop, economy, multiple blinds, run progression, deck building,
-animations, sound, persistence, AI opponent.
+sound, persistence, AI opponent.
 
 ## Two deviations from the PRD
 

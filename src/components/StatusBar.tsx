@@ -20,7 +20,7 @@ export function StatusBar({ state }: { state: GameState }) {
   const pct = Math.min(100, (state.score / CONFIG.targetScore) * 100);
 
   return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-2 min-[1280px]:p-3">
+    <div className="panel rounded-lg p-2 min-[1280px]:p-3">
       <div className="flex items-end justify-between gap-4">
         <Stat
           label="Score / Target"
@@ -32,9 +32,9 @@ export function StatusBar({ state }: { state: GameState }) {
         <Stat label="Deck" value={String(state.deck.length)} />
       </div>
 
-      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded bg-neutral-800">
+      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded bg-black/50 shadow-[inset_0_1px_2px_rgba(0,0,0,.6)]">
         <div
-          className={`h-full ${state.score >= CONFIG.targetScore ? 'bg-emerald-400' : 'bg-sky-500'}`}
+          className={`h-full rounded shadow-[0_0_8px_currentColor] ${state.score >= CONFIG.targetScore ? 'bg-emerald-400 text-emerald-400/50' : 'bg-sky-500 text-sky-500/50'}`}
           style={{ width: `${pct}%` }}
         />
       </div>

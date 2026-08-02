@@ -16,6 +16,7 @@ import { PreviewPanel } from './PreviewPanel';
 const WIDE_CELL = 76;
 const GAP = 4;
 const PANEL_W = 288;
+const TRAY_PAD = 8;
 
 const key = (r: number, c: number) => `${r},${c}`;
 
@@ -24,6 +25,7 @@ export function BoardGrid({
   selectedCard,
   target,
   preview,
+  justPlaced,
   onHoverCell,
   onActivateCell,
   interactive,
@@ -33,6 +35,8 @@ export function BoardGrid({
   selectedCard: Card | null;
   target: Coord | null;
   preview: PlacementScore | null;
+  /** Cell of the most recent placement, for the drop-in animation. */
+  justPlaced: Coord | null;
   onHoverCell: (cell: Coord | null) => void;
   onActivateCell: (cell: Coord) => void;
   interactive: boolean;
@@ -61,29 +65,34 @@ export function BoardGrid({
   );
 
   const gapTotal = (size - 1) * GAP;
-  const boardWidth = `calc(var(--cell) * ${size} + ${gapTotal}px)`;
+  const gridWidth = `calc(var(--cell) * ${size} + ${gapTotal}px)`;
+  const trayWidth = `calc(${gridWidth} + ${TRAY_PAD * 2}px)`;
   // The side lane only exists on wide screens, where --cell is pinned to 76px.
-  const widePx = size * WIDE_CELL + gapTotal;
+  const wideTrayPx = size * WIDE_CELL + gapTotal + TRAY_PAD * 2;
 
   const panelPos =
     !docked && target
       ? {
-          left: widePx + 16,
-          top: Math.min(Math.max(target.r * (WIDE_CELL + GAP) - 60, 0), Math.max(widePx - 300, 0)),
+          left: wideTrayPx + 16,
+          top: Math.min(
+            Math.max(target.r * (WIDE_CELL + GAP) - 60, 0),
+            Math.max(wideTrayPx - 300, 0),
+          ),
         }
       : null;
 
   return (
     <div
       className="relative"
-      style={{ width: docked ? boardWidth : widePx + 16 + PANEL_W }}
+      style={{ width: docked ? trayWidth : wideTrayPx + 16 + PANEL_W }}
     >
       <div
-        className="grid"
+        className="board-tray grid"
         style={{
           gridTemplateColumns: `repeat(${size}, var(--cell))`,
           gap: GAP,
-          width: boardWidth,
+          width: trayWidth,
+          padding: TRAY_PAD,
         }}
         onMouseLeave={() => onHoverCell(null)}
       >
@@ -96,6 +105,7 @@ export function BoardGrid({
           const isLegal = legal.has(k);
           const selectable = interactive && isLegal && selectedCard !== null;
           const isTarget = target?.r === r && target?.c === c;
+          const isJustPlaced = justPlaced?.r === r && justPlaced?.c === c;
 
           // Complete lines can never be extended. Mark the run's edges.
           const rowComplete = card !== null && isLineComplete(board, r, c, 'row');
@@ -104,14 +114,45 @@ export function BoardGrid({
           const inRowPreview = rowPreview.has(k) && !isTarget;
           const inColPreview = colPreview.has(k) && !isTarget;
 
-          // A line-membership cell is usually occupied, so the tint alone is
-          // just a thin frame around the card. The ring makes the run readable.
-          let bg = 'bg-neutral-900/40';
-          if (card) bg = 'bg-neutral-800/40';
-          if (selectable) bg = 'bg-emerald-500/15';
-          if (inRowPreview) bg = 'bg-sky-500/30 ring-2 ring-sky-400';
-          if (inColPreview) bg = 'bg-amber-500/30 ring-2 ring-amber-400';
-          if (isTarget && selectable) bg = 'bg-emerald-400/40 ring-2 ring-emerald-300';
+          // A line-membership cell is usually occupied, so a tint alone is just
+          // a thin frame around the card. The ring makes the run readable.
+          let bg = 'transparent';
+          let ring = '';
+          if (selectable) bg = 'rgba(16,185,129,.13)';
+          if (inRowPreview) {
+            bg = 'rgba(14,165,233,.28)';
+            ring = 'rgba(56,189,248,.95)';
+          }
+          if (inColPreview) {
+            bg = 'rgba(245,158,11,.28)';
+            ring = 'rgba(251,191,36,.95)';
+          }
+          if (isTarget && selectable) {
+            bg = 'rgba(52,211,153,.34)';
+            ring = 'rgba(110,231,183,.95)';
+          }
+
+          // Painted front-to-back. Line markers sit above the well shading so
+          // they stay legible on an occupied cell.
+          const shadows = [
+            rowComplete
+              ? 'inset 0 3px 0 0 rgba(167,139,250,.75), inset 0 -3px 0 0 rgba(167,139,250,.75)'
+              : '',
+            colComplete
+              ? 'inset 3px 0 0 0 rgba(244,114,182,.75), inset -3px 0 0 0 rgba(244,114,182,.75)'
+              : '',
+            ring ? `inset 0 0 0 2px ${ring}` : '',
+            // A legal cell has to read at a glance — it is the whole affordance.
+            selectable && !ring
+              ? 'inset 0 0 0 1.5px rgba(52,211,153,.55), 0 0 14px rgba(16,185,129,.28)'
+              : '',
+            // Every cell is a shallow well with a lit rim, so the grid stays
+            // legible; occupied ones are shallower since the card's own shadow
+            // already reads as sitting on top.
+            card
+              ? 'inset 0 1px 3px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.05)'
+              : 'inset 0 2px 5px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.055)',
+          ].filter(Boolean);
 
           return (
             <div
@@ -119,35 +160,23 @@ export function BoardGrid({
               data-cell={k}
               onMouseEnter={() => onHoverCell({ r, c })}
               onClick={() => selectable && onActivateCell({ r, c })}
-              className={`flex items-center justify-center rounded border transition-colors ${bg} ${
-                selectable
-                  ? 'cursor-pointer border-emerald-400/70'
-                  : card
-                    ? 'border-neutral-700'
-                    : 'border-neutral-800/60'
+              className={`flex items-center justify-center rounded-md transition-[background-color,box-shadow] duration-150 ${
+                selectable ? 'cursor-pointer' : ''
               }`}
               style={{
                 width: 'var(--cell)',
                 height: 'var(--cell)',
-                // Subtle edge accents on runs that have hit the cap.
-                boxShadow: [
-                  rowComplete
-                    ? 'inset 0 3px 0 0 rgba(167,139,250,.65), inset 0 -3px 0 0 rgba(167,139,250,.65)'
-                    : '',
-                  colComplete
-                    ? 'inset 3px 0 0 0 rgba(244,114,182,.65), inset -3px 0 0 0 rgba(244,114,182,.65)'
-                    : '',
-                ]
-                  .filter(Boolean)
-                  .join(', '),
+                background: card
+                  ? 'linear-gradient(180deg, rgba(0,0,0,.25), rgba(255,255,255,.03))'
+                  : 'linear-gradient(180deg, rgba(0,0,0,.3), rgba(255,255,255,.05))',
+                backgroundColor: bg,
+                boxShadow: shadows.join(', '),
               }}
             >
               {card ? (
-                <CardFace card={card} />
+                <CardFace card={card} className={isJustPlaced ? 'animate-place' : ''} />
               ) : isTarget && selectable && selectedCard ? (
-                <div className="opacity-60">
-                  <CardFace card={selectedCard} />
-                </div>
+                <CardFace card={selectedCard} style={{ opacity: 0.5 }} />
               ) : null}
             </div>
           );

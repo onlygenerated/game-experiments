@@ -37,8 +37,8 @@ function Line({
  */
 export function ScoreLog({ log }: { log: LogEntry[] }) {
   return (
-    <div className="flex flex-col rounded-lg border border-neutral-800 bg-neutral-900/60 min-[1280px]:min-h-0 min-[1280px]:flex-1">
-      <div className="border-b border-neutral-800 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+    <div className="panel flex flex-col rounded-lg min-[1280px]:min-h-0 min-[1280px]:flex-1">
+      <div className="border-b border-white/5 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
         Score log
       </div>
 
@@ -51,7 +51,7 @@ export function ScoreLog({ log }: { log: LogEntry[] }) {
           .slice()
           .reverse()
           .map((e) => (
-            <div key={e.n} className="rounded border border-neutral-800 bg-neutral-950/60 p-2">
+            <div key={e.n} className="panel-inset rounded p-2">
               <div className="mb-1 flex items-center gap-2">
                 <span className="font-mono text-[10px] text-neutral-500">#{e.n}</span>
                 <CardChip card={e.card} />
@@ -80,7 +80,7 @@ export function ScoreLog({ log }: { log: LogEntry[] }) {
                 />
               </div>
 
-              <div className="mt-1.5 flex items-baseline gap-1.5 border-t border-neutral-800 pt-1.5 font-mono text-sm">
+              <div className="mt-1.5 flex items-baseline gap-1.5 border-t border-white/5 pt-1.5 font-mono text-sm">
                 <span className="font-bold text-sky-400">{e.chips}</span>
                 <span className="text-[10px] text-neutral-600">
                   ({e.handChips}+{e.rankChipTotal})

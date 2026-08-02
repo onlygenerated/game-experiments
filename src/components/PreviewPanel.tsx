@@ -36,7 +36,7 @@ function LineRow({
 
   if (compact) {
     return (
-      <div className="flex items-center gap-2 rounded border border-neutral-700 bg-neutral-900/60 px-2 py-1.5">
+      <div className="panel-inset flex items-center gap-2 rounded px-2 py-1.5">
         <span className={`shrink-0 text-[10px] font-bold uppercase ${accent}`}>{axis}</span>
         {chips}
         <span className="ml-auto shrink-0 text-right">
@@ -51,7 +51,7 @@ function LineRow({
   }
 
   return (
-    <div className="rounded border border-neutral-700 bg-neutral-900/60 p-2">
+    <div className="panel-inset rounded p-2">
       <div className="flex items-baseline justify-between">
         <span className={`text-[10px] font-bold uppercase tracking-wider ${accent}`}>{axis}</span>
         <span className="text-[10px] uppercase tracking-wider text-neutral-500">{valueLabel}</span>
@@ -92,7 +92,7 @@ export function PreviewPanel({
 
   return (
     <div
-      className={`space-y-1.5 rounded-lg border border-neutral-600 bg-neutral-950/95 p-2 shadow-2xl backdrop-blur ${
+      className={`panel space-y-1.5 rounded-lg p-2 backdrop-blur ${
         docked ? 'w-full' : 'w-72 space-y-2 p-3'
       }`}
     >
@@ -131,7 +131,7 @@ export function PreviewPanel({
           </button>
           <button
             onClick={onPlace}
-            className="flex flex-1 items-center justify-center gap-2 rounded bg-emerald-600 py-2.5 font-mono text-base font-bold active:bg-emerald-500"
+            className="flex flex-1 items-center justify-center gap-2 rounded bg-gradient-to-b from-emerald-500 to-emerald-700 py-2.5 font-mono text-base font-bold shadow-lg active:from-emerald-400 active:to-emerald-600"
           >
             <span className="text-sky-200">{preview.chips}</span>
             <span className="text-emerald-200/70">×</span>
@@ -142,7 +142,7 @@ export function PreviewPanel({
           </button>
         </div>
       ) : (
-        <div className="flex items-baseline justify-center gap-2 rounded bg-neutral-800/80 py-2 font-mono">
+        <div className="panel-inset flex items-baseline justify-center gap-2 rounded py-2 font-mono">
           <span className="text-lg font-bold text-sky-400">{preview.chips}</span>
           <span className="text-neutral-500">×</span>
           <span className="text-lg font-bold text-amber-400">{preview.mult}</span>
