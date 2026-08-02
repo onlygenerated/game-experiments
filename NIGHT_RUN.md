@@ -42,6 +42,9 @@ of whatever the session was branched from.
 - **Artifact**: https://claude.ai/code/artifact/6613c961-31a5-4a7b-8c61-abeb633d25e6
   Republish by passing that URL as the `url` parameter, so the link the user
   already has keeps working. A fresh session that omits it mints a new one.
+  Title "Grid Poker Prototype", favicon 🃏 — keep both stable across
+  redeploys. Publishing requires having viewed the current version first
+  (WebFetch the URL) or the tool 409s; that's expected, not an error.
 - **Build the artifact**: `npx vite build`, then inline `dist/assets/*.css` and
   `*.js` into a single body-only HTML file (no doctype/html/head/body tags —
   the host wraps it) and publish that. Nothing may reference an external host.
