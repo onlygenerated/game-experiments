@@ -12,6 +12,7 @@ import { parseHex, type Hex } from './hex/coords';
 import { DEFAULT_RULESET, getRuleset } from './rulesets';
 import { getLens, type ScoredPlacement } from './lens';
 import { RulesetMenu } from './components/RulesetMenu';
+import { MetricsPage } from './components/MetricsPage';
 import type { Card } from './deck';
 import { TOUCH_QUERY, useMediaQuery, WIDE_QUERY } from './useMediaQuery';
 import { useCardDrag } from './useCardDrag';
@@ -67,6 +68,7 @@ export default function App() {
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
   const [target, setTarget] = useState<string | null>(null);
   const [devOpen, setDevOpen] = useState(false);
+  const [showMetrics, setShowMetrics] = useState(false);
 
   const wide = useMediaQuery(WIDE_QUERY);
   const touch = useMediaQuery(TOUCH_QUERY);
@@ -364,6 +366,8 @@ export default function App() {
     />
   );
 
+  if (showMetrics) return <MetricsPage onClose={() => setShowMetrics(false)} />;
+
   return (
     <div
       className="flex min-h-dvh flex-col gap-3 p-4 min-[1280px]:h-full"
@@ -392,6 +396,12 @@ export default function App() {
           className={`flex flex-col gap-2 min-[1280px]:ml-auto min-[1280px]:flex-row min-[1280px]:items-center ${devOpen ? '' : 'hidden min-[1280px]:flex'}`}
         >
           <RulesetMenu current={ruleset} onSelect={handleRuleset} />
+          <button
+            onClick={() => setShowMetrics(true)}
+            className="shrink-0 rounded border border-neutral-700 px-3 py-2 text-sm font-semibold text-neutral-300 active:bg-neutral-800 min-[1280px]:py-1 min-[1280px]:hover:bg-neutral-800"
+          >
+            Metrics
+          </button>
           <DevControls
             seed={state.seed}
             onNewRun={handleNewRun}

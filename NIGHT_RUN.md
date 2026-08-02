@@ -110,8 +110,9 @@ Cheap items first so a short night still banks the whole of category 1.
       deferred scoring, lock-and-cash, free placement. All five ship under a
       Mechanics group. Lock-and-cash is the only one that needed engine and UI
       work; the other four are config read by `scorePlacement`.
-- [ ] **8. Metrics page** — every ruleset ranked by skill gap, lookahead lift,
-      mult participation, spread, choke turn. Poker Squares as the reference.
+- [x] **8. Metrics page** — in-app, behind the Metrics button. Sortable, with a
+      Poker Squares reference row and a tick on every bar marking where the
+      classic sits. Fed by `src/metrics.generated.ts`, which the probe writes.
 - [ ] **9. Morning summary** — findings and a recommended shortlist.
 
 ## Decisions log
@@ -247,37 +248,53 @@ standing rules, so a few still read 100%.
 
 Measured over 20 seeds with the corrected methodology.
 
-| ruleset | target | greedy | careless | skill gap | 2-ply lift | mult live | spread | min cells | win |
+**The skill-gap column has been recomputed and every earlier value is void.**
+The "careless" baseline used to walk the value-sorted move list on a fixed
+stride, driven by a counter held in module state. That was wrong twice over:
+the counter carried from one ruleset to the next, so inserting a ruleset
+silently changed the baseline — and therefore the skill gap — of every ruleset
+after it in the list; and a stride over a sorted list means something different
+depending on how long the list is, which is exactly the thing that varies most
+between these rulesets. It is now uniform random legal play, seeded per run.
+Greedy and 2-ply were never affected, so **lookahead lift, mult participation,
+spread and min cells are unchanged** and the readings resting on them stand.
+Skill gap is the only column that moved, and it moved a lot.
+
+The table below is regenerated from `src/metrics.generated.ts`, which
+`npm run probe` writes, so it cannot drift from what the app shows.
+
+| ruleset | target | greedy | random | skill gap | 2-ply lift | mult live | spread | min cells | win |
 |---|---|---|---|---|---|---|---|---|---|
-| poker-baseline | 300 | 599 | 359 | 1.67 | **1.00** | 29% | 5.3 | 10 | 100% |
-| poker-tight | 540 | 599 | 336 | 1.78 | 1.06 | 29% | 5.3 | 10 | 85% |
-| poker-mult-amped | 620 | 786 | 362 | 2.17 | 1.09 | 50% | 4.0 | 10 | 85% |
-| poker-partials | 300 | 656 | 343 | 1.91 | 1.10 | 35% | 5.6 | 10 | 100% |
-| poker-short-run | 370 | 377 | 231 | 1.63 | 1.06 | 20% | 5.0 | 10 | 65% |
-| poker-partials-generous | 700 | 706 | 378 | 1.87 | **1.25** | 37% | 5.7 | 10 | 50% |
-| poker-flat-ranks | 435 | 440 | 275 | 1.60 | **1.00** | 34% | 4.0 | 10 | 50% |
-| poker-short-lines | 520 | 523 | 348 | 1.50 | 1.15 | 30% | 4.8 | **2** | 55% |
-| poker-long-lines | 660 | 667 | 379 | 1.76 | 1.07 | 24% | 6.4 | 12 | 55% |
-| poker-lean-hand | 545 | 549 | 335 | 1.64 | 1.13 | 27% | 5.4 | 10 | 50% |
-| poker-small-board | 440 | 445 | 300 | 1.48 | 1.11 | 18% | 5.0 | 8 | 55% |
-| **cribbage** | 600 | 621 | 258 | **2.41** | **1.21** | 44% | 7.0 | 10 | 55% |
-| cribbage-unbound | 1050 | 1032 | 270 | **3.82** | 1.18 | 30% | 15.0 | 13 | 45% |
-| cribbage-pure | 450 | 504 | 132 | **3.82** | **1.23** | 17% | 24.0 | 10 | 60% |
-| cribbage-lean | 500 | 522 | 240 | 2.17 | **1.21** | 42% | 6.0 | 10 | 60% |
-| cribbage-flush3 | 660 | 666 | 282 | 2.36 | 1.14 | 45% | 7.0 | 10 | 55% |
-| **cribbage-blank** | 550 | 555 | 228 | 2.43 | **1.31** | 35% | 5.0 | 5 | 45% |
-| poker-blank | 570 | 573 | 383 | 1.50 | 1.15 | 17% | 5.0 | 5 | 60% |
-| **hex-sprawl** | 1200 | 1201 | 224 | **5.36** | **1.26** | 29% | 15.5 | 13 | ~50% |
-| hex-sprawl-blank | 1120 | 1118 | 248 | 4.51 | **1.03** | 26% | 13.3 | 11 | ~50% |
-| hex-sprawl-flat | 965 | 966 | 216 | 4.47 | 1.23 | 30% | 16.0 | 13 | ~50% |
-| **draft-cribbage** | 345 | 345 | 258 | 1.34 | **1.42** | 37% | **4.0** | 10 | ~50% |
-| draft-poker | 440 | 439 | 354 | 1.24 | 1.23 | 20% | 3.7 | 10 | ~50% |
-| draft-hex | 625 | 624 | 280 | 2.23 | 1.24 | 23% | 7.7 | 13 | ~50% |
-| **mech-both-axes** | 3750 | 3750 | 1161 | 3.23 | 1.24 | **94%** | 13.0 | 9 | 50% |
-| mech-suit-axis | 665 | 663 | 267 | 2.48 | 1.18 | **12%** | 6.0 | 10 | 45% |
-| **mech-deferred** | 150 | 147 | 51 | 2.88 | **1.67** | 26% | **0.0** | 8 | 45% |
-| mech-free | 610 | 612 | 81 | *7.56* | 1.24 | 40% | 11.0 | **31** | 50% |
-| mech-lock-cash | 265 | *9* | *21* | *0.43* | *29.33* | 3% | 3.0 | **0** | *0%* |
+| poker-baseline | 300 | 599 | 323 | 1.85 | 1.09 | 29% | 5.3 | 10 | 100% |
+| poker-tight | 540 | 599 | 323 | 1.85 | 1.09 | 29% | 5.3 | 10 | 85% |
+| poker-mult-amped | 620 | 786 | 367 | 2.14 | 1.11 | 50% | 4 | 10 | 85% |
+| poker-partials | 300 | 656 | 330 | 1.99 | 1.19 | 35% | 5.6 | 10 | 100% |
+| poker-short-run | 370 | 377 | 196 | 1.92 | 1.06 | 20% | 5 | 10 | 65% |
+| poker-partials-generous | 700 | 706 | 337 | 2.09 | 1.32 | 37% | 5.7 | 10 | 50% |
+| poker-flat-ranks | 435 | 440 | 240 | 1.83 | 1.06 | 34% | 4 | 10 | 50% |
+| poker-short-lines | 520 | 523 | 293 | 1.78 | 1.18 | 30% | 4.8 | 2 | 55% |
+| poker-long-lines | 660 | 667 | 332 | 2.01 | 1.07 | 24% | 6.4 | 12 | 55% |
+| poker-lean-hand | 545 | 549 | 312 | 1.76 | 1.14 | 27% | 5.4 | 10 | 50% |
+| poker-small-board | 440 | 445 | 258 | 1.72 | 1.12 | 18% | 5 | 8 | 55% |
+| draft-cribbage | 345 | 345 | 210 | 1.64 | 1.42 | 37% | 4 | 10 | 60% |
+| draft-poker | 440 | 439 | 330 | 1.33 | 1.23 | 20% | 3.7 | 10 | 45% |
+| draft-hex | 625 | 624 | 226 | 2.76 | 1.24 | 23% | 7.7 | 13 | 45% |
+| hex-sprawl | 1200 | 1201 | 224 | 5.36 | 1.26 | 29% | 15.5 | 13 | 50% |
+| hex-sprawl-blank | 1120 | 1118 | 210 | 5.32 | 1.03 | 26% | 13.3 | 11 | 45% |
+| hex-sprawl-flat | 965 | 966 | 171 | 5.65 | 1.23 | 30% | 16 | 13 | 50% |
+| cribbage-blank | 550 | 555 | 186 | 2.98 | 1.42 | 35% | 5 | 5 | 55% |
+| poker-blank | 570 | 573 | 312 | 1.84 | 1.16 | 17% | 5 | 5 | 50% |
+| cribbage | 600 | 621 | 189 | 3.29 | 1.26 | 44% | 7 | 10 | 55% |
+| cribbage-unbound | 1050 | 1032 | 195 | 5.29 | 1.18 | 30% | 15 | 13 | 45% |
+| cribbage-pure | 450 | 504 | 54 | 9.33 | 1.43 | 17% | 24 | 10 | 60% |
+| cribbage-lean | 500 | 522 | 183 | 2.85 | 1.23 | 42% | 6 | 10 | 60% |
+| reference-poker-squares | 405 | 406 | 379 | 1.07 | 1.36 | 19% | 0 | 1 | 55% |
+| mech-both-axes | 3750 | 3750 | 717 | 5.23 | 1.24 | 94% | 13 | 9 | 50% |
+| mech-suit-axis | 665 | 663 | 198 | 3.35 | 1.18 | 12% | 6 | 10 | 45% |
+| mech-deferred | 150 | 147 | 39 | 3.77 | 1.67 | 26% | 0 | 8 | 45% |
+| mech-free | 610 | 612 | 72 | 8.5 | 1.24 | 40% | 11 | 31 | 50% |
+| mech-lock-cash | 265 | 9 | 12 | 0.75 | 29.33 | 3% | 3 | 0 | 0% |
+| cribbage-flush3 | 660 | 666 | 180 | 3.7 | 1.21 | 45% | 7 | 10 | 55% |
 
 ### Readings
 
@@ -286,7 +303,7 @@ Measured over 20 seeds with the corrected methodology.
   plays, and a much sharper indictment than the skill gap. `flat-ranks` is also
   1.00, so removing the rank gradient does not create depth either.
 - **Cribbage lifts to 1.21-1.23 across every variant.** Setup plays exist there.
-- **Skill gap: cribbage 2.41 vs poker 1.67.** Real but smaller than the earlier
+- **Skill gap: cribbage 3.29 vs poker 1.85** (recomputed baseline). Real but smaller than the earlier
   (broken) measurement claimed. Lookahead lift is the better discriminator.
 - **`short-lines` (cap 4) chokes the board** — min legal cells drops to 2 against
   10 everywhere else. PRD criterion 3 answered: a tighter cap does choke.
@@ -297,8 +314,8 @@ Measured over 20 seeds with the corrected methodology.
   whole structure follows from it. Poker gains far less from the same change
   (1.15), so this is not just "one more free choice", it interacts with the
   additive scoring. Strongest single result of the night.
-- **Hex sprawl has the widest skill gap measured: 5.36**, against cribbage's
-  2.41 and poker's 1.67, with a lookahead lift of 1.26. Three axes per placement
+- **Hex sprawl has one of the widest skill gaps measured: 5.36**, against
+  cribbage's 3.29 and poker's 1.85, with a lookahead lift of 1.26. Three axes per placement
   and uncapped lines both pull in the same direction.
 - **But its choice spread is 15.5**, against a healthy 7.0 for grid cribbage.
   The best move is fifteen times the median one, so most hexes are near-dead and
@@ -321,8 +338,10 @@ Measured over 20 seeds with the corrected methodology.
   because with nothing to fish with you have to care what the board will accept
   next. Worth weighing against the fact that the probe's agents never burn, so
   the measured game is slightly harsher than a human's.
-- **The ring bonus is doing real work**: removing it drops the skill gap from
-  5.36 to 4.47.
+- **The ring bonus is doing real work**, though not in the direction first
+  recorded: on the corrected baseline, removing it moves the skill gap 5.36 →
+  5.65 while the lookahead lift drops 1.26 → 1.23. It buys planning value, not
+  raw separation from random play.
 - Blank boards are more **constrained**, not less: min legal cells drops to 5
   against 10 anchored, because growth from an edge or corner has fewer
   directions than growth from the centre.
@@ -379,3 +398,34 @@ Measured over 20 seeds with the corrected methodology.
   answer by playing it. What the probe establishes is only that it is not
   degenerate in the way the others can be measured for — and that it punishes
   naive play harder than anything else here.
+
+#### Against the Poker Squares reference
+
+The queue asked for Poker Squares as the benchmark, so it now ships as a
+ruleset: 5x5, one card at a time, place anywhere, no discards, a line pays only
+when it is full. It is an *approximation* — the classic sums poker hand values
+over ten fixed lines at the end, where everything here multiplies chips by mult
+per placement — and it is labelled as one in the app.
+
+- **The cleanest thing it tells us: in the classic's shape, playing well is
+  worth almost nothing.** Greedy 406 against random 379 — a skill gap of 1.07,
+  the lowest in the table by a distance. Both agents fill the same 25 cells; one
+  picks the best-scoring cell every turn and finishes 7% ahead. That is a strong
+  result and it does not depend on any of the caveats below, because both agents
+  face the identical board.
+- **Its lookahead lift of 1.36 is high, and cannot be compared straight.** The
+  reference trips two of the three caveat conditions the metrics page flags —
+  `greedy` (a line pays only on completion, so best-move-now has no gradient)
+  and `open` (no adjacency, so the move set is huge and mostly worthless). A
+  lift measured against a degenerate greedy is not the same quantity as
+  cribbage's 1.26, which is measured against a sound one. The honest statement
+  is that the reference row cannot be read cleanly on lift — not that it beats
+  us there.
+- Sorted by lookahead lift, only four non-degenerate rulesets sit above it:
+  `cribbage-pure` (1.43), `draft-cribbage` (1.42), `cribbage-blank` (1.42) and
+  `poker-partials-generous` (1.32). Plain cribbage (1.26) and hex sprawl (1.26)
+  do not. Since the reference's own lift is inflated, this is not evidence that
+  the classic is deeper — but it is a reason not to claim the opposite.
+- On skill gap, where the comparison *is* clean, every cribbage and hex variant
+  beats it by three to five times, and even the poker baseline beats it 1.85 to
+  1.07.

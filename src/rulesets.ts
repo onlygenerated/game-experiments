@@ -233,6 +233,26 @@ export const RULESETS: Ruleset[] = [
     config: cribbageBase({ handSize: 4, discardsPerRun: 5, targetScore: 500 }),
   },
   {
+    id: 'reference-poker-squares',
+    name: 'Poker Squares (reference)',
+    group: 'Reference',
+    blurb:
+      'The classic, as closely as these rules can express it: 5x5, one card at a time, place anywhere, no discards, and a line pays only when it is full. The external benchmark every variant here is trying to beat.',
+    config: base({
+      gridSize: 5,
+      lineCap: 5,
+      placementsPerRun: 25,
+      handSize: 1,
+      minDiscardSelection: 1,
+      maxDiscardSelection: 1,
+      discardsPerRun: 0,
+      startWithAnchor: false,
+      mechanics: { ...CONFIG.mechanics, requireAdjacency: false, payOnCompleteOnly: true },
+      targetScore: 405,
+    }),
+  },
+
+  {
     id: 'mech-both-axes',
     name: 'Both axes score',
     group: 'Mechanics',
