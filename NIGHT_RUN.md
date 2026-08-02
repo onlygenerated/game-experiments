@@ -47,7 +47,7 @@ Cheap items first so a short night still banks the whole of category 1.
       `rulesets.ts`, probe-calibrated targets.
 - [x] **2. Blank board (M6)** — no centre anchor; first placement picks the
       origin. Needed by the sprawl work.
-- [ ] **3. Hex Sprawl — engine** — axial coords, three axes, line extraction,
+- [x] **3. Hex Sprawl — engine** — axial coords, three axes, line extraction,
       legality, tests. The big one.
 - [ ] **4. Hex Sprawl — board UI** — hex rendering, drag and preview reuse.
 - [ ] **5. Hex Sprawl — ring bonus** — distance multiplier + frontier growth.
@@ -81,6 +81,21 @@ nothing to gate. One board test changed meaning as a result and was rewritten.
 
 **Would-be anchor card stays in the deck** when the anchor is off, rather than
 being drawn and discarded, so the same seed stays comparable across both.
+
+**Hex mult uses both diagonals.** Three axes need a third slot in a two-slot
+chips x mult spine. Axis 0 (E-W) feeds chips; axes 1 and 2 both feed mult and
+are summed with an offset (`m1 + m2 - 1`), so two dead diagonals leave mult at 1
+while either one coming alive lifts it. The alternative — making the third axis
+a flat bonus — would have left one diagonal decorative.
+
+**Uncapped lines, best-window scoring.** Per the pre-declared default there is
+no line cap on hex. A line can outgrow any hand, so only the strongest
+contiguous `hexWindow` (5) stretch scores. Long lines stay valuable without one
+line becoming the whole game, and the player-facing read stays "what is my best
+five here". The full run is still highlighted; only the window scores.
+
+**Hex board is a sparse Map**, not a dense array, because a sprawl has no fixed
+extent. `hexRadius` (4, so 61 hexes) bounds it for rendering only.
 
 **Targets for the 7 new config variants** set to their measured greedy median,
 which lands them at 50-65% win. The 8 pre-existing rulesets stay frozen per the

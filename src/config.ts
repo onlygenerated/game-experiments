@@ -44,6 +44,16 @@ export interface Config {
   /** Which scoring lens converts a line of cards into chips or mult. */
   lensId: string;
 
+  /** Hex structures only: how many rings out the playable area extends. */
+  hexRadius: number;
+  /**
+   * Hex structures only: longest stretch of a line that scores. Lines are
+   * uncapped, so the best window stands in for the old length cap.
+   */
+  hexWindow: number;
+  /** Hex structures only: score x (1 + ring * this). Rewards building outward. */
+  hexRingBonus: number;
+
   /**
    * Whether a card is dealt to the centre before play. With it off the board
    * starts empty and the first placement picks the origin, which is what any
@@ -99,6 +109,9 @@ export const CONFIG: Config = {
 
   lensId: 'poker',
   startWithAnchor: true,
+  hexRadius: 4,
+  hexWindow: 5,
+  hexRingBonus: 0.1,
 
   rankChips: {
     2: 2,
