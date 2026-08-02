@@ -10,7 +10,14 @@ plan state in context alone.
 
 ## Where things live
 
-- **Repo**: `onlygenerated/game-experiments`, branch `claude/new-session-1bu1l1`.
+- **Repo**: `onlygenerated/game-experiments`.
+  - `claude/new-session-1bu1l1` — the working branch. All night-run work goes here.
+  - `main` — created 2026-08-02 at the same commit, so fresh sessions have a
+    sane base to branch from. The repo previously had *only* the working branch,
+    which meant any session told to make a new branch had nothing to branch off.
+  - The repo's **default branch is still `claude/new-session-1bu1l1`**. Changing
+    it needs GitHub repo settings; the session proxy refuses settings writes
+    ("Repository settings writes are not permitted through this proxy").
 - **Artifact**: https://claude.ai/code/artifact/6613c961-31a5-4a7b-8c61-abeb633d25e6
   Republish by passing that URL as the `url` parameter, so the link the user
   already has keeps working. A fresh session that omits it mints a new one.
