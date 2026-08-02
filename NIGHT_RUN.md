@@ -113,7 +113,13 @@ Cheap items first so a short night still banks the whole of category 1.
 - [x] **8. Metrics page** — in-app, behind the Metrics button. Sortable, with a
       Poker Squares reference row and a tick on every bar marking where the
       classic sits. Fed by `src/metrics.generated.ts`, which the probe writes.
-- [ ] **9. Morning summary** — findings and a recommended shortlist.
+- [x] **9. Morning summary** — `FINDINGS.md` at the repo root: both PRD
+      questions answered, the rankings read honestly, a three-item shortlist,
+      one experiment worth running next, and what the numbers cannot tell you.
+
+**The queue is complete.** The hourly Routine is disabled — re-enabling it with
+nothing unticked would fire a session with no work to do. Add items here and
+re-enable it, or delete it.
 
 ## Decisions log
 
