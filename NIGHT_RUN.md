@@ -93,7 +93,7 @@ Cheap items first so a short night still banks the whole of category 1.
 - [x] **4. Hex Sprawl — board UI** — hex rendering, drag and preview reuse.
 - [x] **5. Hex Sprawl — ring bonus** — landed with item 4; three hex rulesets ship,
       including one with the bonus off as a control.
-- [ ] **5b. Unify game.ts and hex/game.ts** behind a Structure interface. They
+- [x] **5b. Unify game.ts and hex/game.ts** behind a Structure interface. They
       differ only in six board calls. Deliberate duplication for now — see
       decisions log.
 - [x] **6. One-Card Draft** — no hand; reveal one card, place or burn.
@@ -162,6 +162,30 @@ small parallel files. Queued as 5b, not forgotten.
 **Every hex gets a lit rim.** `clip-path` clips borders as well as the shape, so
 rims have to be drawn as an inset layer. Without one the empty hexes vanished
 and the disc read as a lopsided smear rather than a board.
+
+**5b done: `src/engine.ts` now holds the one copy of run orchestration**
+(deal, place, discard, settle) behind a `Structure<TBoard, TCoord, TScore>`
+interface with six methods (`empty`, `anchor`, `isLegal`, `legalCells`,
+`withCard`, `scorePlacement`). `game.ts` and `hex/game.ts` shrank to ~30-line
+adapters that wrap `board.ts` / `hex/board.ts` into a `Structure` and export
+the same public names (`newGame`/`placeCard`/`discardCards`,
+`newHexGame`/`placeHexCard`/`discardHexCards`) with the same call signatures,
+so `App.tsx`, `tools/probe.test.ts` and the existing tests needed zero
+changes. `board.ts`/`hex/board.ts` themselves are untouched — the duplication
+that got removed was only ever in the run-state layer, not the board math,
+so grid keeps taking `(r, c)` and hex keeps taking a `Hex`; the adapter in
+`game.ts` wraps grid's positional args into a `Coord` object at the boundary.
+Verified with `npm test` (159 passing), `npx tsc -b --noEmit` (clean), a
+60s-timeout `npm run probe` run (numbers consistent with history within the
+probe's known seed noise), and a headless-Chromium pass placing a card on
+both a grid ruleset and a hex ruleset through the real UI.
+
+**Probe's default vitest timeout (5000ms) is too short for this container** —
+a full 24-ruleset run takes ~31s here, so `npm run probe` as configured now
+reports a timeout failure even though the computation completes and prints
+its table before vitest gives up on it. Not fixed — out of scope for 5b, and
+`vitest.probe.config.ts` already isn't part of `npm test`. Worth a
+`testTimeout` bump in a future item if the probe is run unattended again.
 
 **The probe now dispatches on structure.** It would otherwise have measured hex
 rulesets with grid functions and produced plausible, entirely wrong numbers.
