@@ -43,7 +43,7 @@ request, delete anything of the user's, or publish anything publicly.
 
 Cheap items first so a short night still banks the whole of category 1.
 
-- [ ] **1. Category 1 config variants** — the remaining 6 of 10 as data in
+- [x] **1. Category 1 config variants** — the remaining 6 of 10 as data in
       `rulesets.ts`, probe-calibrated targets.
 - [ ] **2. Blank board (M6)** — no centre anchor; first placement picks the
       origin. Needed by the sprawl work.
@@ -60,15 +60,57 @@ Cheap items first so a short night still banks the whole of category 1.
 
 ## Decisions log
 
-_Appended as they are taken._
+**Probe methodology was wrong and has been fixed.** Runs used to stop the moment
+the target was hit, so a ruleset with a higher target played more placements,
+scored more, and showed a mechanically wider skill gap that had nothing to do
+with its mechanics. Every cross-ruleset number published before this point is
+void. Runs now play the full placement budget; win rate is derived afterwards,
+which is exact because score only accumulates.
+
+**Choke metric was also wrong** — it measured "fewer than five legal cells",
+which is true on turn 1 of every ruleset because a lone anchor has exactly four
+neighbours. Now reports the fewest legal cells seen after turn 5.
+
+**Probe kept as a tool** rather than rewritten each time: `tools/probe.test.ts`,
+run with `npm run probe`, excluded from `npm test`.
+
+**Targets for the 7 new config variants** set to their measured greedy median,
+which lands them at 50-65% win. The 8 pre-existing rulesets stay frozen per the
+standing rules, so a few still read 100%.
 
 ## Results log
 
-_Probe numbers per variant, appended as they are measured._
+Measured over 20 seeds with the corrected methodology.
 
-| variant | target | greedy | careless | skill gap | 2-ply lift | mult live | spread | win |
-|---|---|---|---|---|---|---|---|---|
-| poker-baseline | 300 | 336 | 310 | 1.08 | 1.07 | 13% | 5.1 | 100% |
-| cribbage | 600 | 606 | 246 | 2.46 | 1.14 | 42% | 7.0 | 55% |
-| cribbage-unbound | 1050 | 1032 | 207 | 4.99 | 1.18 | 27% | 15.0 | 45% |
-| cribbage-pure | 450 | 456 | 84 | 5.43 | 1.17 | 15% | 24.0 | 60% |
+| ruleset | target | greedy | careless | skill gap | 2-ply lift | mult live | spread | min cells | win |
+|---|---|---|---|---|---|---|---|---|---|
+| poker-baseline | 300 | 599 | 359 | 1.67 | **1.00** | 29% | 5.3 | 10 | 100% |
+| poker-tight | 540 | 599 | 336 | 1.78 | 1.06 | 29% | 5.3 | 10 | 85% |
+| poker-mult-amped | 620 | 786 | 362 | 2.17 | 1.09 | 50% | 4.0 | 10 | 85% |
+| poker-partials | 300 | 656 | 343 | 1.91 | 1.10 | 35% | 5.6 | 10 | 100% |
+| poker-short-run | 370 | 377 | 231 | 1.63 | 1.06 | 20% | 5.0 | 10 | 65% |
+| poker-partials-generous | 700 | 706 | 378 | 1.87 | **1.25** | 37% | 5.7 | 10 | 50% |
+| poker-flat-ranks | 435 | 440 | 275 | 1.60 | **1.00** | 34% | 4.0 | 10 | 50% |
+| poker-short-lines | 520 | 523 | 348 | 1.50 | 1.15 | 30% | 4.8 | **2** | 55% |
+| poker-long-lines | 660 | 667 | 379 | 1.76 | 1.07 | 24% | 6.4 | 12 | 55% |
+| poker-lean-hand | 545 | 549 | 335 | 1.64 | 1.13 | 27% | 5.4 | 10 | 50% |
+| poker-small-board | 440 | 445 | 300 | 1.48 | 1.11 | 18% | 5.0 | 8 | 55% |
+| **cribbage** | 600 | 621 | 258 | **2.41** | **1.21** | 44% | 7.0 | 10 | 55% |
+| cribbage-unbound | 1050 | 1032 | 270 | **3.82** | 1.18 | 30% | 15.0 | 13 | 45% |
+| cribbage-pure | 450 | 504 | 132 | **3.82** | **1.23** | 17% | 24.0 | 10 | 60% |
+| cribbage-lean | 500 | 522 | 240 | 2.17 | **1.21** | 42% | 6.0 | 10 | 60% |
+| cribbage-flush3 | 660 | 666 | 282 | 2.36 | 1.14 | 45% | 7.0 | 10 | 55% |
+
+### Readings
+
+- **Poker baseline's lookahead lift is 1.00.** Planning one move ahead gains
+  *nothing* — the strongest evidence yet that the poker version has no setup
+  plays, and a much sharper indictment than the skill gap. `flat-ranks` is also
+  1.00, so removing the rank gradient does not create depth either.
+- **Cribbage lifts to 1.21-1.23 across every variant.** Setup plays exist there.
+- **Skill gap: cribbage 2.41 vs poker 1.67.** Real but smaller than the earlier
+  (broken) measurement claimed. Lookahead lift is the better discriminator.
+- **`short-lines` (cap 4) chokes the board** — min legal cells drops to 2 against
+  10 everywhere else. PRD criterion 3 answered: a tighter cap does choke.
+- **`partials-generous` has the best poker lift at 1.25**, the only poker variant
+  competitive with cribbage on depth. Worth a human playtest.

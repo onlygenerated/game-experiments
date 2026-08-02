@@ -30,7 +30,7 @@ export const RULESETS: Ruleset[] = [
     id: 'poker-tight',
     name: 'Poker — tight target',
     group: 'Poker tuning',
-    blurb: 'Target 425. Tests whether the flat skill curve was just a soft bar.',
+    blurb: 'Raised target. Tests whether the flat skill curve was just a soft bar.',
     config: base({ targetScore: 540 }),
   },
   {
@@ -59,6 +59,63 @@ export const RULESETS: Ruleset[] = [
     group: 'Poker tuning',
     blurb: '3- and 4-card straights and flushes count at a reduced rate. The PRD open question.',
     config: base({ partialHands: { ...CONFIG.partialHands, enabled: true } }),
+  },
+
+  {
+    id: 'poker-short-run',
+    name: 'Poker — short run',
+    group: 'Poker tuning',
+    blurb: 'Ten placements instead of fifteen. Scarcity of turns rather than a higher bar.',
+    config: base({ placementsPerRun: 10, targetScore: 370 }),
+  },
+  {
+    id: 'poker-partials-generous',
+    name: 'Poker — generous partials',
+    group: 'Poker tuning',
+    blurb: 'Partial straights and flushes at 0.75 / 0.9 instead of 0.5 / 0.75.',
+    config: base({
+      partialHands: { enabled: true, minCards: 3, scaleByLength: { 3: 0.75, 4: 0.9 } },
+      targetScore: 700,
+    }),
+  },
+  {
+    id: 'poker-flat-ranks',
+    name: 'Poker — flat rank chips',
+    group: 'Poker tuning',
+    blurb:
+      'Every rank worth 5. Kills the play-high-cards gradient so hand formation is the only chip source.',
+    config: base({
+      rankChips: Object.fromEntries([...Array(13)].map((_, i) => [i + 2, 5])),
+      targetScore: 435,
+    }),
+  },
+  {
+    id: 'poker-short-lines',
+    name: 'Poker — short lines (cap 4)',
+    group: 'Poker tuning',
+    blurb: 'Tighter cap. Does it create useful scarcity, or choke the board too early?',
+    config: base({ lineCap: 4, targetScore: 520 }),
+  },
+  {
+    id: 'poker-long-lines',
+    name: 'Poker — long lines (cap 6)',
+    group: 'Poker tuning',
+    blurb: 'Looser cap. Do longer lines make straights and flushes common enough to matter?',
+    config: base({ lineCap: 6, targetScore: 660 }),
+  },
+  {
+    id: 'poker-lean-hand',
+    name: 'Poker — lean hand',
+    group: 'Poker tuning',
+    blurb: 'Hand of 4, five discards. Is the flatness because 7 cards always contain a good option?',
+    config: base({ handSize: 4, discardsPerRun: 5, targetScore: 545 }),
+  },
+  {
+    id: 'poker-small-board',
+    name: 'Poker — small board (5x5)',
+    group: 'Poker tuning',
+    blurb: 'Crowded grid, 12 placements. Does spatial pressure make position matter?',
+    config: base({ gridSize: 5, placementsPerRun: 12, targetScore: 440 }),
   },
 
   {

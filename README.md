@@ -124,27 +124,46 @@ straight is not a straight — same as poker. Partials are about short lines, no
 
 ## Measured comparison
 
-A probe over 20 seeds ran three agents per ruleset — greedy (best move now), careless
-(samples across the move distribution), and a 2-ply lookahead — then was deleted, since an
-in-game solver is out of scope. Medians:
+`npm run probe` plays every ruleset over 20 seeds with three agents — greedy
+(best move now), careless (samples across the move distribution), and a 2-ply
+lookahead — and reports the table below.
 
-| ruleset | target | greedy | careless | **skill gap** | 2-ply lift | mult live | spread | win |
-|---|---|---|---|---|---|---|---|---|
-| poker — baseline | 300 | 336 | 310 | **1.08** | 1.07 | 13% | 5.1 | 100% |
-| poker — mult amplified | 620 | 654 | 385 | **1.70** | 1.15 | 46% | 4.0 | 85% |
-| **cribbage** | 600 | 606 | 246 | **2.46** | 1.14 | 42% | 7.0 | 55% |
-| cribbage — unbound (cap 7) | 1050 | 1032 | 207 | **4.99** | 1.18 | 27% | 15.0 | 45% |
-| cribbage — pure count | 450 | 456 | 84 | **5.43** | 1.17 | 15% | 24.0 | 60% |
+Runs play the **full placement budget** rather than stopping on a win. Stopping
+early made scores incomparable across rulesets: a higher target meant a longer
+run, a bigger score, and a wider apparent skill gap that had nothing to do with
+the mechanics. Win rate is derived afterwards, which is exact because score only
+accumulates.
 
-- **Skill gap** (greedy ÷ careless) is the headline. Poker's 1.08 means playing well was worth
-  8% — the flatness that motivated all of this. Cribbage's 2.46 means it is worth 2.5×.
-- **Mult live** (placements where mult > 1) went from 13% to 42%. Poker's dead `High Card ×1`
-  column is fixed, because a two-card cribbage line can already count.
-- **Spread** (best move ÷ median move) is the guard rail in the other direction. Cribbage sits
-  at 7 against poker's 5 — noticeably sharper without being degenerate. `pure count` at 24 is
-  what "most moves are worthless" looks like, which is why the flat base exists.
-- Win rates are calibrated so a greedy player lands near the target and has to actually play
-  well to clear it. Poker's baseline stays at 100% deliberately — it is the control.
+| ruleset | target | greedy | careless | skill gap | 2-ply lift | mult live | spread | min cells | win |
+|---|---|---|---|---|---|---|---|---|---|
+| poker-baseline | 300 | 599 | 359 | 1.67 | **1.00** | 29% | 5.3 | 10 | 100% |
+| poker-tight | 540 | 599 | 336 | 1.78 | 1.06 | 29% | 5.3 | 10 | 85% |
+| poker-mult-amped | 620 | 786 | 362 | 2.17 | 1.09 | 50% | 4.0 | 10 | 85% |
+| poker-partials | 300 | 656 | 343 | 1.91 | 1.10 | 35% | 5.6 | 10 | 100% |
+| poker-short-run | 370 | 377 | 231 | 1.63 | 1.06 | 20% | 5.0 | 10 | 65% |
+| poker-partials-generous | 700 | 706 | 378 | 1.87 | **1.25** | 37% | 5.7 | 10 | 50% |
+| poker-flat-ranks | 435 | 440 | 275 | 1.60 | **1.00** | 34% | 4.0 | 10 | 50% |
+| poker-short-lines | 520 | 523 | 348 | 1.50 | 1.15 | 30% | 4.8 | **2** | 55% |
+| poker-long-lines | 660 | 667 | 379 | 1.76 | 1.07 | 24% | 6.4 | 12 | 55% |
+| poker-lean-hand | 545 | 549 | 335 | 1.64 | 1.13 | 27% | 5.4 | 10 | 50% |
+| poker-small-board | 440 | 445 | 300 | 1.48 | 1.11 | 18% | 5.0 | 8 | 55% |
+| **cribbage** | 600 | 621 | 258 | **2.41** | **1.21** | 44% | 7.0 | 10 | 55% |
+| cribbage-unbound | 1050 | 1032 | 270 | **3.82** | 1.18 | 30% | 15.0 | 13 | 45% |
+| cribbage-pure | 450 | 504 | 132 | **3.82** | **1.23** | 17% | 24.0 | 10 | 60% |
+| cribbage-lean | 500 | 522 | 240 | 2.17 | **1.21** | 42% | 6.0 | 10 | 60% |
+| cribbage-flush3 | 660 | 666 | 282 | 2.36 | 1.14 | 45% | 7.0 | 10 | 55% |
+
+- **Lookahead lift is the sharpest metric.** Poker's baseline sits at **1.00** —
+  planning one move ahead gains nothing at all, so there are no setup plays to
+  find. Cribbage runs 1.21-1.23.
+- **Skill gap** (greedy ÷ careless) puts cribbage at 2.41 against poker's 1.67.
+- **Mult live** (placements where mult > 1) goes from 29% to 44%, because a
+  two-card cribbage line can already count where a poker one cannot.
+- **Spread** (best move ÷ median move) is the guard rail the other way. Cribbage
+  at 7.0 is sharper than poker's 5.3 without being degenerate; `pure count` at
+  24.0 is what "most moves are worthless" looks like, which is why the flat base
+  chip exists.
+- **`short-lines` chokes**: min legal cells 2 versus 10 elsewhere.
 
 ## Presentation
 
