@@ -75,7 +75,13 @@ export default function App() {
   const state = run.s;
   const playing = state.status === 'playing';
 
-  const selectedIndex = selected.size === 1 ? [...selected][0] : null;
+  // With a hand of one there is nothing to choose between, so the revealed card
+  // is always live. Making the player click it first would be pure ceremony and
+  // would hide the actual question the draft variant asks: where does it go.
+  const soleCard = cfg.handSize === 1 && state.hand.length === 1;
+  const activeSelection = soleCard ? new Set([0]) : selected;
+
+  const selectedIndex = activeSelection.size === 1 ? [...activeSelection][0] : null;
   const selectedCard = selectedIndex === null ? null : (state.hand[selectedIndex] ?? null);
 
   // --- structure-dispatched actions ------------------------------------------
@@ -115,13 +121,15 @@ export default function App() {
   );
 
   const toggle = useCallback((i: number) => {
+    // Deselecting the only card would leave nothing playable.
+    if (soleCard) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(i)) next.delete(i);
       else next.add(i);
       return next;
     });
-  }, []);
+  }, [soleCard]);
 
   // --- drag ------------------------------------------------------------------
 
@@ -190,7 +198,7 @@ export default function App() {
   function handleDiscard() {
     // Freeze the outgoing cards where they sat, then let the hand refill under
     // them — the fly-away is purely decorative and never gates the state change.
-    const leaving = [...selected]
+    const leaving = [...activeSelection]
       .sort((a, b) => a - b)
       .map((i, order) => {
         const rect = document.querySelector(`[data-hand-index="${i}"]`)?.getBoundingClientRect();
@@ -205,7 +213,7 @@ export default function App() {
     if (flyTimer.current) clearTimeout(flyTimer.current);
     flyTimer.current = setTimeout(() => setFlying([]), DISCARD_MS + leaving.length * 45);
 
-    const idx = [...selected];
+    const idx = [...activeSelection];
     push(
       run.kind === 'hex'
         ? { kind: 'hex', s: discardHexCards(run.s, idx, cfg) }
@@ -273,10 +281,14 @@ export default function App() {
     setTarget(null);
   }
 
-  const n = selected.size;
+  const n = activeSelection.size;
   const hint = drag
     ? 'Drop on a highlighted cell'
-    : n === 0
+    : soleCard
+      ? touch
+        ? 'Tap a green cell, or burn it'
+        : 'Place it, or burn it'
+      : n === 0
       ? touch
         ? 'Tap or drag a card'
         : 'Click or drag a card'
@@ -290,8 +302,9 @@ export default function App() {
     <HandTray
       cfg={cfg}
       hand={state.hand}
-      selected={selected}
+      selected={activeSelection}
       onToggle={toggle}
+      soleCard={soleCard}
       onDiscard={handleDiscard}
       discardsLeft={state.discardsLeft}
       disabled={!playing}

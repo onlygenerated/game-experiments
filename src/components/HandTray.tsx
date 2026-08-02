@@ -16,6 +16,7 @@ export function HandTray({
   discardsLeft,
   disabled,
   hint,
+  soleCard,
   dragIndex,
   dealtIds,
   onCardPointerDown,
@@ -31,6 +32,8 @@ export function HandTray({
   discardsLeft: number;
   disabled: boolean;
   hint: string;
+  /** Hand of one: the card is implicitly selected and cannot be deselected. */
+  soleCard: boolean;
   /** Index currently being dragged, so its slot can read as vacated. */
   dragIndex: number | null;
   /** Card ids that just arrived, for the deal-in animation. */
@@ -111,7 +114,7 @@ export function HandTray({
               : 'cursor-not-allowed bg-neutral-800 text-neutral-500 shadow-none'
           }`}
         >
-          Discard {n > 0 ? n : ''} ({discardsLeft})
+          {soleCard ? 'Burn' : `Discard ${n > 0 ? n : ''}`} ({discardsLeft})
         </button>
       </div>
     </div>

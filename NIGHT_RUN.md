@@ -68,7 +68,7 @@ Cheap items first so a short night still banks the whole of category 1.
 - [ ] **5b. Unify game.ts and hex/game.ts** behind a Structure interface. They
       differ only in six board calls. Deliberate duplication for now — see
       decisions log.
-- [ ] **6. One-Card Draft** — no hand; reveal one card, place or burn.
+- [x] **6. One-Card Draft** — no hand; reveal one card, place or burn.
 - [ ] **7. Category 2 mechanic variants** — both-axes, suit-sets-axis,
       deferred scoring, lock-and-cash, free placement.
 - [ ] **8. Metrics page** — every ruleset ranked by skill gap, lookahead lift,
@@ -138,6 +138,21 @@ and the disc read as a lopsided smear rather than a board.
 **The probe now dispatches on structure.** It would otherwise have measured hex
 rulesets with grid functions and produced plausible, entirely wrong numbers.
 
+**One-Card Draft needed no engine work.** "Reveal one card, place or burn" is
+exactly `handSize: 1` with discards clamped to one. What it did need was UI: with
+a hand of one there is nothing to choose between, so the revealed card is
+implicitly selected and cannot be deselected. Making the player click their only
+card first would be ceremony that hides the actual question the variant asks.
+The discard button reads Burn there and works without a selection step.
+
+**Routine could not clone the repo (16:52 firing).** Fresh sessions spawned by a
+Routine reach git through a per-session proxy that is only provisioned for
+repositories attached to that session as a *source*, and `create_trigger` does
+not expose a sources parameter. The Routine was therefore never able to run. It
+has been disabled; a durable replacement has to be created from the claude.ai
+Routines UI with the repository selected. An interim self-bind Routine fires
+into the original session, which already has the clone.
+
 **Targets for the 7 new config variants** set to their measured greedy median,
 which lands them at 50-65% win. The 8 pre-existing rulesets stay frozen per the
 standing rules, so a few still read 100%.
@@ -169,6 +184,9 @@ Measured over 20 seeds with the corrected methodology.
 | **hex-sprawl** | 1200 | 1201 | 224 | **5.36** | **1.26** | 29% | 15.5 | 13 | ~50% |
 | hex-sprawl-blank | 1120 | 1118 | 248 | 4.51 | **1.03** | 26% | 13.3 | 11 | ~50% |
 | hex-sprawl-flat | 965 | 966 | 216 | 4.47 | 1.23 | 30% | 16.0 | 13 | ~50% |
+| **draft-cribbage** | 345 | 345 | 258 | 1.34 | **1.42** | 37% | **4.0** | 10 | ~50% |
+| draft-poker | 440 | 439 | 354 | 1.24 | 1.23 | 20% | 3.7 | 10 | ~50% |
+| draft-hex | 625 | 624 | 280 | 2.23 | 1.24 | 23% | 7.7 | 13 | ~50% |
 
 ### Readings
 
@@ -201,6 +219,17 @@ Measured over 20 seeds with the corrected methodology.
   so the choice that mattered on a 7x7 grid evaporates. Opposite sign from the
   grid result, and a caution against assuming findings transfer across
   structures.
+- **One-Card Draft has the best decision *shape* of anything measured.** Its
+  lookahead lift of 1.42 is the highest recorded, and its choice spread of 4.0
+  is the lowest — no move screams at you, and planning ahead pays more than
+  anywhere else. Its raw skill gap is only 1.34, which reads as weak until you
+  notice what the two numbers mean together: the game stops being "spot the big
+  number" and becomes "set up the next card". That is the split criterion 1 of
+  the PRD was actually asking about.
+- Removing the hand **raises** the value of lookahead across all three lenses,
+  because with nothing to fish with you have to care what the board will accept
+  next. Worth weighing against the fact that the probe's agents never burn, so
+  the measured game is slightly harsher than a human's.
 - **The ring bonus is doing real work**: removing it drops the skill gap from
   5.36 to 4.47.
 - Blank boards are more **constrained**, not less: min legal cells drops to 5

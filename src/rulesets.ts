@@ -119,6 +119,48 @@ export const RULESETS: Ruleset[] = [
   },
 
   {
+    id: 'draft-cribbage',
+    name: 'One-Card Draft',
+    group: 'Draft',
+    blurb:
+      'No hand. One card is revealed; place it or burn it. Isolates whether the placement decision is interesting on its own.',
+    config: cribbageBase({
+      handSize: 1,
+      minDiscardSelection: 1,
+      maxDiscardSelection: 1,
+      discardsPerRun: 8,
+      targetScore: 345,
+    }),
+  },
+  {
+    id: 'draft-poker',
+    name: 'One-Card Draft — poker',
+    group: 'Draft',
+    blurb: 'The same draft loop against the control lens.',
+    config: base({
+      handSize: 1,
+      minDiscardSelection: 1,
+      maxDiscardSelection: 1,
+      discardsPerRun: 8,
+      targetScore: 440,
+    }),
+  },
+  {
+    id: 'draft-hex',
+    name: 'One-Card Draft — hex',
+    group: 'Draft',
+    blurb: 'Draft loop on the hex sprawl. Pure placement, three axes, no hand to fall back on.',
+    config: cribbageBase({
+      structure: 'hex',
+      handSize: 1,
+      minDiscardSelection: 1,
+      maxDiscardSelection: 1,
+      discardsPerRun: 8,
+      targetScore: 625,
+    }),
+  },
+
+  {
     id: 'hex-sprawl',
     name: 'Hex Sprawl',
     group: 'Hex',
