@@ -65,6 +65,41 @@ export interface Config {
   startWithAnchor: boolean;
 
   /**
+   * Category-2 mechanic variants. These change how a placement scores, not
+   * what the numbers are, so they are read by `scorePlacement` and the
+   * legality check rather than by a lens. Each one exists to falsify a
+   * specific assumption the PRD baked in without testing.
+   *
+   * `axisMode` and `payOnCompleteOnly` are grid-only. The hex sprawl has three
+   * axes and uncapped lines, so "the two axes" and "complete" have no meaning
+   * there; hex rulesets leave them at the defaults.
+   */
+  mechanics: {
+    /**
+     * How the two axes map onto the two resources.
+     *
+     * 'split' — row feeds chips, col feeds mult. The PRD default.
+     * 'both'  — every line feeds both. If this plays the same, the axis split
+     *           is decoration rather than the source of positional tension.
+     * 'suit'  — the placed card's suit decides which axis feeds which, moving
+     *           the decision from *where* to play to *what* to play.
+     */
+    axisMode: 'split' | 'both' | 'suit';
+    /**
+     * Lines pay only on reaching the cap; a placement that completes neither
+     * line banks nothing. Tests whether scoring every single placement is what
+     * makes the loop satisfying, or whether deferred payoff reads as tension.
+     */
+    payOnCompleteOnly: boolean;
+    /**
+     * Placements must touch an existing card. Off means play anywhere on the
+     * board, which is the cleanest test of whether adjacency is what makes
+     * this a puzzle rather than a sequence of independent draws.
+     */
+    requireAdjacency: boolean;
+  };
+
+  /**
    * Cribbage lens. The count is additive, so these rates decide how fast a
    * growing structure runs away with the score.
    */
@@ -112,6 +147,11 @@ export const CONFIG: Config = {
 
   lensId: 'poker',
   startWithAnchor: true,
+  mechanics: {
+    axisMode: 'split',
+    payOnCompleteOnly: false,
+    requireAdjacency: true,
+  },
   structure: 'grid',
   hexRadius: 4,
   hexWindow: 5,

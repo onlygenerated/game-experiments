@@ -80,7 +80,15 @@ export function hexLineCards(board: HexBoard, h: Hex, axis: HexAxis): Card[] {
 export function isLegalHexPlacement(board: HexBoard, h: Hex, cfg: Config = CONFIG): boolean {
   if (!inHexBounds(h, cfg)) return false;
   if (isHexOccupied(board, h)) return false;
-  if (!hasHexNeighbor(board, h) && !isHexBoardEmpty(board)) return false;
+  // `axisMode` and `payOnCompleteOnly` are grid-only — three axes and uncapped
+  // lines give them nothing to mean here — but free placement transfers.
+  if (
+    cfg.mechanics.requireAdjacency &&
+    !hasHexNeighbor(board, h) &&
+    !isHexBoardEmpty(board)
+  ) {
+    return false;
+  }
   return true;
 }
 

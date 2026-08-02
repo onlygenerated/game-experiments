@@ -265,6 +265,10 @@ Measured over 20 seeds with the corrected methodology.
 | **draft-cribbage** | 345 | 345 | 258 | 1.34 | **1.42** | 37% | **4.0** | 10 | ~50% |
 | draft-poker | 440 | 439 | 354 | 1.24 | 1.23 | 20% | 3.7 | 10 | ~50% |
 | draft-hex | 625 | 624 | 280 | 2.23 | 1.24 | 23% | 7.7 | 13 | ~50% |
+| **mech-both-axes** | 3750 | 3750 | 1161 | 3.23 | 1.24 | **94%** | 13.0 | 9 | 50% |
+| mech-suit-axis | 665 | 663 | 267 | 2.48 | 1.18 | **12%** | 6.0 | 10 | 45% |
+| **mech-deferred** | 150 | 147 | 51 | 2.88 | **1.67** | 26% | **0.0** | 8 | 45% |
+| mech-free | 610 | 612 | 81 | *7.56* | 1.24 | 40% | 11.0 | **31** | 50% |
 
 ### Readings
 
@@ -313,3 +317,35 @@ Measured over 20 seeds with the corrected methodology.
 - Blank boards are more **constrained**, not less: min legal cells drops to 5
   against 10 anchored, because growth from an edge or corner has fewer
   directions than growth from the centre.
+
+#### Category-2 mechanic variants
+
+- **Deferred payout produces the highest lookahead lift ever measured (1.67),
+  and the deadest turns.** Its choice spread is *0.0*: on most turns the best
+  available move banks nothing at all, because nothing completes a line. Both
+  facts have the same cause — when only completion pays, play becomes entirely
+  about setting up a completion several placements out. This is the sharpest
+  planning signal in the whole table sitting on top of the worst moment-to-
+  moment feedback, and it is the one variant where the two criteria of the PRD
+  actively pull against each other. Worth playing by hand before judging.
+- **Both-axes finally makes the mult axis live — 94% against 44% — and that is
+  exactly why it is suspect.** If every line feeds mult, participation is
+  guaranteed rather than earned, and the scores inflate sixfold (greedy 3750).
+  The skill gap does rise (2.38 → 3.23), so it is not pure inflation, but the
+  positional question the PRD asked cannot be answered yes by a rule that makes
+  every position feed both resources.
+- **Suit-sets-axis kills mult participation: 44% → 12%.** Unexpected, and the
+  most interesting negative result here. Being able to choose which axis your
+  strong line feeds means you route it into chips nearly every time, so the
+  mult axis is *more* dead than in the version where the geometry forces it.
+  Giving the player control over the axis assignment removed the tension rather
+  than adding to it.
+- **Free placement lowers the floor; it does not raise the ceiling.** Greedy is
+  essentially unchanged (612 against cribbage's 621) while careless collapses
+  (81 against 261). So the headline 7.56 skill gap is *not* comparable with the
+  rest of the column, and it is italicised above for that reason: with
+  adjacency dropped, the legal move set triples (min cells 31 against 10) and
+  most of those moves are isolated cells worth almost nothing. A uniform-
+  quantile "careless" pick lands in that worthless mass, which inflates the
+  ratio without good play having improved at all. Read skill gap alongside min
+  cells; the two rulesets are not measuring the same decision.

@@ -233,6 +233,51 @@ export const RULESETS: Ruleset[] = [
     config: cribbageBase({ handSize: 4, discardsPerRun: 5, targetScore: 500 }),
   },
   {
+    id: 'mech-both-axes',
+    name: 'Both axes score',
+    group: 'Mechanics',
+    blurb:
+      'Every line you join feeds chips *and* mult. If this plays like the split version, the two-axis rule was decoration.',
+    config: cribbageBase({
+      mechanics: { ...CONFIG.mechanics, axisMode: 'both' },
+      targetScore: 3750,
+    }),
+  },
+  {
+    id: 'mech-suit-axis',
+    name: 'Suit sets the axis',
+    group: 'Mechanics',
+    blurb:
+      'Red cards read row as chips, black cards read column as chips. Which card you play matters as much as where.',
+    config: cribbageBase({
+      mechanics: { ...CONFIG.mechanics, axisMode: 'suit' },
+      targetScore: 665,
+    }),
+  },
+  {
+    id: 'mech-deferred',
+    name: 'Deferred payout',
+    group: 'Mechanics',
+    blurb:
+      'Nothing banks until a line fills up. Placements that build toward a full line are worth everything; the rest are worth nothing.',
+    config: cribbageBase({
+      mechanics: { ...CONFIG.mechanics, payOnCompleteOnly: true },
+      targetScore: 150,
+    }),
+  },
+  {
+    id: 'mech-free',
+    name: 'Free placement',
+    group: 'Mechanics',
+    blurb:
+      'Play anywhere; nothing has to touch. The cleanest test of whether adjacency is what makes this a puzzle.',
+    config: cribbageBase({
+      mechanics: { ...CONFIG.mechanics, requireAdjacency: false },
+      targetScore: 610,
+    }),
+  },
+
+  {
     id: 'cribbage-flush3',
     name: 'Cribbage — easy flushes',
     group: 'Cribbage',

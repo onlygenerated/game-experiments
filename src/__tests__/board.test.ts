@@ -340,3 +340,136 @@ describe('scorePlacement', () => {
     expect(board[idx(0, 1)]).toBeNull();
   });
 });
+
+// --- Category-2 mechanic variants ------------------------------------------
+//
+// Each of these changes the shape of a placement decision rather than the size
+// of a number, so each gets pinned against the same position the default rules
+// score, to make the difference legible rather than merely present.
+
+const mech = (over: Partial<Config['mechanics']>): Config => ({
+  ...CONFIG,
+  mechanics: { ...CONFIG.mechanics, ...over },
+});
+
+describe('mechanics.requireAdjacency', () => {
+  const board = place(['.. .. ..', '.. 5H ..', '.. .. ..']);
+
+  it('confines placement to neighbours by default', () => {
+    expect(isLegalPlacement(board, 1, 2)).toBe(true);
+    expect(isLegalPlacement(board, 5, 5)).toBe(false);
+  });
+
+  it('opens the whole board when off', () => {
+    const cfg = mech({ requireAdjacency: false });
+    expect(isLegalPlacement(board, 5, 5, cfg)).toBe(true);
+    // Every empty cell, and only the empty cells.
+    expect(legalCells(board, cfg)).toHaveLength(CONFIG.gridSize * CONFIG.gridSize - 1);
+  });
+
+  it('still refuses an occupied cell and a run over the cap', () => {
+    const cfg = mech({ requireAdjacency: false });
+    expect(isLegalPlacement(board, 1, 1, cfg)).toBe(false);
+    const full = place(['2H 3H 4H 5H 6H .. ..']);
+    expect(isLegalPlacement(full, 0, 5, cfg)).toBe(false);
+  });
+});
+
+describe('mechanics.axisMode', () => {
+  // Placing at (0,4) joins a strong row and a weak column, so swapping the
+  // roles has to move both numbers in opposite directions. The placed card is
+  // deliberately off-suit from the row, so a red 6 and a black 6 make the very
+  // same Straight and the *only* difference under test is which role it feeds.
+  //   row: 2H 3H 4H 5H 6x -> Straight
+  //   col: 6x 6C          -> Pair
+  const board = place(['2H 3H 4H 5H .. .. ..', '.. .. .. .. 6C .. ..']);
+  const placed = () => card('6D');
+
+  it('splits row into chips and col into mult by default', () => {
+    const r = scorePlacement(board, 0, 4, placed());
+    expect(r.lines.map((l) => l.label)).toEqual(['Row → chips', 'Col → mult']);
+    expect(r.chips).toBe(r.rowEval.value);
+    expect(r.mult).toBe(r.colEval.value);
+  });
+
+  it('feeds both resources from both lines in "both" mode', () => {
+    const split = scorePlacement(board, 0, 4, placed());
+    const both = scorePlacement(board, 0, 4, placed(), mech({ axisMode: 'both' }));
+
+    expect(both.lines.map((l) => l.label)).toEqual([
+      'Row → chips',
+      'Row → mult',
+      'Col → chips',
+      'Col → mult',
+    ]);
+    // The col line now contributes chips too, and the row line mult.
+    expect(both.chips).toBeGreaterThan(split.chips);
+    expect(both.mult).toBeGreaterThan(split.mult);
+  });
+
+  it('never lets "both" mode drop the mult below 1', () => {
+    // A lone card joins two one-card lines, each worth mult 1. Summing them
+    // and subtracting the shared base has to floor at 1, not 1+1-1 going wrong.
+    const lone = scorePlacement(emptyBoard(), 3, 3, card('2C'), mech({ axisMode: 'both' }));
+    expect(lone.mult).toBe(1);
+    expect(lone.score).toBe(lone.chips);
+  });
+
+  it('reverses the axes for a black card in "suit" mode', () => {
+    const cfg = mech({ axisMode: 'suit' });
+    const red = scorePlacement(board, 0, 4, card('6D'), cfg);
+    const black = scorePlacement(board, 0, 4, card('6S'), cfg);
+
+    expect(red.lines.map((l) => l.label)).toEqual(['Row → chips', 'Col → mult']);
+    expect(black.lines.map((l) => l.label)).toEqual(['Row → mult', 'Col → chips']);
+    // Same geometry and the same Straight either way; the black card takes
+    // chips off the row and reads the row as mult instead.
+    expect(red.rowEval.name).toBe('Straight');
+    expect(black.rowEval.name).toBe('Straight');
+    expect(black.chips).toBeLessThan(red.chips);
+    expect(black.mult).toBeGreaterThan(red.mult);
+  });
+
+  it('keeps row before col in the preview whichever way the suit points', () => {
+    const cfg = mech({ axisMode: 'suit' });
+    for (const tok of ['6D', '6S']) {
+      const r = scorePlacement(board, 0, 4, card(tok), cfg);
+      expect(r.lines[0].label.startsWith('Row')).toBe(true);
+      expect(r.lines[1].label.startsWith('Col')).toBe(true);
+    }
+  });
+});
+
+describe('mechanics.payOnCompleteOnly', () => {
+  const cfg = mech({ payOnCompleteOnly: true });
+
+  it('banks nothing when the placement completes no line', () => {
+    const board = place(['.. 6D 7S']);
+    const r = scorePlacement(board, 0, 0, card('5H'), cfg);
+    expect(r.chips).toBeGreaterThan(0);
+    expect(r.score).toBe(0);
+    expect(r.notes).toEqual([{ label: 'No line complete', points: 0 }]);
+  });
+
+  it('banks the whole product when a line reaches the cap', () => {
+    const board = place(['2H 3H 4H 5H .. .. ..']);
+    const r = scorePlacement(board, 0, 4, card('6H'), cfg);
+    expect(r.rowCoords).toHaveLength(CONFIG.lineCap);
+    expect(r.score).toBe(r.chips * r.mult);
+    expect(r.notes).toEqual([{ label: 'Line complete — banks', points: 1 }]);
+  });
+
+  it('pays on a completed column just as readily as a row', () => {
+    const board = place(['2H .. ..', '3D .. ..', '4S .. ..', '5C .. ..']);
+    const r = scorePlacement(board, 4, 0, card('6H'), cfg);
+    expect(r.colCoords).toHaveLength(CONFIG.lineCap);
+    expect(r.score).toBe(r.chips * r.mult);
+  });
+
+  it('leaves the default rules paying on every placement', () => {
+    const board = place(['.. 6D 7S']);
+    const r = scorePlacement(board, 0, 0, card('5H'));
+    expect(r.score).toBe(r.chips * r.mult);
+    expect(r.notes).toEqual([]);
+  });
+});
