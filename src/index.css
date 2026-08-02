@@ -1,9 +1,23 @@
 @import 'tailwindcss';
 
 html,
-body,
-#root {
+body {
   height: 100%;
+}
+
+/*
+ * On a phone the page grows with its content and the document scrolls, so the
+ * score log can run to full length. The desktop layout is the fixed-height,
+ * internally-scrolling one, so pin the root only there.
+ */
+#root {
+  min-height: 100%;
+}
+
+@media (min-width: 1280px) {
+  #root {
+    height: 100%;
+  }
 }
 
 body {
@@ -15,6 +29,32 @@ body {
     -apple-system,
     'Segoe UI',
     sans-serif;
-  /* Desktop only, by design. No responsive work. */
-  min-width: 1260px;
+  -webkit-text-size-adjust: 100%;
+}
+
+/*
+ * Board and hand cards are sized off these, so the 7x7 grid always fits the
+ * viewport without a media query. The min() caps them at the desktop size and
+ * shrinks them only when the screen is genuinely narrow.
+ *   cell:  page padding (2rem) + 6 gaps of 4px
+ *   hand:  page padding (2rem) + tray padding (1rem) + 6 gaps of 6px
+ */
+:root {
+  --cell: min(76px, calc((100vw - 2rem - 24px) / 7));
+  --hand-card-w: min(64px, calc((100vw - 3rem - 36px) / 7));
+}
+
+/* Taps target cards and cells, never text selection or a grey flash. */
+button,
+[data-cell] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+[data-cell] {
+  user-select: none;
+  /* --footer-h is set by App while the preview/hand footer is docked, so
+     scrolling a targeted cell into view clears it instead of hiding behind. */
+  scroll-margin-bottom: calc(var(--footer-h, 0px) + 12px);
+  scroll-margin-top: 12px;
 }

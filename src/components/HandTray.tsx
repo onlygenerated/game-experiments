@@ -4,7 +4,8 @@ import { CardFace } from './CardFace';
 
 /**
  * Cards toggle on click. Exactly one selected means "ready to place"; one to
- * five selected means "ready to discard". No modifier keys, no mode switch.
+ * five selected means "ready to discard". No modifier keys, no mode switch —
+ * which also makes it work unchanged under a finger.
  */
 export function HandTray({
   hand,
@@ -13,6 +14,7 @@ export function HandTray({
   onDiscard,
   discardsLeft,
   disabled,
+  hint,
 }: {
   hand: Card[];
   selected: ReadonlySet<number>;
@@ -20,6 +22,7 @@ export function HandTray({
   onDiscard: () => void;
   discardsLeft: number;
   disabled: boolean;
+  hint: string;
 }) {
   const n = selected.size;
   const canDiscard =
@@ -29,8 +32,8 @@ export function HandTray({
     n <= CONFIG.maxDiscardSelection;
 
   return (
-    <div className="flex items-center gap-4 rounded-lg border border-neutral-800 bg-neutral-900/60 p-3">
-      <div className="flex gap-2">
+    <div className="flex flex-col gap-3 rounded-lg border border-neutral-800 bg-neutral-900/60 p-3 min-[1280px]:flex-row min-[1280px]:items-center">
+      <div className="flex justify-center gap-1.5 min-[1280px]:justify-start min-[1280px]:gap-2">
         {hand.map((card, i) => {
           const isSel = selected.has(i);
           return (
@@ -38,8 +41,9 @@ export function HandTray({
               key={card.id}
               disabled={disabled}
               onClick={() => onToggle(i)}
+              aria-pressed={isSel}
               className={`rounded transition-transform ${
-                isSel ? '-translate-y-2 ring-2 ring-emerald-400' : 'hover:-translate-y-1'
+                isSel ? '-translate-y-2 ring-2 ring-emerald-400' : 'min-[1280px]:hover:-translate-y-1'
               } ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
             >
               <CardFace card={card} size="lg" />
@@ -51,22 +55,18 @@ export function HandTray({
         )}
       </div>
 
-      <div className="ml-auto flex flex-col items-end gap-2">
-        <div className="text-xs text-neutral-400">
-          {n === 0 && 'Click a card to select it'}
-          {n === 1 && 'Hover a legal cell to preview'}
-          {n > 1 && `${n} selected — discard only`}
-        </div>
+      <div className="flex items-center gap-3 min-[1280px]:ml-auto min-[1280px]:flex-col min-[1280px]:items-end min-[1280px]:gap-2">
+        <div className="flex-1 text-xs text-neutral-400 min-[1280px]:flex-none">{hint}</div>
         <button
           disabled={!canDiscard}
           onClick={onDiscard}
-          className={`rounded px-3 py-1.5 text-sm font-semibold ${
+          className={`shrink-0 rounded px-3 py-2.5 text-sm font-semibold min-[1280px]:py-1.5 ${
             canDiscard
-              ? 'cursor-pointer bg-rose-600 hover:bg-rose-500'
+              ? 'cursor-pointer bg-rose-600 active:bg-rose-500 min-[1280px]:hover:bg-rose-500'
               : 'cursor-not-allowed bg-neutral-800 text-neutral-500'
           }`}
         >
-          Discard {n > 0 ? n : ''} ({discardsLeft} left)
+          Discard {n > 0 ? n : ''} ({discardsLeft})
         </button>
       </div>
     </div>

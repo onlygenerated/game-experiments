@@ -37,12 +37,12 @@ function Line({
  */
 export function ScoreLog({ log }: { log: LogEntry[] }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-neutral-800 bg-neutral-900/60">
+    <div className="flex flex-col rounded-lg border border-neutral-800 bg-neutral-900/60 min-[1280px]:min-h-0 min-[1280px]:flex-1">
       <div className="border-b border-neutral-800 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
         Score log
       </div>
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
+      <div className="space-y-2 p-2 min-[1280px]:min-h-0 min-[1280px]:flex-1 min-[1280px]:overflow-y-auto">
         {log.length === 0 && (
           <div className="p-3 text-sm text-neutral-600">No placements yet.</div>
         )}

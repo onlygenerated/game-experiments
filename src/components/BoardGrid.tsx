@@ -12,10 +12,9 @@ import type { Card } from '../deck';
 import { CardFace } from './CardFace';
 import { PreviewPanel } from './PreviewPanel';
 
-const CELL = 76;
+/** Desktop cell pitch. Narrow screens size cells from --cell instead. */
+const WIDE_CELL = 76;
 const GAP = 4;
-const PITCH = CELL + GAP;
-/** Keep in sync with the lane reserved for it in App.tsx. */
 const PANEL_W = 288;
 
 const key = (r: number, c: number) => `${r},${c}`;
@@ -23,19 +22,22 @@ const key = (r: number, c: number) => `${r},${c}`;
 export function BoardGrid({
   board,
   selectedCard,
-  hovered,
+  target,
   preview,
   onHoverCell,
-  onPlace,
+  onActivateCell,
   interactive,
+  docked,
 }: {
   board: Board;
   selectedCard: Card | null;
-  hovered: Coord | null;
+  target: Coord | null;
   preview: PlacementScore | null;
   onHoverCell: (cell: Coord | null) => void;
-  onPlace: (cell: Coord) => void;
+  onActivateCell: (cell: Coord) => void;
   interactive: boolean;
+  /** True when the preview lives in a docked sheet instead of beside the board. */
+  docked: boolean;
 }) {
   const size = CONFIG.gridSize;
 
@@ -58,25 +60,30 @@ export function BoardGrid({
     [preview],
   );
 
-  const boardPx = size * CELL + (size - 1) * GAP;
+  const gapTotal = (size - 1) * GAP;
+  const boardWidth = `calc(var(--cell) * ${size} + ${gapTotal}px)`;
+  // The side lane only exists on wide screens, where --cell is pinned to 76px.
+  const widePx = size * WIDE_CELL + gapTotal;
 
-  // Sits just outside the grid, tracking the hovered row. Anchoring it beside
-  // the cell reads better but hides the cells you are comparing against.
-  const panelPos = hovered
-    ? {
-        left: boardPx + 16,
-        top: Math.min(Math.max(hovered.r * PITCH - 60, 0), Math.max(boardPx - 300, 0)),
-      }
-    : null;
+  const panelPos =
+    !docked && target
+      ? {
+          left: widePx + 16,
+          top: Math.min(Math.max(target.r * (WIDE_CELL + GAP) - 60, 0), Math.max(widePx - 300, 0)),
+        }
+      : null;
 
   return (
-    <div className="relative" style={{ width: boardPx + 16 + PANEL_W }}>
+    <div
+      className="relative"
+      style={{ width: docked ? boardWidth : widePx + 16 + PANEL_W }}
+    >
       <div
         className="grid"
         style={{
-          gridTemplateColumns: `repeat(${size}, ${CELL}px)`,
+          gridTemplateColumns: `repeat(${size}, var(--cell))`,
           gap: GAP,
-          width: boardPx,
+          width: boardWidth,
         }}
         onMouseLeave={() => onHoverCell(null)}
       >
@@ -88,14 +95,14 @@ export function BoardGrid({
 
           const isLegal = legal.has(k);
           const selectable = interactive && isLegal && selectedCard !== null;
-          const isHovered = hovered?.r === r && hovered?.c === c;
+          const isTarget = target?.r === r && target?.c === c;
 
           // Complete lines can never be extended. Mark the run's edges.
           const rowComplete = card !== null && isLineComplete(board, r, c, 'row');
           const colComplete = card !== null && isLineComplete(board, r, c, 'col');
 
-          const inRowPreview = rowPreview.has(k) && !isHovered;
-          const inColPreview = colPreview.has(k) && !isHovered;
+          const inRowPreview = rowPreview.has(k) && !isTarget;
+          const inColPreview = colPreview.has(k) && !isTarget;
 
           // A line-membership cell is usually occupied, so the tint alone is
           // just a thin frame around the card. The ring makes the run readable.
@@ -104,13 +111,14 @@ export function BoardGrid({
           if (selectable) bg = 'bg-emerald-500/15';
           if (inRowPreview) bg = 'bg-sky-500/30 ring-2 ring-sky-400';
           if (inColPreview) bg = 'bg-amber-500/30 ring-2 ring-amber-400';
-          if (isHovered && selectable) bg = 'bg-emerald-400/30';
+          if (isTarget && selectable) bg = 'bg-emerald-400/40 ring-2 ring-emerald-300';
 
           return (
             <div
               key={k}
+              data-cell={k}
               onMouseEnter={() => onHoverCell({ r, c })}
-              onClick={() => selectable && onPlace({ r, c })}
+              onClick={() => selectable && onActivateCell({ r, c })}
               className={`flex items-center justify-center rounded border transition-colors ${bg} ${
                 selectable
                   ? 'cursor-pointer border-emerald-400/70'
@@ -119,12 +127,16 @@ export function BoardGrid({
                     : 'border-neutral-800/60'
               }`}
               style={{
-                width: CELL,
-                height: CELL,
+                width: 'var(--cell)',
+                height: 'var(--cell)',
                 // Subtle edge accents on runs that have hit the cap.
                 boxShadow: [
-                  rowComplete ? 'inset 0 3px 0 0 rgba(167,139,250,.65), inset 0 -3px 0 0 rgba(167,139,250,.65)' : '',
-                  colComplete ? 'inset 3px 0 0 0 rgba(244,114,182,.65), inset -3px 0 0 0 rgba(244,114,182,.65)' : '',
+                  rowComplete
+                    ? 'inset 0 3px 0 0 rgba(167,139,250,.65), inset 0 -3px 0 0 rgba(167,139,250,.65)'
+                    : '',
+                  colComplete
+                    ? 'inset 3px 0 0 0 rgba(244,114,182,.65), inset -3px 0 0 0 rgba(244,114,182,.65)'
+                    : '',
                 ]
                   .filter(Boolean)
                   .join(', '),
@@ -132,7 +144,7 @@ export function BoardGrid({
             >
               {card ? (
                 <CardFace card={card} />
-              ) : isHovered && selectable && selectedCard ? (
+              ) : isTarget && selectable && selectedCard ? (
                 <div className="opacity-60">
                   <CardFace card={selectedCard} />
                 </div>

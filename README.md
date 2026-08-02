@@ -12,23 +12,45 @@ npm run dev     # http://localhost:5173
 npm test        # hands.ts + board.ts unit tests
 ```
 
-Desktop browser, mouse-driven. No backend, no persistence.
+Runs on desktop and on a phone. No backend, no persistence.
 
 ## How to play
 
-- Click a hand card to select it. Legal cells light up green.
-- Hover a legal cell — the preview panel to the right of the board shows the resulting
-  row-line, col-line, and `chips × mult = score` before you commit.
-- Click the cell to place. The score log records the breakdown.
+- Tap or click a hand card to select it. Legal cells light up green.
+- Target a legal cell — the preview shows the resulting row-line, col-line, and
+  `chips × mult = score` before you commit.
+- Commit to place. The score log records the breakdown.
 - Select 1–5 cards and hit **Discard** to cycle them. Costs a discard charge, not a placement.
 - Seed box + **New run** replays an identical deck. **Undo** rolls back board, hand, deck,
-  score, and log in one step (it also undoes discards).
+  score, and log in one step (it also undoes discards). On a phone these live behind **Dev**.
+
+### Pointer vs. touch
+
+The preview is the whole point of the prototype, and touch has no hover — so targeting and
+committing are separate steps there:
+
+| | Target a cell | Commit |
+|---|---|---|
+| Mouse | hover | click |
+| Touch | first tap | **Place** button, or tap the same cell again |
+
+You always see the score before the card lands. On touch, **Cancel** clears the target, and
+tapping a different hand card re-scores the same cell — which is the fastest way to compare
+two candidates for one spot.
 
 Board tint legend: sky = the row-line feeding chips, amber = the col-line feeding mult.
 Violet edge bars = row-line at the cap; pink edge bars = col-line at the cap. A line at the
 cap can never be extended.
 
-## Layout
+### Screen layout
+
+The breakpoint is 1280px. Above it: board, preview lane, and score log side by side, fixed
+height, log scrolls internally. Below it: single column, the preview and hand dock to the
+bottom of the screen, and the page itself scrolls. Cell and card sizes come from the `--cell`
+and `--hand-card-w` custom properties in `index.css`, which are `min()` expressions against
+the viewport — so the 7x7 grid fits any width down to a small phone without a media query.
+
+## Code structure
 
 Pure logic is fully isolated from React — no React import below `App.tsx`.
 
@@ -89,11 +111,16 @@ Two things worth knowing before the first human run:
 ## Deliberately absent
 
 Jokers, consumables, shop, economy, multiple blinds, run progression, deck building,
-animations, sound, mobile layout, persistence, AI opponent.
+animations, sound, persistence, AI opponent.
 
-## One deviation from the PRD
+## Two deviations from the PRD
 
-The PRD lists "deck runs out" as a loss condition. With 15 placements against a 52-card deck
+**Mobile.** The PRD scoped responsive layout out and specified desktop, mouse-driven. That was
+reversed after the fact. The only part that needed a real design decision was the preview,
+since it was hover-driven and a finger has no hover — hence the two-step target/commit flow
+above. Desktop behaviour is unchanged: hover still previews, one click still places.
+
+**End of run.** The PRD lists "deck runs out" as a loss condition. With 15 placements against a 52-card deck
 the deck cannot actually empty, so ending a run with a full hand would only ever be a bug.
 The implemented terminal check is: placements exhausted, **hand** empty, or no legal cell
 anywhere on the board. The third case is reachable — the line cap can seal off a small
