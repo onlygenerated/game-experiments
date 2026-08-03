@@ -17,6 +17,7 @@ import { HandTray } from './components/HandTray';
 import { PreviewPanel } from './components/PreviewPanel';
 import { ScoreLog } from './components/ScoreLog';
 import { StatusBar } from './components/StatusBar';
+import { RunEndPanel } from './components/RunEndPanel';
 
 // Matches the count-up in StatusBar, so the flying total lands right as the
 // number underneath finishes ticking to meet it.
@@ -226,6 +227,22 @@ export default function App() {
     />
   );
 
+  // The hand is already non-interactive once a run ends (HandTray's own
+  // `disabled` prop), so its spot is dead space — the run-end screen takes it
+  // over rather than adding a layer over the board.
+  const best =
+    logRows.length === 0 ? null : logRows.reduce((a, b) => (b.score > a.score ? b : a));
+  const runEnd = state.status !== 'playing' && (
+    <RunEndPanel
+      status={state.status}
+      score={state.score}
+      target={cfg.targetScore}
+      best={best}
+      onReplay={() => g.handleNewRun(state.seed)}
+    />
+  );
+  const trayOrEnd = playing ? handTray : runEnd;
+
   if (showMetrics) return <MetricsPage onClose={() => setShowMetrics(false)} />;
   if (showSetup)
     return (
@@ -347,7 +364,7 @@ export default function App() {
             )}
           </div>
 
-          {!docked && <div className="w-full">{handTray}</div>}
+          {!docked && <div className="w-full">{trayOrEnd}</div>}
 
           <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-[11px] text-neutral-500 min-[1280px]:justify-start">
             <span className="text-sky-400">chips axis</span>
@@ -392,7 +409,7 @@ export default function App() {
               onCancel={() => setTarget(null)}
             />
           )}
-          {handTray}
+          {trayOrEnd}
         </div>
       )}
 

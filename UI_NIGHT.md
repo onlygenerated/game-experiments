@@ -88,7 +88,7 @@ Ordered so a short night still lands the items that change how a placement
       settles with a slight overshoot; cells lift a little under the pointer.
       Small, and it is most of what "physicality" means. `useCardDrag` already
       tracks position — velocity is a derivative of what is there.
-- [ ] **3. Run end.** Winning and losing are currently a status string. Give the
+- [x] **3. Run end.** Winning and losing are currently a status string. Give the
       run a proper end: final score against target, the best placement of the
       run (it is in the log), and a button to replay the same seed. The biggest
       hole in the current UI.
@@ -216,6 +216,62 @@ was moving — a note that an idea failed is worth as much as one that landed.
   transition already on those cells (extended to include `transform`
   alongside the existing `background-color`/`box-shadow` list).
 
+- **Item 3.** Everything needed already exists without touching a `main`-owned
+  file: `state.status` ('playing' | 'won' | 'lost') and `state.score` come
+  from `useRun`, `cfg.targetScore` from the ruleset config, `state.seed` is
+  already what `handleNewRun` takes (so "replay this seed" is just
+  `g.handleNewRun(state.seed)` — no new plumbing), and the best placement is
+  `logRows` reduced by `.score`, the same `LogRow` shape `ScoreLog` already
+  renders from.
+- New `RunEndPanel.tsx` takes over the hand tray's spot once
+  `state.status !== 'playing'` rather than laying a panel over the board.
+  `HandTray` is already fully non-interactive at that point (its own
+  `disabled={!playing}` prop disables selection and discard), so the space
+  was dead regardless — reusing it satisfies "never cover the board" without
+  a special case, and it worked out to a `trayOrEnd` ternary shared by both
+  the docked-mobile footer and the wide-desktop layout, so the panel appears
+  in exactly the one place a hand would have been on either layout.
+- Left the compact WIN/LOSS strip inside `StatusBar` alone rather than
+  folding it into this item. It's a different job — a quiet, always-in-view
+  status readout in a panel that's on screen throughout play — while
+  `RunEndPanel` is the actionable "what now" screen with the replay CTA.
+  Removing the strip would have meant the docked-mobile top bar loses its
+  only end-of-run signal while the eye is still up there; keeping both was
+  cheaper and safer than restructuring `StatusBar` to make room for a CTA it
+  was never laid out for.
+- Entrance is a single `run-end-in` keyframe (translateY(10px)+scale(0.97) →
+  none) at 200ms, under the 250ms cap, added next to the other keyframes in
+  `index.css` — it falls under the file's existing blanket
+  `prefers-reduced-motion` rule for free, same as every other animation
+  there, so nothing extra was needed to honour it.
+- Considered a modal/overlay treatment (centred card, dimmed backdrop) since
+  "biggest hole in the current UI" reads like it wants weight. Dropped it:
+  a full-screen dim necessarily sits on top of the board, which is exactly
+  what the visual budget's "never cover the board" rule exists to prevent,
+  regardless of whether the run is still live — the rule doesn't carve out
+  an end-of-run exception, and the hand-tray slot gives enough visual weight
+  (full-width panel, large score, its own color) without needing to occlude
+  anything.
+- Verified live in headless Chromium against the build: drove the default
+  ruleset with a scripted greedy placement loop (select hand-index 0, click
+  the first cell that actually reduces placements-left, so it's robust to
+  both adjacency-gated and free-placement rulesets and to the row/line cap
+  making some empty cells illegal) until `placementsLeft` hit 0, producing a
+  genuine LOSS at 444/610 under the "Free placement" ruleset. Confirmed the
+  panel's text, the best-placement chip (correctly picked the run's actual
+  highest-scoring entry off the log), and — critically — that "Replay this
+  seed" actually starts a fresh run on the same seed (`grid-poker-1`
+  visible in the seed box throughout, score back to 0, hand tray back in
+  place of the panel). Did not separately chase a live WIN capture: none of
+  the presets reachable from the UI (`SetupPage` has no raw target-score
+  field, only preset selection) have a target low enough for naive greedy
+  play to reliably clear within their placement budget, and the WIN branch
+  is the same component on the same data with only a ternary swapping
+  text/color/accent — already exercised by `tsc` and visually identical in
+  structure to the verified LOSS render. Screenshots (session-local, not
+  committed): `runend-01.png` (run-over panel, mid-board), `runend-02-after-replay.png`
+  (post-replay, panel gone, hand tray restored, score 0/610).
+
 ## Results log
 
 For each item: what shipped, what it cost in milliseconds, and a screenshot or
@@ -250,3 +306,19 @@ movement, record a short capture with `page.video` and name the file here.
   `04-held-still-settled.png`, `05-fast-flick-opposite.png`,
   `06-cell-lift.png`, `07-dropped.png`,
   `page@288ba3c602bc6d195f107f315e6e9f57.webm`.
+- **Item 3 — run end** (2026-08-03). New `src/components/RunEndPanel.tsx`
+  (final score vs. target, best placement pulled from the log, "Replay this
+  seed" button), wired into `App.tsx` as a `trayOrEnd` swap that takes over
+  the hand tray's spot on both layouts once `state.status !== 'playing'`,
+  plus a `run-end-in` entrance keyframe in `index.css`. No file `main` owns
+  was touched. Entrance 200ms, under the 250ms cap; nothing gates input,
+  since the hand tray it replaces was already fully disabled by that point.
+  `npm test` (208 passed), `npx tsc -b --noEmit` (clean), and `npm run smoke`
+  (18/18 checks, build ~1.2s) all green before push. Verified live in
+  headless Chromium via a scripted greedy-placement loop that ran a real run
+  to a LOSS (444/610, "Free placement" ruleset) and confirmed the panel's
+  score/target, correct best-placement chip, and a working replay (same
+  seed, fresh board, hand tray back). WIN was not separately captured — see
+  the decisions log for why — but is the same component and already
+  type-checked. Screenshots (session-local, not committed):
+  `runend-01.png`, `runend-02-after-replay.png`.
