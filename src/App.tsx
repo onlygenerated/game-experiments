@@ -18,6 +18,20 @@ import { PreviewPanel } from './components/PreviewPanel';
 import { ScoreLog } from './components/ScoreLog';
 import { StatusBar } from './components/StatusBar';
 
+// Matches the count-up in StatusBar, so the flying total lands right as the
+// number underneath finishes ticking to meet it.
+const SCORE_FLY_MS = 220;
+
+/** A placement's score, frozen at the cell it landed on, en route to the total. */
+interface ScoreFly {
+  id: number;
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  amount: number;
+}
+
 /**
  * Layout only.
  *
@@ -86,6 +100,50 @@ export default function App() {
       .querySelector(`[data-cell="${target}"],[data-hex="${target}"]`)
       ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [docked, target]);
+
+  // The score-fly. logRows only grows on a placement or a cash — never on a
+  // discard, an undo or a reset — so a length increase is exactly the moment
+  // to launch one. Reusing the discard fly-away's approach: freeze a DOM
+  // position, animate, never gate the state change underneath it.
+  const [scoreFly, setScoreFly] = useState<ScoreFly | null>(null);
+  const prevLogLen = useRef(logRows.length);
+  const scoreFlyId = useRef(0);
+  const scoreFlyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const prev = prevLogLen.current;
+    prevLogLen.current = logRows.length;
+    if (logRows.length <= prev) return;
+
+    const last = logRows[logRows.length - 1];
+    const from = document
+      .querySelector(run.kind === 'hex' ? `[data-hex="${last.atLabel}"]` : `[data-cell="${last.atLabel}"]`)
+      ?.getBoundingClientRect();
+    let to: DOMRect | undefined;
+    document.querySelectorAll('[data-score-display]').forEach((el) => {
+      if (to) return;
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) to = r;
+    });
+    if (!from || !to) return;
+
+    const id = ++scoreFlyId.current;
+    setScoreFly({
+      id,
+      x: from.x + from.width / 2,
+      y: from.y + from.height / 2,
+      dx: to.x + to.width / 2 - (from.x + from.width / 2),
+      dy: to.y + to.height / 2 - (from.y + from.height / 2),
+      amount: last.score,
+    });
+    if (scoreFlyTimer.current) clearTimeout(scoreFlyTimer.current);
+    scoreFlyTimer.current = setTimeout(
+      () => setScoreFly((s) => (s?.id === id ? null : s)),
+      SCORE_FLY_MS,
+    );
+  }, [logRows, run.kind]);
+
+  useEffect(() => () => void (scoreFlyTimer.current && clearTimeout(scoreFlyTimer.current)), []);
 
   const n = g.activeSelection.size;
   const hint = drag
@@ -290,6 +348,23 @@ export default function App() {
             />
           )}
           {handTray}
+        </div>
+      )}
+
+      {scoreFly && (
+        <div
+          key={scoreFly.id}
+          className="animate-score-fly pointer-events-none fixed z-40 font-mono text-lg font-black text-emerald-400"
+          style={
+            {
+              left: scoreFly.x,
+              top: scoreFly.y,
+              '--score-fly-dx': `${scoreFly.dx}px`,
+              '--score-fly-dy': `${scoreFly.dy}px`,
+            } as React.CSSProperties
+          }
+        >
+          +{scoreFly.amount}
         </div>
       )}
 

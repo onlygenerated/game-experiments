@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import type { Config } from '../config';
 
 /** Structural minimum, so grid and hex runs both satisfy it. */
@@ -10,13 +11,63 @@ export interface RunSummary {
   log: readonly unknown[];
 }
 
-function Stat({ label, value, accent }: { label: string; value: string; accent?: string }) {
+// Matches the score-fly travel time in App.tsx, so the number settles right as
+// the flying total arrives rather than finishing early or trailing behind it.
+const COUNT_UP_MS = 220;
+
+/**
+ * Tweens toward `value` whenever it changes, landing exactly on it. Skips the
+ * tween under reduced motion, same as every other animation here.
+ */
+function useCountUp(value: number, ms: number): number {
+  const [display, setDisplay] = useState(value);
+  const prev = useRef(value);
+
+  useEffect(() => {
+    const from = prev.current;
+    const to = value;
+    prev.current = value;
+    if (from === to) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setDisplay(to);
+      return;
+    }
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / ms);
+      const eased = 1 - (1 - t) ** 3;
+      setDisplay(Math.round(from + (to - from) * eased));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value, ms]);
+
+  return display;
+}
+
+function Stat({
+  label,
+  value,
+  accent,
+  scoreDisplay,
+}: {
+  label: string;
+  value: string;
+  accent?: string;
+  scoreDisplay?: boolean;
+}) {
   return (
     <div className="flex flex-col">
       <span className="text-[9px] uppercase tracking-wider text-neutral-500 min-[1280px]:text-[10px]">
         {label}
       </span>
       <span
+        // The score-fly in App.tsx targets whichever copy of this is on
+        // screen — mobile top bar or desktop aside — to fly the banked
+        // points at.
+        data-score-display={scoreDisplay ? '' : undefined}
         className={`font-mono text-base font-bold tabular-nums min-[1280px]:text-xl ${accent ?? 'text-neutral-100'}`}
       >
         {value}
@@ -26,15 +77,17 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
 }
 
 export function StatusBar({ state, cfg }: { state: RunSummary; cfg: Config }) {
-  const pct = Math.min(100, (state.score / cfg.targetScore) * 100);
+  const displayScore = useCountUp(state.score, COUNT_UP_MS);
+  const pct = Math.min(100, (displayScore / cfg.targetScore) * 100);
 
   return (
     <div className="panel rounded-lg p-2 min-[1280px]:p-3">
       <div className="flex items-end justify-between gap-4">
         <Stat
           label="Score / Target"
-          value={`${state.score} / ${cfg.targetScore}`}
+          value={`${displayScore} / ${cfg.targetScore}`}
           accent={state.score >= cfg.targetScore ? 'text-emerald-400' : 'text-neutral-100'}
+          scoreDisplay
         />
         <Stat label="Placements" value={String(state.placementsLeft)} />
         <Stat label="Discards" value={String(state.discardsLeft)} />

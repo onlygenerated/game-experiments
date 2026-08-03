@@ -79,7 +79,7 @@ meaning, and there isn't one spare.
 Ordered so a short night still lands the items that change how a placement
 *feels*. One per firing.
 
-- [ ] **1. Score-fly and count-up.** The banked score flies from the placed cell
+- [x] **1. Score-fly and count-up.** The banked score flies from the placed cell
       to the score display, which counts up rather than snapping to the new
       total. The single highest-value item here: it is what makes a placement
       feel like it paid. Reuse the discard fly-away's approach — freeze a
@@ -138,8 +138,55 @@ Append here rather than to `NIGHT_RUN.md`. Record anything a later firing would
 otherwise have to rediscover, and anything you tried that looked wrong once it
 was moving — a note that an idea failed is worth as much as one that landed.
 
+- **Item 1.** `useRun.ts` already exposes everything needed without touching
+  it: `logRows` grows by exactly one entry per placement or cash (never on a
+  discard, undo, new run or ruleset switch, since those either don't append to
+  the log or replace history wholesale), and each row already carries
+  `atLabel` in the same `"r,c"` / `"q,r"` format the board writes into
+  `data-cell` / `data-hex`. So the fly-source lookup and the trigger condition
+  both come from data `main` already produces — no shared file needed a
+  change.
+- Gave the score number in `StatusBar` a `data-score-display` attribute
+  (additive, not a rename, so it doesn't touch the three-attribute contract)
+  and had `App.tsx` query it at animation time rather than threading a ref
+  down — the same `document.querySelector` pattern the existing discard
+  fly-away already uses for hand-index rects, so the two features stay
+  consistent.
+- `StatusBar` renders twice (docked-mobile header copy, wide-desktop aside
+  copy) and only one is visible via a `hidden` class at a time — a
+  `display:none` element reports a zero-size `getBoundingClientRect()`, so the
+  destination lookup walks all `[data-score-display]` matches and takes the
+  first with nonzero width/height rather than assuming a single instance.
+- Tried letting the fly-and-count-up run the visual budget's full 250ms and it
+  read as sluggish next to the rest of the interaction — landed on 220ms for
+  both the CSS fly and the JS count-up tween, driven by the same constant in
+  each file (`SCORE_FLY_MS` in `App.tsx`, `COUNT_UP_MS` in `StatusBar.tsx`) so
+  they keep landing together if either changes.
+- Considered animating the progress bar width with a separate CSS transition
+  layered on top of the count-up. Dropped it — the bar's width is already
+  bound to the tweened display value, so it moves smoothly for free, and a
+  second transition on top of an already-interpolated value just adds a lag
+  between the number and the bar rather than any visible improvement.
+- The existing `discard-fly` (380ms) and `deal-in` (320ms) animations already
+  exceed the 250ms budget — they predate this backlog and are not this item's
+  to fix. Left them alone; noting it here so a later firing doesn't assume the
+  budget was already being enforced everywhere.
+
 ## Results log
 
 For each item: what shipped, what it cost in milliseconds, and a screenshot or
 capture path. Motion cannot be reviewed from a still, so where an item is about
 movement, record a short capture with `page.video` and name the file here.
+
+- **Item 1 — score-fly and count-up** (2026-08-03). Shipped in `App.tsx`
+  (fly trigger + render), `StatusBar.tsx` (count-up + `data-score-display`)
+  and `index.css` (`score-fly` keyframes). Both halves run at 220ms, under the
+  250ms cap. `npm test` (208 passed), `npx tsc -b --noEmit` (clean), and
+  `npm run smoke` (18/18 checks, build 1.1s, full run ~14s) all green before
+  push. Verified live in headless Chromium: a `+N` badge launches from the
+  placed cell and arrives at whichever score display is on screen as the
+  number ticks up to match, confirmed frame-by-frame with mid-flight and
+  settled screenshots and a short recorded clip (session-local capture, not
+  committed — this repo doesn't version screenshots/video):
+  `01-before.png`, `02-preview.png`, `03-mid-fly.png`, `04-settled.png`,
+  `page@3e097f5b5866c30677724e5bb8d72836.webm`.
