@@ -267,6 +267,59 @@ button,
     0 0 14px rgba(244, 114, 182, 0.6);
 }
 
+/* Near-miss feedback: an illegal drop used to be a silent no-op. The badge's
+   own visible time is a JS hold timer (see nearMiss.ts), not this animation's
+   duration, so reduced-motion collapsing the fade to ~0 still leaves the
+   message readable for its full hold — only the flourish is cut. */
+/* Only opacity/scale — never a translate — since the badge is centred and
+   positioned by a plain, unanimated wrapper div one level up (both callers'
+   own position math would otherwise fight this keyframe for the `transform`
+   property, which only the last-applied one wins). */
+@keyframes near-miss-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes near-miss-out {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes near-miss-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+
+.near-miss-badge {
+  animation: near-miss-in 160ms cubic-bezier(0.3, 0, 0.4, 1) both;
+}
+
+.near-miss-badge.near-miss-leaving {
+  animation: near-miss-out 160ms cubic-bezier(0.3, 0, 0.4, 1) both;
+}
+
+.near-miss-shake {
+  animation: near-miss-shake 220ms ease-in-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

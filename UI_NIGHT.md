@@ -98,7 +98,7 @@ Ordered so a short night still lands the items that change how a placement
 - [x] **5. Line-complete punctuation.** A run reaching the cap currently gets a
       static marker. Give it a beat: a snap, a brief glow, and the marker
       arriving rather than appearing.
-- [ ] **6. Near-miss feedback.** An illegal drop is silently refused. Show why
+- [x] **6. Near-miss feedback.** An illegal drop is silently refused. Show why
       for a moment — would exceed the cap, sealed, not touching anything.
 - [ ] **7. Card faces.** Proper pips, a clearer rank/suit hierarchy, subtle
       stock texture. Functional but plain today.
@@ -398,6 +398,114 @@ was moving — a note that an idea failed is worth as much as one that landed.
   `punch-col-01-mid.png`, `punch-col-02-done.png`,
   `page@815436aa26499fc6edb76775dd04e689.webm`.
 
+- **Item 6.** `isLegalPlacement` / `isLegalHexPlacement` (board.ts, hex/board.ts)
+  are booleans with no memory of *which* check failed, but every check they
+  make is its own exported, read-only primitive — `hasOccupiedNeighbor`,
+  `isBoardEmpty`, `projectedRunLength`, `extendsLockedRun` on the grid side,
+  `hasHexNeighbor`/`isHexBoardEmpty` on hex. New `src/components/nearMiss.ts`
+  re-runs those same primitives in the same precedence order the legality
+  functions already check them in (adjacency, then row cap, then col cap,
+  then row-sealed, then col-sealed; hex only ever has adjacency) and returns
+  the first one that fails — mirroring the short-circuit a caller reading
+  only the boolean would never see. No `main`-owned file needed a change.
+- Deliberately out of scope: an occupied cell and an off-board coordinate.
+  Occupied reads as obviously illegal on sight (there's a card sitting right
+  there) and every rendered cell is already on-board, so neither needed a
+  message — the classifier is only ever called for a cell already known to be
+  empty.
+- Two different trigger paths, because the two "attempts" don't produce the
+  same evidence. A **click** on an illegal, empty, unselectable cell is a
+  discrete event with nothing continuous about it, so it gets a self-contained
+  hook, `useNearMissBadge()` in nearMiss.ts, shared by `BoardGrid` and
+  `HexBoardView` — entirely local state, no prop threading into `App.tsx`,
+  since both components already have `board`/`cfg`/the legal set. A **drag**,
+  by contrast, already has a continuous read of where the pointer is
+  (`drag.x`/`drag.y` in `App.tsx`), so instead of a discrete badge it's a
+  live-updating pill in the exact slot the existing legal-drop score preview
+  already occupies — the two can never both be visible, since the reason only
+  resolves for a cell `isLegalKey` has already rejected.
+- The drag path needed its own re-derivation of "what's under the pointer,
+  ignoring legality" — `useRun.ts`'s own `cellAt` (used by `useCardDrag`) is
+  already filtered to legal cells only (by design, so the drag ghost's `over`
+  only ever names a droppable cell), so an illegal hover looks identical to
+  "hovering nothing" from inside `App.tsx`. Re-ran the exact same
+  `document.elementFromPoint(...).closest('[data-cell],[data-hex]')` +
+  attribute read `useRun.ts` already does, read-only, in a small `App.tsx`
+  effect keyed on `drag` — the same technique the score-fly and discard-fly
+  effects already use to read DOM position off the `data-cell`/`data-hex`
+  contract. No `useRun.ts` or `useCardDrag.ts` change needed.
+- Hit a real bug from this, not just a design choice: the hex board draws
+  each cell with `clip-path` (already on record from item 2 as cropping any
+  `box-shadow` drawn on the clipped element itself) — it turns out clip-path
+  crops *any* descendant paint that extends outside the shape, including a
+  `position: absolute` child positioned above the cell via `bottom-full`,
+  not just shadows. First attempt nested the badge inside the clipped hex
+  cell div, same as the grid version nests inside its (unclipped,
+  `rounded-md` only) cell div; it computed a perfectly correct bounding box
+  in the DOM and never appeared on screen, because clip-path clips the whole
+  rendered stacking context, not just the element's own box the way
+  `overflow: hidden` on a normal box would. Fixed by rendering the hex badge
+  as a sibling of the per-cell `.map()`, one level up in `HexBoardView`'s own
+  unclipped container, positioned from the same `place(h)` pixel math the
+  cells themselves use rather than nested inside the shape it needs to float
+  above. Verified the fix and the bug both, live: the nested version's
+  `getBoundingClientRect()` reported real, in-viewport coordinates while the
+  screenshot showed nothing at all; the sibling version shows the badge in
+  the same screenshot at the same coordinates.
+- The reduced-motion rule ("every animation honours `prefers-reduced-motion`,
+  already wired in index.css") interacts badly with a message that needs to
+  be *read*, not just glimpsed: the global rule collapses every
+  `animation-duration` to ~0, which is fine for a decorative flourish (the
+  scored number is correct either way) but would be actively harmful here —
+  the badge's text *is* the entire feature, and a reduced-motion user
+  vanishing it in 0.01ms would lose the feature entirely, backwards from what
+  the rule is supposed to protect. Fixed by making the visible hold a plain
+  JS `setTimeout` (900ms) in `useNearMissBadge`, independent of the CSS
+  animation duration that only drives the fade in/out flourish (each 160ms,
+  under the 250ms cap on its own) — the same separation-of-concerns the
+  score-fly and cascade already use (their *state* lives on a JS timer; the
+  CSS class only decorates the transition). Verified with
+  `page.emulateMedia({ reducedMotion: 'reduce' })`: the badge was still
+  present at 500ms in and gone by ~1100ms, matching the un-reduced timing
+  almost exactly, confirming reduced motion only cuts the fade, never the
+  message.
+- A second, smaller instance of the same "state lives on a timer, not the
+  animation" idea: the cell itself gets a brief shake (`near-miss-shake`,
+  220ms, well under the cap) on the click path. Since the badge's own
+  `id`-keyed remount (needed so a second click on the *same* still-open badge
+  replays its fade rather than silently doing nothing, the same generation-id
+  trick item 4 and item 5 already used) only affects the badge's own key, a
+  first pass left the shake class applied continuously for the badge's whole
+  ~1.2s life with no key of its own — which plays the shake once on the first
+  click but not on an immediate second click of the same cell, since the
+  class string never actually changes for React to notice. Fixed by folding
+  the same generation id into the *cell wrapper's* own React key
+  (`` `${k}:${nearMiss.id}` `` instead of a bare `k`) only while that cell is
+  the one showing the badge, forcing a clean remount — and therefore a
+  restarted animation — on every retrigger, not just the first.
+- Positioning vs. animating turned out not to compose on the same element:
+  the natural first draft centred the badge with the entrance keyframe itself
+  (baking `translate(-50%, ...)` into `near-miss-in`), which worked for the
+  grid cell (centring is the *only* transform in play there) but broke for
+  hex, where the badge also needs `translate(-50%, -100%)` from its own
+  positioning math to sit above the cell — a CSS animation's `transform`
+  always wins over whatever the element's own style declares while it plays,
+  so the animation silently overwrote the position transform down to just
+  the keyframe's own value. Fixed by splitting into two elements: a plain,
+  unanimated wrapper carries the position transform, and the inner child
+  (with the `near-miss-badge`/`near-miss-leaving` classes) only ever animates
+  `opacity`/`scale`, never `translate`. Applied the same split to the grid
+  version too even though it wasn't strictly broken there, so both callers
+  share one contract instead of the grid relying on an animation-baked
+  centring trick the hex version couldn't reuse.
+- Considered showing near-miss feedback for an *occupied* cell too (clicking
+  a filled cell with a card selected). Decided against it: `main`'s own
+  `isLegalPlacement` treats occupied identically to every other illegal
+  reason (a single `false`), but from the player's side a filled cell isn't a
+  near miss at all — there's visibly already a card there, so a "why not"
+  message would be explaining something already obvious, the kind of
+  over-explaining the visual budget's restraint argues against.
+
 ## Results log
 
 For each item: what shipped, what it cost in milliseconds, and a screenshot or
@@ -496,3 +604,33 @@ movement, record a short capture with `page.video` and name the file here.
   Screenshots and a clip (session-local, not committed): `punch-00-before.png`,
   `punch-01-mid.png`, `punch-02-done.png`, `punch-col-01-mid.png`,
   `punch-col-02-done.png`, `page@815436aa26499fc6edb76775dd04e689.webm`.
+- **Item 6 — near-miss feedback** (2026-08-03). New `src/components/nearMiss.ts`
+  (the `gridNearMissReason`/`hexNearMissReason` classifiers, the shared
+  `useNearMissBadge()` hook, and the reason→label table), an `onClick`
+  extension plus a badge overlay in `BoardGrid.tsx` and `HexBoardView.tsx` for
+  the click path, a `dragNearMiss` effect + a red pill in `App.tsx`'s existing
+  drag-preview slot for the drag path, and `near-miss-in`/`-out`/`-shake` in
+  `index.css`. No `main`-owned file was touched — every rule this reads
+  off of (`hasOccupiedNeighbor`, `projectedRunLength`, `extendsLockedRun`,
+  `hasHexNeighbor`, etc.) was already an exported, read-only primitive in
+  board.ts / hex/board.ts. The badge's fade in/out is 160ms each, well under
+  the 250ms cap, and the cell shake is 220ms; the message's actual 900ms
+  visible hold is a JS timer independent of those animations (see decisions
+  log — this matters for reduced-motion). Nothing gates input: every trigger
+  path fires from a click or drag-hover that had already fallen through to
+  "nothing happens" on the board underneath. `npm test` (208 passed),
+  `npx tsc -b --noEmit` (clean), and `npm run smoke` (18/18 checks, build
+  ~1.2s) all green before push. Verified live in headless Chromium across all
+  five reasons: adjacency and row-cap and row-sealed on the grid (via
+  clicking an illegal empty cell with a card selected), the same adjacency
+  case on hex (and specifically confirmed the badge is NOT clipped by the
+  hex cell's own `clip-path`, after first catching it silently invisible when
+  nested — see decisions log), and a live drag hovering an illegal cell,
+  which showed the reason pill in the same slot the legal score-preview pill
+  uses and did not block the drag from continuing to a legal cell after.
+  Also verified under `page.emulateMedia({ reducedMotion: 'reduce' })` that
+  the badge still holds for its full ~900ms rather than collapsing to
+  ~0.01ms with the rest of the page's motion. Screenshots and a clip
+  (session-local, not committed): `01-before.png`, `02-click-nearmiss.png`,
+  `03-faded.png`, `04-row-cap.png`, `05-sealed.png`, `06-hex.png`,
+  `page@886db4c17343268461ba7dd3b34859a1.webm`.

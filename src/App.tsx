@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { cellAt, isLineComplete, lineCoords, type PlacementScore } from './board';
-import type { HexPlacementScore } from './hex/board';
+import { cellAt, isLineComplete, isOccupied, lineCoords, type PlacementScore } from './board';
+import { hexAt, type HexPlacementScore } from './hex/board';
 import { parseHex } from './hex/coords';
 import { getLens } from './lens';
 import { useRun, parseGrid } from './useRun';
@@ -20,6 +20,7 @@ import { StatusBar } from './components/StatusBar';
 import { RunEndPanel } from './components/RunEndPanel';
 import type { Cascade, CascadeCell } from './components/cascade';
 import type { LinePunch } from './components/linePunch';
+import { gridNearMissReason, hexNearMissReason, NEAR_MISS_LABEL, type NearMissReason } from './components/nearMiss';
 
 // Matches the count-up in StatusBar, so the flying total lands right as the
 // number underneath finishes ticking to meet it.
@@ -306,6 +307,40 @@ export default function App() {
   }, [drag]);
 
   useEffect(() => () => void (dragIdleTimer.current && clearTimeout(dragIdleTimer.current)), []);
+
+  // Near-miss feedback while dragging: `drag.over` (from useCardDrag, via
+  // useRun's `cellAt`) is already filtered to legal cells only, so an illegal
+  // target reads as simply "nothing under the pointer" with no way to tell
+  // why. This re-derives the raw cell under the same drag.x/drag.y the tilt
+  // effect above already reads, the same document.elementFromPoint technique
+  // useRun's own cellAt uses, then classifies it read-only against board.ts /
+  // hex/board.ts. No drag/board file needed a change for this.
+  const [dragNearMiss, setDragNearMiss] = useState<NearMissReason | null>(null);
+
+  useEffect(() => {
+    if (!drag) {
+      setDragNearMiss(null);
+      return;
+    }
+    const el = document.elementFromPoint(drag.x, drag.y)?.closest('[data-cell],[data-hex]');
+    if (!el) {
+      setDragNearMiss(null);
+      return;
+    }
+    if (run.kind === 'hex') {
+      const key = el.getAttribute('data-hex');
+      const h = key ? parseHex(key) : null;
+      setDragNearMiss(
+        h && !hexAt(run.s.board, h) ? hexNearMissReason(run.s.board, h, cfg) : null,
+      );
+    } else {
+      const key = el.getAttribute('data-cell');
+      const { r, c } = key ? parseGrid(key) : { r: -1, c: -1 };
+      setDragNearMiss(
+        key && !isOccupied(run.s.board, r, c, cfg) ? gridNearMissReason(run.s.board, r, c, cfg) : null,
+      );
+    }
+  }, [drag, run, cfg]);
 
   const n = g.activeSelection.size;
   const hint = drag
@@ -603,6 +638,26 @@ export default function App() {
             <span className="text-amber-400">{preview.mult}</span>
             <span className="text-neutral-600">=</span>
             <span className="text-base text-emerald-400">{preview.score}</span>
+          </span>
+        </div>
+      )}
+
+      {/* Same slot the score preview above uses — the two can never both be
+          live, since dragNearMiss only resolves for a cell isLegalKey has
+          already rejected. Riding with the ghost rather than pinned to the
+          cell means it reads naturally as "this is what's under the card"
+          without adding a second thing to look at while dragging. */}
+      {drag && !preview && dragNearMiss && (
+        <div
+          className="pointer-events-none fixed z-50"
+          style={{
+            left: drag.x,
+            top: `calc(${drag.y}px - var(--hand-card-w) * 1.12)`,
+            transform: 'translate(-50%, -100%)',
+          }}
+        >
+          <span className="whitespace-nowrap rounded-full border border-rose-400/40 bg-[#0d1015]/95 px-2.5 py-1 text-[12px] font-semibold text-rose-300 shadow-lg backdrop-blur">
+            {NEAR_MISS_LABEL[dragNearMiss]}
           </span>
         </div>
       )}

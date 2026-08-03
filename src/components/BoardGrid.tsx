@@ -11,6 +11,7 @@ import {
 import type { Card } from '../deck';
 import type { Cascade } from './cascade';
 import type { LinePunch } from './linePunch';
+import { gridNearMissReason, NEAR_MISS_LABEL, useNearMissBadge } from './nearMiss';
 import { CardFace } from './CardFace';
 import { PreviewPanel } from './PreviewPanel';
 
@@ -60,6 +61,8 @@ export function BoardGrid({
   linePunch: LinePunch | null;
 }) {
   const size = cfg.gridSize;
+
+  const { badge: nearMiss, trigger: triggerNearMiss } = useNearMissBadge();
 
   const legal = useMemo(() => {
     const s = new Set<string>();
@@ -129,6 +132,7 @@ export function BoardGrid({
           const isLifted = isTarget && selectable && dragActive;
           const cascadeHit = cascade?.cells.get(k);
           const punchAxis = linePunch?.cells.get(k);
+          const isNearMiss = nearMiss?.key === k;
 
           // A cashed line is sealed: it can never be extended or banked again,
           // which is a stronger statement than merely being full.
@@ -196,13 +200,29 @@ export function BoardGrid({
 
           return (
             <div
-              key={k}
+              // Folding the badge's own generation id into the key when this
+              // cell is the one showing it forces a remount on a repeat click
+              // before the previous badge finished — otherwise the shake
+              // class is already present and re-clicking wouldn't replay it.
+              key={isNearMiss ? `${k}:${nearMiss!.id}` : k}
               data-cell={k}
               onMouseEnter={() => onHoverCell({ r, c })}
-              onClick={() => (selectable || isCashable) && onActivateCell({ r, c })}
+              onClick={() => {
+                if (selectable || isCashable) {
+                  onActivateCell({ r, c });
+                  return;
+                }
+                // An illegal, empty cell used to swallow the click silently.
+                // Occupied cells (a card already there) don't need a reason —
+                // that one is obvious on sight.
+                if (interactive && selectedCard && !card) {
+                  const reason = gridNearMissReason(board, r, c, cfg);
+                  if (reason) triggerNearMiss(k, reason);
+                }
+              }}
               className={`relative flex items-center justify-center rounded-md transition-[background-color,box-shadow,transform] duration-150 ${
                 selectable || isCashable ? 'cursor-pointer' : ''
-              }`}
+              } ${isNearMiss ? 'near-miss-shake' : ''}`}
               style={{
                 width: 'var(--cell)',
                 height: 'var(--cell)',
@@ -239,6 +259,22 @@ export function BoardGrid({
                     punchAxis === 'row' ? 'line-punch-row' : 'line-punch-col'
                   }`}
                 />
+              )}
+              {isNearMiss && (
+                // Positioning lives on this wrapper (plain, unanimated) so the
+                // near-miss-in/out keyframes are free to animate `transform`
+                // for their own scale-in without fighting a centering
+                // translate for the same property.
+                <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 -translate-x-1/2">
+                  <div
+                    key={nearMiss!.id}
+                    className={`near-miss-badge whitespace-nowrap rounded-full border border-rose-400/40 bg-[#0d1015]/95 px-2 py-1 text-[10px] font-semibold text-rose-300 shadow-lg ${
+                      nearMiss!.leaving ? 'near-miss-leaving' : ''
+                    }`}
+                  >
+                    {NEAR_MISS_LABEL[nearMiss!.reason]}
+                  </div>
+                </div>
               )}
             </div>
           );

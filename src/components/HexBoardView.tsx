@@ -9,6 +9,7 @@ import {
 } from '../hex/board';
 import { hexesWithinRadius, hexKey, hexToPixel, type Hex } from '../hex/coords';
 import type { Cascade } from './cascade';
+import { hexNearMissReason, NEAR_MISS_LABEL, useNearMissBadge } from './nearMiss';
 import { CardFace } from './CardFace';
 
 /** Pointy-top: width is √3·R, height is 2R. */
@@ -41,6 +42,8 @@ export function HexBoardView({
   /** Cells to light one at a time after the most recent score, chips axis then mult. */
   cascade: Cascade | null;
 }) {
+  const { badge: nearMiss, trigger: triggerNearMiss } = useNearMissBadge();
+
   const cells = useMemo(() => hexesWithinRadius(cfg.hexRadius), [cfg.hexRadius]);
 
   // Hex size shrinks with the viewport the same way --cell does on the grid.
@@ -103,6 +106,7 @@ export function HexBoardView({
         const inWindow = windowKeys.get(k);
         const inRun = runKeys.get(k);
         const cascadeHit = cascade?.cells.get(k);
+        const isNearMiss = nearMiss?.key === k;
 
         let bg = 'rgba(0,0,0,.34)';
         let ring = '';
@@ -123,13 +127,25 @@ export function HexBoardView({
 
         return (
           <div
-            key={k}
+            // See BoardGrid for why the badge's generation id joins the key
+            // only for the cell currently showing it — it forces the shake to
+            // replay on a repeat click before the previous badge faded.
+            key={isNearMiss ? `${k}:${nearMiss!.id}` : k}
             data-hex={k}
             onMouseEnter={() => onHoverCell(h)}
-            onClick={() => selectable && onActivateCell(h)}
+            onClick={() => {
+              if (selectable) {
+                onActivateCell(h);
+                return;
+              }
+              if (interactive && selectedCard && !card) {
+                const reason = hexNearMissReason(board, h, cfg);
+                if (reason) triggerNearMiss(k, reason);
+              }
+            }}
             className={`absolute flex items-center justify-center transition-[background-color,transform] duration-150 ${
               selectable ? 'cursor-pointer' : ''
-            }`}
+            } ${isNearMiss ? 'near-miss-shake' : ''}`}
             style={{
               ...place(h),
               width: `calc(1.733 * ${size})`,
@@ -192,6 +208,44 @@ export function HexBoardView({
           </div>
         );
       })}
+
+      {/* clip-path on the hex cell itself clips its whole rendered output —
+          not just overflowing box-shadow (see item 2's decision log), but any
+          descendant that paints outside the hex silhouette, including a
+          position:absolute child meant to float above it. So the badge is a
+          sibling here, positioned from the same `place()` pixel math as the
+          cell it's pointing at, rather than nested inside the clipped cell
+          where it would render but never actually be visible. */}
+      {nearMiss &&
+        (() => {
+          const h = cells.find((c) => hexKey(c) === nearMiss.key);
+          if (!h) return null;
+          const pos = place(h);
+          return (
+            // Positioning (including the -100%/-50% translate that lifts and
+            // centres the badge over the hex) lives on this plain wrapper, so
+            // the near-miss-in/out keyframes on the child are free to animate
+            // `transform` for their own scale-in without the two fighting
+            // over the same property.
+            <div
+              className="pointer-events-none absolute z-20"
+              style={{
+                left: `calc(${pos.left} + 0.866 * ${size})`,
+                top: `calc(${pos.top} - 6px)`,
+                transform: 'translate(-50%, -100%)',
+              }}
+            >
+              <div
+                key={nearMiss.id}
+                className={`near-miss-badge whitespace-nowrap rounded-full border border-rose-400/40 bg-[#0d1015]/95 px-2 py-1 text-[10px] font-semibold text-rose-300 shadow-lg ${
+                  nearMiss.leaving ? 'near-miss-leaving' : ''
+                }`}
+              >
+                {NEAR_MISS_LABEL[nearMiss.reason]}
+              </div>
+            </div>
+          );
+        })()}
     </div>
   );
 }
