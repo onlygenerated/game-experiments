@@ -23,6 +23,7 @@ export function HexBoardView({
   onHoverCell,
   onActivateCell,
   interactive,
+  dragActive,
 }: {
   cfg: Config;
   board: HexBoard;
@@ -33,6 +34,8 @@ export function HexBoardView({
   onHoverCell: (cell: Hex | null) => void;
   onActivateCell: (cell: Hex) => void;
   interactive: boolean;
+  /** True while a card is being dragged, so the cell under the pointer can lift. */
+  dragActive: boolean;
 }) {
   const cells = useMemo(() => hexesWithinRadius(cfg.hexRadius), [cfg.hexRadius]);
 
@@ -92,6 +95,7 @@ export function HexBoardView({
         const card = hexAt(board, h);
         const selectable = interactive && legal.has(k) && selectedCard !== null;
         const isTarget = targetKey === k;
+        const isLifted = isTarget && selectable && dragActive;
         const inWindow = windowKeys.get(k);
         const inRun = runKeys.get(k);
 
@@ -118,7 +122,7 @@ export function HexBoardView({
             data-hex={k}
             onMouseEnter={() => onHoverCell(h)}
             onClick={() => selectable && onActivateCell(h)}
-            className={`absolute flex items-center justify-center transition-colors duration-150 ${
+            className={`absolute flex items-center justify-center transition-[background-color,transform] duration-150 ${
               selectable ? 'cursor-pointer' : ''
             }`}
             style={{
@@ -130,6 +134,10 @@ export function HexBoardView({
               boxShadow: ring ? `inset 0 0 0 3px ${ring}` : undefined,
               // clip-path cuts the shadow, so the rim is drawn as an inset ring.
               outline: selectable && !ring ? 'none' : undefined,
+              // The lift itself; clip-path already crops any drop-shadow we
+              // could add here, so a small translate is what "under the
+              // pointer" gets on the hex board instead of a bigger shadow.
+              transform: isLifted ? 'translateY(-3px)' : undefined,
             }}
           >
             {/* clip-path clips borders too, so every rim is drawn as an inset

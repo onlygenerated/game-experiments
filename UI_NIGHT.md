@@ -84,7 +84,7 @@ Ordered so a short night still lands the items that change how a placement
       total. The single highest-value item here: it is what makes a placement
       feel like it paid. Reuse the discard fly-away's approach — freeze a
       position, animate, never gate the state change.
-- [ ] **2. Weighted drag.** The card tilts into its direction of travel and
+- [x] **2. Weighted drag.** The card tilts into its direction of travel and
       settles with a slight overshoot; cells lift a little under the pointer.
       Small, and it is most of what "physicality" means. `useCardDrag` already
       tracks position — velocity is a derivative of what is there.
@@ -171,6 +171,50 @@ was moving — a note that an idea failed is worth as much as one that landed.
   exceed the 250ms budget — they predate this backlog and are not this item's
   to fix. Left them alone; noting it here so a later firing doesn't assume the
   budget was already being enforced everywhere.
+- **Item 2.** `useCardDrag` (`src/useCardDrag.ts`) is a top-level `src/*.ts`
+  file, so it belongs to `main` — the queue note that it "already tracks
+  position" turned out to matter literally: velocity had to be derived outside
+  the hook, from consecutive `drag.x` samples taken in `App.tsx`, rather than
+  by adding a field to the hook's state.
+- Tilt is computed in a `useEffect` keyed on `drag`: each pointermove gives a
+  new `drag` object, so the effect fires once per sample, diffs `drag.x`
+  against the previous sample's `{x, t}` (via `performance.now()`), and turns
+  `vx` (px/ms) into a lean clamped to ±18° around a −4° resting angle (the
+  same static angle the ghost used before this item). Position (`left`/`top`)
+  stays a direct, untransitioned read of `drag.x`/`drag.y` so the card never
+  lags the pointer — only the rotation inside the ghost's `transform` carries
+  a `transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1)` (a
+  standard "easeOutBack"), which is what gives the lean its spring/overshoot
+  instead of snapping to each new sample.
+- First attempt tied "settles with a slight overshoot" only to the drop, on
+  the theory that release is when a dragged object's motion actually stops.
+  It doesn't work: `useCardDrag` nulls `drag` synchronously on pointer-up, so
+  the ghost unmounts in the same tick — there is no frame in which a
+  post-drop settle animation could ever be seen. Moved the idea to where it
+  *is* visible: a pointer that stops moving mid-drag (still held down, no new
+  samples) now eases back to the resting −4° via an 80ms idle timer that
+  resets the tilt, so the overshoot plays whenever motion decelerates to a
+  stop, not only at an invisible drop.
+  Verified this distinction by instrumenting the effect with a temporary
+  `console.debug` and reading it back over Playwright's `page.on('console')`:
+  a fast flick pinned `vx` at the ±18° clamp as expected, and the same probe
+  caught the idle timer firing before a screenshot taken \>80ms after the
+  last sample — explaining why an early screenshot read as barely tilted
+  before the timing was corrected. The debug line was removed before commit;
+  noting the method here since a later firing chasing a similar "why is the
+  number smaller than I expected" will hit the same idle-window trap.
+- The cell lift (a `translateY(-3px)`, plus a stronger drop-shadow on the
+  grid board) is applied only to the currently-targeted, selectable cell
+  while `dragActive` (a plain `Boolean(drag)` passed down from `App.tsx`),
+  not merely on hover — the standing hover highlight already existed and
+  this item is specifically about drag physicality, so the lift is additive
+  and scoped to the drag case rather than changing the general hover
+  behaviour click-selection already relies on.
+- Hex cells use `clip-path` to draw the hexagon, which crops any box-shadow
+  applied to the element itself — so the grid board's lift got a drop-shadow
+  and the hex board's got translateY only. Both stay within the 150ms
+  transition already on those cells (extended to include `transform`
+  alongside the existing `background-color`/`box-shadow` list).
 
 ## Results log
 
@@ -190,3 +234,19 @@ movement, record a short capture with `page.video` and name the file here.
   committed — this repo doesn't version screenshots/video):
   `01-before.png`, `02-preview.png`, `03-mid-fly.png`, `04-settled.png`,
   `page@3e097f5b5866c30677724e5bb8d72836.webm`.
+- **Item 2 — weighted drag** (2026-08-03). Shipped entirely in `App.tsx`
+  (velocity tracking, idle-decay timer, ghost transform/transition) plus a
+  `dragActive` prop threaded into `BoardGrid.tsx` and `HexBoardView.tsx` for
+  the cell lift. No file `main` owns was touched — `useCardDrag.ts` was read
+  only. Tilt transition 180ms, lift transition 150ms, both under the 250ms
+  cap; position is never transitioned so the pointer is never lagged.
+  `npm test` (208 passed), `npx tsc -b --noEmit` (clean), and `npm run smoke`
+  (18/18 checks, build ~1.5s) all green before push. Verified live in headless
+  Chromium, including a numeric probe (`getComputedStyle(...).transform`
+  parsed back to degrees) confirming a fast flick pins the lean at the ±18°
+  clamp and an idle hold decays it back to the −4° resting angle within the
+  80ms timer window — screenshots and clip (session-local, not committed):
+  `02-pickup-base-tilt.png`, `03-fast-flick-tilt.png`,
+  `04-held-still-settled.png`, `05-fast-flick-opposite.png`,
+  `06-cell-lift.png`, `07-dropped.png`,
+  `page@288ba3c602bc6d195f107f315e6e9f57.webm`.

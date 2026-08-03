@@ -22,6 +22,14 @@ import { StatusBar } from './components/StatusBar';
 // number underneath finishes ticking to meet it.
 const SCORE_FLY_MS = 220;
 
+// The ghost's resting lean when held still, same angle the static tilt used
+// before this existed.
+const DRAG_BASE_TILT = -4;
+// Clamped so a fast flick tilts the card, never spins it.
+const DRAG_MAX_TILT = 18;
+// Degrees per px/ms of horizontal pointer speed.
+const DRAG_TILT_GAIN = 7;
+
 /** A placement's score, frozen at the cell it landed on, en route to the total. */
 interface ScoreFly {
   id: number;
@@ -144,6 +152,41 @@ export default function App() {
   }, [logRows, run.kind]);
 
   useEffect(() => () => void (scoreFlyTimer.current && clearTimeout(scoreFlyTimer.current)), []);
+
+  // Weighted drag: `useCardDrag` only tracks position, so velocity — and the
+  // tilt it drives — is derived here from consecutive `drag.x` samples rather
+  // than threading a change into the hook. The ghost's own CSS transition
+  // (an overshoot bezier) is what makes the tilt spring toward its target
+  // instead of snapping, so this effect only needs to compute where "toward"
+  // is. A pointer that stops moving stops producing samples altogether, so an
+  // idle timer eases the tilt back to its resting lean rather than leaving it
+  // pinned at whatever the last real move happened to be — that idle-to-rest
+  // spring is the "settles" half of the item, since the drop itself removes
+  // the ghost before any animation on it could be seen.
+  const dragMotion = useRef<{ x: number; t: number } | null>(null);
+  const dragIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [dragTilt, setDragTilt] = useState(DRAG_BASE_TILT);
+
+  useEffect(() => {
+    if (dragIdleTimer.current) clearTimeout(dragIdleTimer.current);
+    if (!drag) {
+      dragMotion.current = null;
+      setDragTilt(DRAG_BASE_TILT);
+      return;
+    }
+    const now = performance.now();
+    const prev = dragMotion.current;
+    dragMotion.current = { x: drag.x, t: now };
+    dragIdleTimer.current = setTimeout(() => setDragTilt(DRAG_BASE_TILT), 80);
+    if (!prev) return;
+    const dt = now - prev.t;
+    if (dt <= 0) return;
+    const vx = (drag.x - prev.x) / dt;
+    const lean = Math.max(-DRAG_MAX_TILT, Math.min(DRAG_MAX_TILT, vx * DRAG_TILT_GAIN));
+    setDragTilt(DRAG_BASE_TILT + lean);
+  }, [drag]);
+
+  useEffect(() => () => void (dragIdleTimer.current && clearTimeout(dragIdleTimer.current)), []);
 
   const n = g.activeSelection.size;
   const hint = drag
@@ -276,6 +319,7 @@ export default function App() {
                 onHoverCell={(h) => !touch && !drag && setTarget(h ? `${h.q},${h.r}` : null)}
                 onActivateCell={(h) => g.activateKey(`${h.q},${h.r}`)}
                 interactive={playing}
+                dragActive={Boolean(drag)}
               />
             ) : (
               <BoardGrid
@@ -292,6 +336,7 @@ export default function App() {
                 onActivateCell={(cell) => g.activateKey(`${cell.r},${cell.c}`)}
                 interactive={playing}
                 docked={docked}
+                dragActive={Boolean(drag)}
               />
             )}
 
@@ -390,7 +435,11 @@ export default function App() {
           style={{
             left: drag.x,
             top: drag.y,
-            transform: 'translate(-50%, -60%) rotate(-4deg) scale(1.12)',
+            // left/top track the pointer every frame; only the rotation
+            // inside `transform` is transitioned, so position never lags but
+            // the lean springs toward its target with a slight overshoot.
+            transform: `translate(-50%, -60%) rotate(${dragTilt}deg) scale(1.12)`,
+            transition: 'transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1)',
             filter: 'drop-shadow(0 12px 18px rgba(0,0,0,.6))',
           }}
         >

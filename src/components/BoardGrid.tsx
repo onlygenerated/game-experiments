@@ -32,6 +32,7 @@ export function BoardGrid({
   onActivateCell,
   interactive,
   docked,
+  dragActive,
 }: {
   cfg: Config;
   board: Board;
@@ -47,6 +48,8 @@ export function BoardGrid({
   interactive: boolean;
   /** True when the preview lives in a docked sheet instead of beside the board. */
   docked: boolean;
+  /** True while a card is being dragged, so the cell under the pointer can lift. */
+  dragActive: boolean;
 }) {
   const size = cfg.gridSize;
 
@@ -115,6 +118,7 @@ export function BoardGrid({
           const isCashable = interactive && cashable.has(k);
           const isTarget = target?.r === r && target?.c === c;
           const isJustPlaced = justPlaced?.r === r && justPlaced?.c === c;
+          const isLifted = isTarget && selectable && dragActive;
 
           // A cashed line is sealed: it can never be extended or banked again,
           // which is a stronger statement than merely being full.
@@ -175,6 +179,9 @@ export function BoardGrid({
             card
               ? 'inset 0 1px 3px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.05)'
               : 'inset 0 2px 5px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.055)',
+            // The cell under a drag lifts a little, so a card in flight reads
+            // as something about to land rather than a flat highlight.
+            isLifted ? '0 6px 10px rgba(0,0,0,.45)' : '',
           ].filter(Boolean);
 
           return (
@@ -183,7 +190,7 @@ export function BoardGrid({
               data-cell={k}
               onMouseEnter={() => onHoverCell({ r, c })}
               onClick={() => (selectable || isCashable) && onActivateCell({ r, c })}
-              className={`flex items-center justify-center rounded-md transition-[background-color,box-shadow] duration-150 ${
+              className={`flex items-center justify-center rounded-md transition-[background-color,box-shadow,transform] duration-150 ${
                 selectable || isCashable ? 'cursor-pointer' : ''
               }`}
               style={{
@@ -198,6 +205,7 @@ export function BoardGrid({
                     : 'linear-gradient(180deg, rgba(0,0,0,.3), rgba(255,255,255,.05))'
                 }, ${bg}`,
                 boxShadow: shadows.join(', '),
+                transform: isLifted ? 'translateY(-3px)' : undefined,
               }}
             >
               {card ? (
