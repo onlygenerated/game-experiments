@@ -50,6 +50,11 @@ export function HandTray({
     n >= cfg.minDiscardSelection &&
     n <= cfg.maxDiscardSelection;
 
+  // A held hand isn't a straight row — it fans, each card tilted a little more
+  // than the last around a shared centre, with the outer cards dipping along
+  // the arc. Small on purpose ("slightly"): this is texture, not a layout change.
+  const fanCenter = (hand.length - 1) / 2;
+
   return (
     <div className="panel flex flex-col gap-3 rounded-lg p-3 min-[1280px]:flex-row min-[1280px]:items-center">
       <div className="flex justify-center gap-1.5 min-[1280px]:justify-start min-[1280px]:gap-2">
@@ -57,6 +62,9 @@ export function HandTray({
           const isSel = selected.has(i);
           const isDragging = dragIndex === i;
           const isDealt = dealtIds.has(card.id);
+          const fanOffset = i - fanCenter;
+          const fanRotate = fanOffset * 2.5;
+          const fanLift = Math.abs(fanOffset) * 2;
           return (
             <button
               key={card.id}
@@ -70,8 +78,8 @@ export function HandTray({
               // taps are already handled in onPointerUp, so this never doubles.
               onClick={(e) => e.detail === 0 && onToggle(i)}
               aria-pressed={isSel}
-              className={`rounded transition-[transform,box-shadow] duration-150 ${
-                isSel ? '-translate-y-2' : 'min-[1280px]:hover:-translate-y-1'
+              className={`hand-card rounded transition-[transform,box-shadow] duration-150 ${
+                isSel ? 'is-selected z-10' : ''
               } ${
                 disabled
                   ? 'cursor-not-allowed opacity-50'
@@ -79,11 +87,15 @@ export function HandTray({
                     ? 'cursor-grabbing'
                     : 'cursor-grab active:cursor-grabbing'
               }`}
-              style={{
-                // The real card follows the pointer; leave a dimmed gap behind.
-                opacity: isDragging ? 0.25 : undefined,
-                filter: isSel ? 'drop-shadow(0 6px 10px rgba(16,185,129,.45))' : undefined,
-              }}
+              style={
+                {
+                  '--fan-rot': `${fanRotate}deg`,
+                  '--fan-y': `${fanLift}px`,
+                  // The real card follows the pointer; leave a dimmed gap behind.
+                  opacity: isDragging ? 0.25 : undefined,
+                  filter: isSel ? 'drop-shadow(0 6px 10px rgba(16,185,129,.45))' : undefined,
+                } as React.CSSProperties
+              }
             >
               <CardFace
                 card={card}

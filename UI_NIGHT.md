@@ -105,7 +105,7 @@ Ordered so a short night still lands the items that change how a placement
       stock texture. Functional but plain today.
 - [x] **8. Board depth.** Stronger well shading, a felt or paper ground, a
       warmer highlight on legal cells.
-- [ ] **9. Hand tray.** Fan the cards slightly, lift on hover, and animate the
+- [x] **9. Hand tray.** Fan the cards slightly, lift on hover, and animate the
       refill as a deal rather than a pop-in.
 
 ## Where things live
@@ -663,6 +663,86 @@ was moving — a note that an idea failed is worth as much as one that landed.
   timing and said nothing about legibility. That gap is now closed with a rule
   of its own above. A future card-face item must preserve the split.
 
+- **Item 9.** No `main`-owned file needed a change or even a fresh read beyond
+  what item 7 already established: `dealtIds` (from `useRun.ts`, already
+  imported by `HandTray`) turned out to already mark *every* card newly in
+  hand — initial deal and post-discard refill alike, since both just add ids
+  `prevHandIds` hasn't seen — and `.animate-deal`/`DEAL_MS` already existed
+  pre-backlog (noted in item 1's decisions log as a pre-existing >250ms
+  violation). So "animate the refill as a deal rather than a pop-in" was
+  already true going into this firing; the only real gap was the fan and the
+  hover lift, plus bringing the pre-existing deal-in under budget now that
+  this item is squarely about the exact animation in question.
+- The fan is a pure resting-state transform, not an animation, so it needed
+  no budget check of its own — `rotate(var(--fan-rot)) translateY(var(--fan-y))`
+  set once per render from each card's offset from the hand's centre
+  (`i - (hand.length-1)/2`), `transform-origin: bottom center` so the rotation
+  reads as fanned around a shared pivot rather than each card spinning about
+  its own middle. 2.5deg of rotation and 2px of dip per step from centre —
+  "slightly" was taken literally; at the default 7-card hand the outer cards
+  sit at ±7.5deg, nowhere near obscuring a rank.
+- Kept the fan/selected/hover transform entirely inside a new `.hand-card`
+  CSS class rather than composing it from Tailwind's `-translate-y-2` /
+  `hover:-translate-y-1` utilities the code used before. Tried the utility
+  route first: Tailwind's translate/rotate utilities all write to the same
+  `transform` property via shared `--tw-*` custom properties, so overlaying a
+  per-card inline `--fan-rot` on top of the existing conditional utility
+  classes would have made two different mechanisms fight over which one's
+  cascade position wins — fragile in exactly the way item 6's clip-path
+  lesson was, just for a different property. Plain CSS consuming `--fan-rot`/
+  `--fan-y` directly removes the ambiguity: one rule, one `transform` value,
+  per state.
+- Reused item 6's split (one element carries position, nothing that animates
+  the `transform` property touches it) even though nothing here uses a CSS
+  *animation* on this element — the `.animate-deal` class lives on the inner
+  `CardFace`, the fan/hover/selected transform lives on the outer `button`,
+  the same split the code already had before this item (selection lift was
+  already on the button, deal-in was already on the inner face). Fan slotted
+  into the existing seam rather than requiring a new one.
+- Hover lift straightens the card (`rotate(0deg)`) rather than just adding
+  lift at its held angle — picking a card out of a fan is what a hand
+  actually does, and a card lifting while staying tilted read as it sliding
+  up rather than being picked. Gets its own `z-index: 10` on hover (matching
+  `.is-selected`'s existing one) so a picked card's corner clears a
+  neighbour's fan angle at the hand's outer edges instead of tucking under it.
+- Considered overlapping the cards (negative margin) to sell "a fan" harder.
+  Dropped it: every card is also a drag/click target, and the existing layout
+  already sizes hit areas off the flex gap — overlapping would either shrink
+  a neighbour's clickable area or require restructuring hit-testing, for a
+  visual gain a few degrees of rotation already delivers on its own.
+- `.animate-deal`'s duration moved from 320ms to 240ms, under the visual
+  budget's 250ms cap. Left alone by items 1-8 on the grounds that it predated
+  the backlog and wasn't their item's job to fix (item 1's decisions log says
+  so explicitly) — but this item's whole subject is "animate the refill as a
+  deal", so this is the firing where touching it is actually in scope. Same
+  easing curve, only the duration changed. Bonus: with the existing `i * 45ms`
+  per-card stagger, the last card of a full 7-card deal now finishes at
+  270ms + 240ms = 510ms, inside `useRun.ts`'s existing 520ms `DEAL_MS` window
+  that clears `dealtIds` — at the old 320ms it finished at 590ms, past that
+  window, so the class was getting yanked mid-animation on the slowest card
+  every deal. Not this item's file to fix, but a change we own that happens
+  to close a timing gap in a `main`-owned constant purely by being under
+  budget.
+- Chased what looked like a bug before realizing it wasn't: a fresh run
+  always shows one card already sitting at the board's centre cell with an
+  otherwise-empty log ("no placements yet"). Verified this is pre-existing
+  and unrelated by stashing this item's entire diff, rebuilding, and checking
+  a stray DOM dump of every cell on load — the centre card was there in the
+  unmodified build too. Whatever seeds it lives in `main`-owned code this
+  item never touched; noting it here only so a later firing doesn't lose the
+  same twenty minutes re-deriving that it isn't this branch's doing.
+- Verified live in headless Chromium: the resting fan (screenshot), hovering
+  a middle hand card (straightens + lifts clear of its rotated neighbours,
+  desktop breakpoint only), selecting a card (same lift, plus the existing
+  emerald outline, distinct from the hover state), and a real discard →
+  refill cycle (hand count 7→6→7, deck and discard counters both moved,
+  the incoming card visibly mid deal-in transform before settling into its
+  fanned resting position). Screenshots and a clip (session-local, not
+  committed): `09-01-fan-resting.png`, `09-02-fan-zoom.png`,
+  `09-03-hover-lift.png`, `09-03b-hover-zoom.png`, `09-04-selected.png`,
+  `09-04b-selected-zoom.png`, `09-05-mid-deal.png`, `09-06-deal-settled.png`,
+  `09-hand-tray-flow.webm`.
+
 ## Results log
 
 For each item: what shipped, what it cost in milliseconds, and a screenshot or
@@ -845,3 +925,48 @@ movement, record a short capture with `page.video` and name the file here.
   `hex-01-empty.png`, `hex-02-legal-highlight.png`, `hex-03-cell-zoom.png`,
   `before-01-hover-target.png`, `crop-before.png`, `crop-after.png`,
   `crop-diff-amplified.png`.
+- **Item 9 — hand tray** (2026-08-03). Shipped in `HandTray.tsx` (per-card
+  `--fan-rot`/`--fan-y` custom properties computed from each card's offset
+  from the hand's centre, a `hand-card`/`is-selected` class swap replacing the
+  old Tailwind translate utilities) and `index.css` (`.hand-card` resting/
+  selected/hover rules, plus tightening `.animate-deal` from 320ms to 240ms —
+  now under the visual budget's 250ms cap). No file `main` owns was touched;
+  `dealtIds` from `useRun.ts` was read only, same as before this item. The fan
+  is a static transform (no timing budget applies); the hover lift transition
+  is the pre-existing 150ms `transition-[transform,box-shadow]` duration,
+  unchanged; the deal-in animation is now 240ms, under the cap, and its
+  staggered finish (270ms + 240ms = 510ms for a full 7-card hand) now lands
+  inside `useRun.ts`'s existing 520ms `DEAL_MS` window instead of running past
+  it. Nothing gates input — the fan/hover/selected transform is purely
+  decorative on an already-clickable/draggable button, same hit area as
+  before. `npm test` (208 passed), `npx tsc -b --noEmit` (clean), and
+  `npm run smoke` (18/18 checks, build ~1.1-1.3s) all green before push.
+  Verified live in headless Chromium: the resting hand fans visibly (outer
+  cards tilt ~7.5° at the default 7-card hand, dipping slightly along the
+  arc), hovering a middle card straightens and lifts it clear of its rotated
+  neighbours (desktop breakpoint only, matching the pre-existing hover
+  convention), selecting a card shows the same lift plus the unchanged
+  emerald outline, and a real discard→refill cycle (hand 7→6→7, deck and
+  discard counters both moved) showed the incoming card mid deal-in transform
+  before settling into its fanned resting position — also confirmed the
+  centre-cell starter card visible throughout is pre-existing `main`-owned
+  behaviour, unrelated to this item (see decisions log). Screenshots and a
+  clip (session-local, not committed): `09-01-fan-resting.png`,
+  `09-02-fan-zoom.png`, `09-03-hover-lift.png`, `09-03b-hover-zoom.png`,
+  `09-04-selected.png`, `09-04b-selected-zoom.png`, `09-05-mid-deal.png`,
+  `09-06-deal-settled.png`, `09-hand-tray-flow.webm`.
+
+## End of night
+
+All nine queued items landed, one per hourly firing, each verified with
+`npm test` + `npx tsc -b --noEmit` + `npm run smoke` and a live headless-Chromium
+pass before push — no file `main` owns was ever touched. The two biggest wins
+for how a placement *feels*: item 1 (score-fly/count-up) and item 2 (weighted
+drag), both early in the queue by design. The two corrections worth a future
+firing remembering: item 7 originally applied the full pip-and-monogram
+treatment at board scale too, costing rank legibility, and was fixed to split
+`md` (plain rank, scanned) from `lg` (full face, held) — now written into the
+visual budget itself so it can't be lost again; and item 9 used its own scope
+to bring the pre-existing `deal-in` animation (320ms, predating this backlog)
+under the 250ms budget, since it was the first item actually about that exact
+animation. Queue is empty; nothing left for the next firing to pick up.
