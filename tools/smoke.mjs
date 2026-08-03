@@ -1,0 +1,140 @@
+/**
+ * End-to-end smoke test: does the game still work?
+ *
+ *   npx vite build && npx vite preview --port 4173 &
+ *   node tools/smoke.mjs
+ *
+ * `npm test` proves the scorers are right and `tsc` proves the types line up,
+ * but neither notices when a component prop is renamed on one branch while the
+ * thing that feeds it changes on another. Git merges that cleanly and the game
+ * breaks. This drives the real build in a real browser instead: place, drag,
+ * undo, discard, reseed, hex, lock-and-cash, and each of the three screens.
+ *
+ * Run it after merging the UI branch into main, and after any refactor that
+ * moves state between modules. Exits non-zero if anything fails.
+ */
+import { launch } from './browser.mjs';
+const SP = process.env.SMOKE_OUT || '/tmp';
+const b = await launch();
+const errs = [];
+const p = await b.newPage({ viewport: { width: 1500, height: 1000 } });
+p.on('console', (m) => m.type() === 'error' && errs.push(m.text()));
+p.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+await p.goto('http://localhost:4173/');
+await p.waitForTimeout(700);
+
+let failures = 0;
+const ok = (label, v) => {
+  if (!v) failures++;
+  console.log(`${v ? 'ok  ' : 'FAIL'}  ${label}`);
+};
+const text = () => p.evaluate(() => document.body.innerText);
+const score = async () => Number((await text()).match(/(\d+)\s*\/\s*\d+/)?.[1] ?? -1);
+const pickRules = async (name) => {
+  await p.locator('button:has-text("Rules"):visible').first().click();
+  await p.waitForTimeout(300);
+  const item = p.locator('button', { hasText: name }).last();
+  await item.scrollIntoViewIfNeeded();
+  await item.click();
+  await p.waitForTimeout(500);
+};
+
+// --- click to place ---------------------------------------------------------
+await p.locator('[data-hand-index="0"]').click();
+await p.waitForTimeout(150);
+await p.locator('[data-cell="3,4"]').hover();
+await p.waitForTimeout(250);
+ok('hover opens the side preview', (await text()).includes('ROW → CHIPS'));
+await p.locator('[data-cell="3,4"]').click();
+await p.waitForTimeout(400);
+ok('click places a card', (await p.locator('[data-cell="3,4"] .card-face').count()) > 0);
+const afterPlace = await score();
+ok('placement banked score', afterPlace > 0);
+ok('score log recorded it', (await text()).includes('#1'));
+
+// --- drag to place ----------------------------------------------------------
+const card = await p.locator('[data-hand-index="0"]').boundingBox();
+const cell = await p.locator('[data-cell="3,5"]').boundingBox();
+await p.mouse.move(card.x + card.width / 2, card.y + card.height / 2);
+await p.mouse.down();
+await p.mouse.move(cell.x + cell.width / 2, cell.y + cell.height / 2, { steps: 10 });
+await p.waitForTimeout(250);
+ok('drag badge appears', (await p.locator('span:has-text("=")').count()) > 0);
+await p.mouse.up();
+await p.waitForTimeout(400);
+ok('drag places a card', (await p.locator('[data-cell="3,5"] .card-face').count()) > 0);
+
+// --- undo -------------------------------------------------------------------
+await p.locator('button:has-text("Undo"):visible').first().click();
+await p.waitForTimeout(400);
+ok('undo removes the last placement', (await p.locator('[data-cell="3,5"] .card-face').count()) === 0);
+ok('undo restores the score', (await score()) === afterPlace);
+
+// --- discard ----------------------------------------------------------------
+const deckBefore = Number((await text()).match(/DECK\s+(\d+)/)?.[1] ?? -1);
+await p.locator('[data-hand-index="1"]').click();
+await p.waitForTimeout(150);
+await p.locator('button:has-text("Discard"):visible').first().click();
+await p.waitForTimeout(800);
+ok('discard drew replacements', Number((await text()).match(/DECK\s+(\d+)/)?.[1]) < deckBefore);
+
+// --- new run / seed ---------------------------------------------------------
+await p.locator('button:has-text("Random seed"):visible').first().click();
+await p.waitForTimeout(600);
+ok('new run resets the score', (await score()) === 0);
+
+// --- ruleset switch, hex ----------------------------------------------------
+await pickRules('Hex Sprawl');
+ok('hex board renders', (await p.locator('[data-hex]').count()) > 0);
+await p.locator('[data-hand-index="0"]').click();
+await p.waitForTimeout(150);
+// A known neighbour of the origin — an arbitrary hex is usually not legal.
+const hex = await p.locator('[data-hex="1,0"]').boundingBox();
+await p.mouse.move(hex.x + hex.width / 2, hex.y + hex.height / 2);
+await p.waitForTimeout(300);
+await p.mouse.click(hex.x + hex.width / 2, hex.y + hex.height / 2);
+await p.waitForTimeout(400);
+ok('hex placement works', (await score()) > 0);
+
+// --- lock and cash ----------------------------------------------------------
+await pickRules('Lock and cash');
+await p.locator('[data-hand-index="0"]').click();
+await p.waitForTimeout(150);
+await p.locator('[data-cell="3,4"]').click();
+await p.waitForTimeout(400);
+ok('lock-and-cash banks nothing on placement', (await score()) === 0);
+await p.locator('[data-cell="3,3"]').click();
+await p.waitForTimeout(500);
+ok('cashing a cross banks it', (await score()) > 0);
+
+// --- the other screens ------------------------------------------------------
+await p.locator('button:has-text("Scoring"):visible').first().click();
+await p.waitForTimeout(400);
+ok('scoring panel opens', (await text()).includes('How scoring works'));
+await p.locator('button:has-text("Close"):visible').first().click();
+await p.waitForTimeout(300);
+
+await p.locator('button:has-text("Metrics"):visible').first().click();
+await p.waitForTimeout(400);
+ok('metrics page opens', (await text()).includes('Lookahead lift'));
+await p.locator('button:has-text("Back to the board")').click();
+await p.waitForTimeout(400);
+
+await p.locator('button:has-text("Setup"):visible').first().click();
+await p.waitForTimeout(400);
+ok('setup page opens', (await text()).includes('Game setup'));
+await p.locator('button:has-text("Start this game")').click();
+await p.waitForTimeout(600);
+ok('setup starts a run', (await p.locator('[data-cell],[data-hex]').count()) > 0);
+
+await p.screenshot({ path: `${SP}/smoke-final.png` });
+
+// A 404 for the favicon is expected in the preview server and is not a fault.
+const real = errs.filter((e) => !e.includes('404'));
+if (real.length) {
+  failures += real.length;
+  console.log('console errors:', real);
+}
+console.log(failures ? `\n${failures} FAILED` : '\nall checks passed');
+await b.close();
+process.exit(failures ? 1 : 0);
