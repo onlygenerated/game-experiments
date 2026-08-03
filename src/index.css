@@ -74,7 +74,10 @@ button,
  * ------------------------------------------------------------------------- */
 
 .card-face {
-  background: linear-gradient(163deg, #ffffff 0%, #f4f5f7 42%, #dde1e7 100%);
+  background:
+    radial-gradient(circle at 1px 1px, rgba(0, 0, 0, 0.05) 0.5px, transparent 0.5px),
+    linear-gradient(163deg, #ffffff 0%, #f4f5f7 42%, #dde1e7 100%);
+  background-size: 3px 3px, 100% 100%;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.95),
     inset 0 -1px 0 rgba(0, 0, 0, 0.1),

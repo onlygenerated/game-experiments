@@ -100,7 +100,7 @@ Ordered so a short night still lands the items that change how a placement
       arriving rather than appearing.
 - [x] **6. Near-miss feedback.** An illegal drop is silently refused. Show why
       for a moment — would exceed the cap, sealed, not touching anything.
-- [ ] **7. Card faces.** Proper pips, a clearer rank/suit hierarchy, subtle
+- [x] **7. Card faces.** Proper pips, a clearer rank/suit hierarchy, subtle
       stock texture. Functional but plain today.
 - [ ] **8. Board depth.** Stronger well shading, a felt or paper ground, a
       warmer highlight on legal cells.
@@ -506,6 +506,79 @@ was moving — a note that an idea failed is worth as much as one that landed.
   message would be explaining something already obvious, the kind of
   over-explaining the visual budget's restraint argues against.
 
+- **Item 7.** The whole thing lives inside `CardFace.tsx` plus one texture
+  tweak to the existing `.card-face` rule in `index.css` — no `main`-owned
+  file needed reading beyond `deck.ts`'s already-exported `Rank`/`Suit`
+  helpers (`RANK_LABEL`, `SUIT_GLYPH`, `isRed`), which `CardFace` already
+  imported before this item.
+- The four call sites (`BoardGrid`, `HexBoardView`, `HandTray`, and App.tsx's
+  discard-fly/drag-ghost) each set their own `width`/`height`/`fontSize` on
+  the root via inline style — `GEOMETRY`'s `md`/`lg` presets are just two of
+  several concrete sizes the component is asked to render at. Every new
+  measurement inside the face (corner rank/suit, pip size, monogram size) is
+  therefore in `em`, scaled off that same root `fontSize`, the same contract
+  the old single rank+suit stack already relied on — nothing needed to
+  change at any call site.
+- Rank drives three distinct center treatments, not one: 2-10 get a
+  `PIP_LAYOUT` table (percent positions per rank, hand-authored off the
+  classic arrangement — corners/edges/center by count, mirrored 180° across
+  the lower half so pips point outward the way real stock does), 11-13
+  (J/Q/K) get a large rank-letter-over-suit monogram, and 14 (Ace) gets one
+  oversized centered glyph. This is what "clearer rank/suit hierarchy" ended
+  up meaning: three silhouettes recognizable at a glance before the corner
+  index is even read, rather than one layout stretched across all 13 ranks.
+- Center pips never need historical exactness — this is a stylized simplification, not a
+  replica — so ranks like 9 and 10 use a hand-picked approximation (a true
+  center pip for 9, two off-center edge pips for 10) rather than the more
+  intricate real-world layouts. Verified live that it still reads correctly
+  at both the ~52×64px board size and the ~64×96px hand size: at board scale
+  the pip pattern is recognizable as "a 9" or "a 10" by shape even though
+  individual pips are small, and the corner index carries the exact count.
+- Corner indices are two small `CardCorner` instances, not one flex column
+  reused twice with CSS mirroring at the wrapper level — the bottom-right
+  copy needs `rotate(180deg)` (same convention real cards use so an
+  upside-down hand still reads), and doing that via a `rotate-180` class on
+  a second, independently-positioned instance was simpler than fighting
+  positioning math through a shared transform origin.
+- Root layout changed from a single flexbox column (rank over suit,
+  centered) to `relative overflow-hidden` with three absolutely-positioned
+  children (two corners + one centered content slot). Checked this doesn't
+  fight the existing `animate-place`/`animate-discard`/`animate-deal`
+  keyframes from items 1-3 before landing it: all three only ever animate
+  `opacity`/`transform` on the *root* `.card-face` element itself, never
+  reach into its children, so restructuring what's inside was safe.
+- Texture is a single added `radial-gradient(circle at 1px 1px, ...)` layer
+  in the existing `.card-face` background (dot pattern, 3px repeat, ~5%
+  black at each dot), composited under the existing white-to-grey stock
+  gradient rather than replacing it. Deliberately not a new pseudo-element or
+  `mix-blend-mode` layer — a second `background-image` in the same
+  `background` shorthand was enough, so there's no extra paint layer or
+  stacking-context concern to reason about. No new hue introduced (still
+  greyscale), no new dependency.
+- Considered giving J/Q/K a small illustrated "portrait" placeholder (a
+  simple rounded rect standing in for face art). Dropped it: the visual
+  budget rules out a new dependency and there's no real face art to source
+  under that constraint, and a plain colored box would have read as an
+  unfinished placeholder rather than a deliberate design — the rank-letter
+  monogram gives the same "this is a face card, not a number card" signal
+  without pretending to be something it isn't.
+- `CardChip` (the small inline `RANK+suit` label used in the score log and
+  preview panel) was deliberately left untouched — it's a one-line inline
+  tag, not a face, and giving it pips or a monogram at that size would be
+  illegible clutter rather than polish.
+- Verified live in headless Chromium at both board (~52×64px) and hand
+  (~64×96px) sizes, and on the hex board's wider aspect ratio
+  (`calc(1.05 * size)` × `calc(1.35 * size)`, inherited unchanged from
+  `HexBoardView`'s existing inline overrides): pip counts for 2, 6, 8, 9, 10
+  all render the correct number of pips in a recognizable pattern with no
+  clipping against the hex `clip-path` (pips live inside the padded card
+  face, not the hex cell shape, so item 6's clip-path lesson didn't apply
+  here); J, K and Q render the rank-letter monogram; Ace renders one large
+  centered glyph. The two-digit "10" corner index was specifically checked
+  for legibility at hand size and reads cleanly. Screenshots (session-local,
+  not committed): `hand-01.png`, `board-01.png`, `ten-zoom.png`,
+  `ace-zoom.png`, `hex-01.png`.
+
 ## Results log
 
 For each item: what shipped, what it cost in milliseconds, and a screenshot or
@@ -634,3 +707,24 @@ movement, record a short capture with `page.video` and name the file here.
   (session-local, not committed): `01-before.png`, `02-click-nearmiss.png`,
   `03-faded.png`, `04-row-cap.png`, `05-sealed.png`, `06-hex.png`,
   `page@886db4c17343268461ba7dd3b34859a1.webm`.
+- **Item 7 — card faces** (2026-08-03). Rewrote `src/components/CardFace.tsx`
+  (corner rank/suit indices, a `PIP_LAYOUT` table driving 2-10, a
+  rank-letter monogram for J/Q/K, one oversized glyph for A) and added a
+  subtle dot-texture layer to `.card-face` in `index.css`. No `main`-owned
+  file was touched, and none of the four call sites (`BoardGrid`,
+  `HexBoardView`, `HandTray`, `App.tsx`'s discard-fly/drag-ghost) needed a
+  prop or plumbing change — every new measurement is `em`-relative to the
+  root `fontSize` each caller already sets. Purely static presentation, no
+  animation involved, so the visual budget's ms limits don't apply here;
+  the "never cover the board", "no new dependency" and "no new hue" rules
+  do, and all three hold (no images, no library, colors stay within the
+  existing red/black card-ink language). `npm test` (208 passed),
+  `npx tsc -b --noEmit` (clean), and `npm run smoke` (18/18 checks, build
+  ~1.7-2.1s) all green before push. Verified live in headless Chromium: pip
+  counts for 2/6/8/9/10 render correctly and legibly at both board
+  (~52×64px) and hand (~64×96px) scale, J/K/Q show the rank-letter monogram,
+  Ace shows one large centered glyph, the two-digit "10" corner index reads
+  cleanly at hand size, and the hex board's wider card aspect ratio renders
+  the same faces with no clipping. Screenshots (session-local, not
+  committed): `hand-01.png`, `board-01.png`, `ten-zoom.png`, `ace-zoom.png`,
+  `hex-01.png`.
