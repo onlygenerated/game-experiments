@@ -8,6 +8,7 @@ import {
   type HexPlacementScore,
 } from '../hex/board';
 import { hexesWithinRadius, hexKey, hexToPixel, type Hex } from '../hex/coords';
+import type { Cascade } from './cascade';
 import { CardFace } from './CardFace';
 
 /** Pointy-top: width is √3·R, height is 2R. */
@@ -24,6 +25,7 @@ export function HexBoardView({
   onActivateCell,
   interactive,
   dragActive,
+  cascade,
 }: {
   cfg: Config;
   board: HexBoard;
@@ -36,6 +38,8 @@ export function HexBoardView({
   interactive: boolean;
   /** True while a card is being dragged, so the cell under the pointer can lift. */
   dragActive: boolean;
+  /** Cells to light one at a time after the most recent score, chips axis then mult. */
+  cascade: Cascade | null;
 }) {
   const cells = useMemo(() => hexesWithinRadius(cfg.hexRadius), [cfg.hexRadius]);
 
@@ -98,6 +102,7 @@ export function HexBoardView({
         const isLifted = isTarget && selectable && dragActive;
         const inWindow = windowKeys.get(k);
         const inRun = runKeys.get(k);
+        const cascadeHit = cascade?.cells.get(k);
 
         let bg = 'rgba(0,0,0,.34)';
         let ring = '';
@@ -175,6 +180,15 @@ export function HexBoardView({
                 }}
               />
             ) : null}
+            {cascadeHit && (
+              <div
+                key={`${cascade!.id}-${k}`}
+                className={`cascade-flash pointer-events-none absolute inset-0 ${
+                  cascadeHit.role === 'chips' ? 'cascade-flash-chips' : 'cascade-flash-mult'
+                }`}
+                style={{ clipPath: POINTY_TOP, animationDelay: `${cascadeHit.delay}ms` }}
+              />
+            )}
           </div>
         );
       })}

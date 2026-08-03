@@ -92,7 +92,7 @@ Ordered so a short night still lands the items that change how a placement
       run a proper end: final score against target, the best placement of the
       run (it is in the log), and a button to replay the same seed. The biggest
       hole in the current UI.
-- [ ] **4. Line-scoring cascade.** When a placement scores, light the
+- [x] **4. Line-scoring cascade.** When a placement scores, light the
       contributing cells one at a time rather than all at once, chips axis then
       mult axis. Makes the row/column split legible as motion instead of colour.
 - [ ] **5. Line-complete punctuation.** A run reaching the cap currently gets a
@@ -272,6 +272,78 @@ was moving — a note that an idea failed is worth as much as one that landed.
   committed): `runend-01.png` (run-over panel, mid-board), `runend-02-after-replay.png`
   (post-replay, panel gone, hand tray restored, score 0/610).
 
+- **Item 4.** No `main`-owned file needed a change here either: `ScoredLine`
+  (from `lens/types.ts`, already imported for the score log) carries `role`
+  (`'chips' | 'mult'`) and `windowKeys` — the stretch that actually scored,
+  not just the full run — and every `LogRow` (`extends ScoredPlacement`)
+  already has a `lines: ScoredLine[]` in that shape for both grid and hex.
+  So the cascade is just: take the latest log row, sort its lines chips
+  first then mult, flatten `windowKeys` in that order deduping repeats (a
+  cell can belong to two lines — the placed cell always does), and hand each
+  surviving key a `delay = index * 45ms`.
+- Reused `windowKeys` rather than `cellKeys` deliberately: on hex, a run can
+  be longer than the window that actually scores, and cascading the whole
+  run would light cells whose cards contributed nothing. On a capped grid
+  line the two are always equal (noted already in `board.ts`), so this only
+  changes hex's behaviour, and changes it the right way.
+- The per-cell flash is a `pointer-events-none` overlay `div` layered inside
+  the existing cell (`position: relative` added to the grid cell's wrapper;
+  the hex cell was already `position: absolute`, which is sufficient to
+  contain it), not a new box drawn over the board — same reasoning as
+  `RunEndPanel` reusing the tray slot in item 3, applied at cell scale. It
+  never grows past the cell it sits in, so "never cover the board" holds
+  trivially.
+- Colour is `background` opacity, not `box-shadow` — item 2's decision log
+  already established that hex's `clip-path` crops any shadow drawn on the
+  clipped element itself. Giving the overlay its own `clip-path` (same
+  `POINTY_TOP` constant HexBoardView already uses for the empty-hex rim)
+  keeps the flash inside the hex silhouette on both boards without needing
+  two different techniques.
+- Timing: each cell's own flash is 200ms (`cascade-lit`, under the 250ms cap
+  on its own), staggered 45ms apart — reusing the discard fly-away's
+  existing per-card stagger constant rather than inventing a new number.
+  Read the budget's "no animation over 250ms" as bounding each animation
+  instance, not the cascade's total wall-clock: nothing here is one
+  continuous animation running long, it is several short independent ones in
+  sequence, the same shape the existing discard fly-away and deal-in already
+  use elsewhere. A 4-cell chips line plus a distinct mult cell therefore
+  finishes in well under a second and nothing about it can gate input, since
+  the state change (the card landing, the score banking) has already
+  happened before the effect that builds the cascade even runs.
+- Forcing the animation to replay on back-to-back placements needed a
+  generation id: the placed cell is very often first in its own chips line,
+  so consecutive placements frequently produce the *same* computed delay
+  (0ms) for the *same* cell. Without something that changes, React reuses
+  the DOM node across renders and the CSS animation never restarts. Fixed by
+  keying the overlay element on `${cascade.id}-${cellKey}`, where `id` is a
+  ref-backed counter incremented once per triggering log-row (mirrors
+  `scoreFlyId` from item 1) — changing the `key` forces a remount even
+  though it is not inside a list, which is what actually restarts the
+  animation.
+- Considered gating the cascade on `last.score > 0`, since a lock-and-cash
+  placement logs with `payout` (and therefore `score`) at 0 until cashed.
+  Dropped it for consistency with item 1: the score-fly already treats every
+  `logRows` growth as a scoring moment (it flies `+0` under lock-and-cash
+  today), and the chips/mult numbers the cascade is illustrating are real
+  even when the payout multiplier that turns them into banked points is
+  temporarily zero. Changing that trigger would have meant the two
+  animations disagree about what counts as "a placement scored."
+- Verified live in headless Chromium on both boards. Grid: built a 4-long
+  row then placed a 5th card that added one new column cell, and instrumented
+  `animationstart`/`animationend` with real DOM event timestamps (avoids the
+  polling skew CDP round-trips introduce) — events fired in the order
+  chips-cell then mult-cell, matching the intended axis order, and a
+  `data-cell` query confirmed the card was already on the board before any
+  of it played. Hex: placed two neighbouring hexes so the second scored a
+  3-cell chips window and two 1-cell mult windows; an early screenshot
+  caught the cascade mid-flight — the first two chips cells lit blue while
+  the third (later in the stagger) had not started yet — and a later
+  screenshot showed all of it faded with no residue. Screenshots and a clip
+  (session-local, not committed): `cascade-00-before.png`,
+  `cascade-01-early.png`, `cascade-02-mid.png`, `cascade-03-done.png`,
+  `hex-cascade-01-early.png`, `hex-cascade-02-done.png`,
+  `page@7b2dbd0054c2709c0e24f0de9c84ef26.webm`.
+
 ## Results log
 
 For each item: what shipped, what it cost in milliseconds, and a screenshot or
@@ -322,3 +394,26 @@ movement, record a short capture with `page.video` and name the file here.
   the decisions log for why — but is the same component and already
   type-checked. Screenshots (session-local, not committed):
   `runend-01.png`, `runend-02-after-replay.png`.
+- **Item 4 — line-scoring cascade** (2026-08-03). New `src/components/cascade.ts`
+  (the shared `Cascade`/`CascadeCell` types), cascade-building effect in
+  `App.tsx` (keyed off the same `logRows` growth signal as item 1's
+  score-fly), a `cascade` prop threaded into `BoardGrid.tsx` and
+  `HexBoardView.tsx` for the per-cell overlay, and `cascade-lit` /
+  `.cascade-flash[-chips|-mult]` in `index.css`. No file `main` owns was
+  touched or even needed reading beyond types already flowing through
+  `logRows`. Each cell's flash is 200ms, under the 250ms cap; cells stagger
+  45ms apart (reusing the discard fly-away's existing constant); nothing
+  gates input, since the cascade only starts building after the state change
+  it is decorating has already committed. `npm test` (208 passed),
+  `npx tsc -b --noEmit` (clean), and `npm run smoke` (18/18 checks, build
+  ~1.3-1.4s) all green before push. Verified live in headless Chromium on
+  both boards: on the grid, event-timestamped `animationstart` listeners
+  confirmed the chips-axis cell lights before the mult-axis cell, in that
+  order, every time, and that the placed card renders immediately regardless
+  of the cascade's state; on hex, a mid-cascade screenshot caught two of a
+  3-cell chips window lit and the third (later in the stagger) still dark,
+  and a later screenshot showed the whole thing faded with no residue.
+  Screenshots and a clip (session-local, not committed): `cascade-00-before.png`,
+  `cascade-01-early.png`, `cascade-02-mid.png`, `cascade-03-done.png`,
+  `hex-cascade-01-early.png`, `hex-cascade-02-done.png`,
+  `page@7b2dbd0054c2709c0e24f0de9c84ef26.webm`.

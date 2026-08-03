@@ -200,6 +200,34 @@ button,
   animation: run-end-in 200ms cubic-bezier(0.2, 0.8, 0.3, 1.1) backwards;
 }
 
+@keyframes cascade-lit {
+  0% {
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* One cell's turn in the line-scoring cascade. `animation-delay` (set inline,
+   per cell) is what actually staggers them — this class only defines what a
+   single cell's flash looks like. 200ms, under the 250ms cap; `both` so a
+   cell stays invisible through its delay instead of flashing early. */
+.cascade-flash {
+  animation: cascade-lit 200ms cubic-bezier(0.3, 0, 0.4, 1) both;
+}
+
+.cascade-flash-chips {
+  background: rgba(56, 189, 248, 0.55);
+}
+
+.cascade-flash-mult {
+  background: rgba(251, 191, 36, 0.55);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

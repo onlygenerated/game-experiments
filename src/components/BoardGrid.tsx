@@ -9,6 +9,7 @@ import {
   type PlacementScore,
 } from '../board';
 import type { Card } from '../deck';
+import type { Cascade } from './cascade';
 import { CardFace } from './CardFace';
 import { PreviewPanel } from './PreviewPanel';
 
@@ -33,6 +34,7 @@ export function BoardGrid({
   interactive,
   docked,
   dragActive,
+  cascade,
 }: {
   cfg: Config;
   board: Board;
@@ -50,6 +52,8 @@ export function BoardGrid({
   docked: boolean;
   /** True while a card is being dragged, so the cell under the pointer can lift. */
   dragActive: boolean;
+  /** Cells to light one at a time after the most recent score, chips axis then mult. */
+  cascade: Cascade | null;
 }) {
   const size = cfg.gridSize;
 
@@ -119,6 +123,7 @@ export function BoardGrid({
           const isTarget = target?.r === r && target?.c === c;
           const isJustPlaced = justPlaced?.r === r && justPlaced?.c === c;
           const isLifted = isTarget && selectable && dragActive;
+          const cascadeHit = cascade?.cells.get(k);
 
           // A cashed line is sealed: it can never be extended or banked again,
           // which is a stronger statement than merely being full.
@@ -190,7 +195,7 @@ export function BoardGrid({
               data-cell={k}
               onMouseEnter={() => onHoverCell({ r, c })}
               onClick={() => (selectable || isCashable) && onActivateCell({ r, c })}
-              className={`flex items-center justify-center rounded-md transition-[background-color,box-shadow,transform] duration-150 ${
+              className={`relative flex items-center justify-center rounded-md transition-[background-color,box-shadow,transform] duration-150 ${
                 selectable || isCashable ? 'cursor-pointer' : ''
               }`}
               style={{
@@ -213,6 +218,15 @@ export function BoardGrid({
               ) : isTarget && selectable && selectedCard ? (
                 <CardFace card={selectedCard} style={{ opacity: 0.5 }} />
               ) : null}
+              {cascadeHit && (
+                <div
+                  key={`${cascade!.id}-${k}`}
+                  className={`cascade-flash pointer-events-none absolute inset-0 rounded-md ${
+                    cascadeHit.role === 'chips' ? 'cascade-flash-chips' : 'cascade-flash-mult'
+                  }`}
+                  style={{ animationDelay: `${cascadeHit.delay}ms` }}
+                />
+              )}
             </div>
           );
         })}

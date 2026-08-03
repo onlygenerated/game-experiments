@@ -18,10 +18,18 @@ import { PreviewPanel } from './components/PreviewPanel';
 import { ScoreLog } from './components/ScoreLog';
 import { StatusBar } from './components/StatusBar';
 import { RunEndPanel } from './components/RunEndPanel';
+import type { Cascade, CascadeCell } from './components/cascade';
 
 // Matches the count-up in StatusBar, so the flying total lands right as the
 // number underneath finishes ticking to meet it.
 const SCORE_FLY_MS = 220;
+
+// Cascade: how long one cell's own flash lasts, and how far apart consecutive
+// cells light up. Both under the 250ms cap on their own; the cascade as a
+// whole runs longer only because it is many short animations in sequence,
+// never one continuous one.
+const CASCADE_FLASH_MS = 200;
+const CASCADE_STAGGER_MS = 45;
 
 // The ghost's resting lean when held still, same angle the static tilt used
 // before this existed.
@@ -153,6 +161,47 @@ export default function App() {
   }, [logRows, run.kind]);
 
   useEffect(() => () => void (scoreFlyTimer.current && clearTimeout(scoreFlyTimer.current)), []);
+
+  // Line-scoring cascade: light the cells that actually fed the score one at a
+  // time, chips axis then mult axis, instead of the flat colour wash the board
+  // already draws for them. Triggered by the same "logRows grew" signal as the
+  // score-fly above — every log row, grid or hex, already carries `lines` with
+  // `role` and `windowKeys` (the stretch that actually scored, not just the
+  // full run), so this needed no change to a `main`-owned file either.
+  const [cascade, setCascade] = useState<Cascade | null>(null);
+  const prevCascadeLen = useRef(logRows.length);
+  const cascadeGenId = useRef(0);
+  const cascadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const prev = prevCascadeLen.current;
+    prevCascadeLen.current = logRows.length;
+    if (logRows.length <= prev) return;
+
+    const last = logRows[logRows.length - 1];
+    const ordered = [
+      ...last.lines.filter((l) => l.role === 'chips'),
+      ...last.lines.filter((l) => l.role === 'mult'),
+    ];
+    const cells = new Map<string, CascadeCell>();
+    for (const line of ordered) {
+      for (const key of line.windowKeys) {
+        if (!cells.has(key)) cells.set(key, { role: line.role, delay: cells.size * CASCADE_STAGGER_MS });
+      }
+    }
+
+    if (cascadeTimer.current) clearTimeout(cascadeTimer.current);
+    if (!cells.size) {
+      setCascade(null);
+      return;
+    }
+    const id = ++cascadeGenId.current;
+    setCascade({ id, cells });
+    const total = (cells.size - 1) * CASCADE_STAGGER_MS + CASCADE_FLASH_MS;
+    cascadeTimer.current = setTimeout(() => setCascade((c) => (c?.id === id ? null : c)), total);
+  }, [logRows]);
+
+  useEffect(() => () => void (cascadeTimer.current && clearTimeout(cascadeTimer.current)), []);
 
   // Weighted drag: `useCardDrag` only tracks position, so velocity — and the
   // tilt it drives — is derived here from consecutive `drag.x` samples rather
@@ -337,6 +386,7 @@ export default function App() {
                 onActivateCell={(h) => g.activateKey(`${h.q},${h.r}`)}
                 interactive={playing}
                 dragActive={Boolean(drag)}
+                cascade={cascade}
               />
             ) : (
               <BoardGrid
@@ -354,6 +404,7 @@ export default function App() {
                 interactive={playing}
                 docked={docked}
                 dragActive={Boolean(drag)}
+                cascade={cascade}
               />
             )}
 
