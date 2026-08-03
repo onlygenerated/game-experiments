@@ -179,20 +179,26 @@ export function BoardGrid({
                 : '',
             ring ? `inset 0 0 0 2px ${ring}` : '',
             // A legal cell has to read at a glance — it is the whole affordance.
+            // The ring stays emerald (that hue already means "score/select");
+            // the added outer bloom is a warm, low-saturation lamp-light glow,
+            // not a signal colour, so it reads as "this cell is catching the
+            // light" rather than inventing a second meaning for the highlight.
             selectable && !ring
-              ? 'inset 0 0 0 1.5px rgba(52,211,153,.55), 0 0 14px rgba(16,185,129,.28)'
+              ? 'inset 0 0 0 1.5px rgba(52,211,153,.55), 0 0 10px rgba(16,185,129,.24), 0 0 20px rgba(255,196,130,.16)'
               : '',
             // Bankable crosses get the same treatment in gold, since under
             // lock-and-cash they are an affordance too, not just scenery.
             isCashable && !ring
               ? 'inset 0 0 0 1.5px rgba(251,191,36,.6), 0 0 14px rgba(245,158,11,.3)'
               : '',
-            // Every cell is a shallow well with a lit rim, so the grid stays
-            // legible; occupied ones are shallower since the card's own shadow
-            // already reads as sitting on top.
+            // Every cell is a well with a lit rim, so the grid stays legible;
+            // occupied ones are shallower since the card's own shadow already
+            // reads as sitting on top. Deeper than before so the tray's own
+            // stronger shading (see index.css) doesn't make individual cells
+            // look flat by comparison.
             card
-              ? 'inset 0 1px 3px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.05)'
-              : 'inset 0 2px 5px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.055)',
+              ? 'inset 0 1px 4px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.06)'
+              : 'inset 0 3px 7px rgba(0,0,0,.62), inset 0 0 0 1px rgba(255,255,255,.07)',
             // The cell under a drag lifts a little, so a card in flight reads
             // as something about to land rather than a flat highlight.
             isLifted ? '0 6px 10px rgba(0,0,0,.45)' : '',
@@ -231,8 +237,8 @@ export function BoardGrid({
                 // as the final layer, which is where the shorthand takes a colour.
                 background: `${
                   card
-                    ? 'linear-gradient(180deg, rgba(0,0,0,.25), rgba(255,255,255,.03))'
-                    : 'linear-gradient(180deg, rgba(0,0,0,.3), rgba(255,255,255,.05))'
+                    ? 'linear-gradient(180deg, rgba(0,0,0,.3), rgba(255,255,255,.03))'
+                    : 'linear-gradient(180deg, rgba(0,0,0,.4), rgba(255,255,255,.055))'
                 }, ${bg}`,
                 boxShadow: shadows.join(', '),
                 transform: isLifted ? 'translateY(-3px)' : undefined,

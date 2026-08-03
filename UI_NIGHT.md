@@ -102,7 +102,7 @@ Ordered so a short night still lands the items that change how a placement
       for a moment — would exceed the cap, sealed, not touching anything.
 - [x] **7. Card faces.** Proper pips, a clearer rank/suit hierarchy, subtle
       stock texture. Functional but plain today.
-- [ ] **8. Board depth.** Stronger well shading, a felt or paper ground, a
+- [x] **8. Board depth.** Stronger well shading, a felt or paper ground, a
       warmer highlight on legal cells.
 - [ ] **9. Hand tray.** Fan the cards slightly, lift on hover, and animate the
       refill as a deal rather than a pop-in.
@@ -579,6 +579,77 @@ was moving — a note that an idea failed is worth as much as one that landed.
   not committed): `hand-01.png`, `board-01.png`, `ten-zoom.png`,
   `ace-zoom.png`, `hex-01.png`.
 
+- **Item 8.** Purely static, purely `index.css` + the two board components —
+  no `main`-owned file needed reading. "Board depth" reads as three separate,
+  smaller moves rather than one redesign, so that's how it was built: deepen
+  the existing well shadows (already there since before this backlog), add a
+  textured warm ground to `.board-tray`, and add a warm bloom to the existing
+  legal-cell glow.
+- Read "a felt or paper ground" as a texture/lighting cue, not a literal
+  colour change. The whole app — panels, page background, the tray itself —
+  is built from one consistent cool navy-charcoal palette (`.panel`, `body`,
+  the old `.board-tray`). A literal paper-cream or felt-green surface would
+  have broken that cohesion outright (a light card table sitting inside dark
+  chrome, or a saturated green ground competing with "emerald = score" for
+  the same hue). Kept the base colour family and added what actually reads as
+  "felt/paper" perceptually: a fine woven grain (reusing the card face's own
+  `radial-gradient(circle at 1px 1px, ...)` dot-texture technique from item 7,
+  scaled to 4px and much lower opacity so it's a material cue, not a pattern)
+  plus a warm lamp-light wash pooling at the top of the tray, as if the table
+  sits under a warm overhead light rather than the room's cool ambient one.
+- "A warmer highlight on legal cells" ran straight into the visual budget's
+  "adding a hue means inventing a meaning, and there isn't one spare" — the
+  emerald ring on a selectable cell already *is* the established language
+  (`emerald = score`, reused for "you can place here" since item 2), and
+  amber is already spoken for as `mult`. So the ring itself is untouched:
+  same colour, same opacity, same meaning. "Warmer" is a second, additive
+  glow layer — a soft, low-saturation warm-white bloom (`rgba(255,196,130,…)`
+  at .16-.22 opacity, well below the amber ring's .3-.6) — read as ambient
+  light pooling on the cell, not a signal colour. It's deliberately far
+  enough from the saturated amber `mult` ring that the two are never
+  confusable side by side (checked this directly: a cascade or preview cell
+  in `mult` amber and a selectable cell with the new bloom are visually
+  distinct in every screenshot taken for this item).
+- Hex needed its own version of the well-depth change, not just a copy of the
+  grid's, because item 2 and item 6 both already established that hex's
+  `clip-path` crops any *outer* (non-inset) shadow drawn on the clipped
+  element — item 2 for the drag-lift drop-shadow, item 6 for a
+  position:absolute badge extending past the shape. That rule is specifically
+  about paint extending outside the box; an *inset* shadow is confined to the
+  box the clip-path already clips consistently, so both the deepened well
+  shadow and the warm bloom on hex use `inset` box-shadow values layered on
+  the existing unclipped-container rim overlay (the same element item 6's
+  fix already moved things to), and render correctly — verified by screenshot,
+  not just by re-reading the old notes.
+- Considered warming the emerald ring's own hue (shifting it a few degrees
+  toward yellow-green) instead of adding a separate bloom layer, on the theory
+  that a single warmed colour would be simpler than two layered effects.
+  Dropped it: any shift big enough to read as "warmer" also reads as a
+  different green, which risks being seen as a new signal rather than the
+  existing `emerald = score` one, especially right next to the `mult` amber
+  ring on the very next cell during a preview. The additive-glow approach
+  keeps the signal colour provably unchanged while still visibly warming the
+  cell.
+- Verified live in headless Chromium on both boards, and specifically against
+  a real pre-change build for comparison (stashed this item's diff, rebuilt,
+  captured the same hovered-cell scene, restored the diff) rather than trusting
+  the change looked right from memory — a pixel-diff of the two board crops
+  (amplified 6x) showed exactly the three intended regions: a warm band across
+  the top of the tray (the lamp wash), a diff outline on every cell (the
+  deepened well shadows, uniform across the whole grid), and a warm-tinted
+  ring specifically around the three legal, non-hovered neighbor cells (the
+  bloom) with no diff on cells outside that set. Also checked the still-legal
+  cells' warm bloom doesn't fight the hover/target ring, the row/col preview
+  ring (sky/amber), or the cashable gold ring — all three take precedence over
+  the plain "selectable" branch already (unchanged `ring`-gating logic), so
+  the bloom only ever appears on a plain, unhighlighted legal cell exactly as
+  intended. Screenshots (session-local, not committed): `board-01-empty.png`,
+  `board-02-legal-highlight.png`, `board-03-cell-zoom.png`,
+  `board-03b-hover-target.png`, `board-04-after-place.png`,
+  `hex-01-empty.png`, `hex-02-legal-highlight.png`, `hex-03-cell-zoom.png`,
+  `before-01-hover-target.png` (pre-change baseline), `crop-before.png`,
+  `crop-after.png`, `crop-diff-amplified.png`.
+
 ## Results log
 
 For each item: what shipped, what it cost in milliseconds, and a screenshot or
@@ -728,3 +799,36 @@ movement, record a short capture with `page.video` and name the file here.
   the same faces with no clipping. Screenshots (session-local, not
   committed): `hand-01.png`, `board-01.png`, `ten-zoom.png`, `ace-zoom.png`,
   `hex-01.png`.
+- **Item 8 — board depth** (2026-08-03). Shipped in `index.css` (`.board-tray`
+  gets a warm lamp-wash layer + a fine woven grain texture on top of the
+  existing navy well gradient, plus a deeper inset shadow/vignette), and
+  matching well-shading + warm-bloom changes in `BoardGrid.tsx` (deepened
+  per-cell inset shadows, a `rgba(255,196,130,…)` bloom layered outside the
+  existing unchanged emerald legal-cell ring) and `HexBoardView.tsx` (a
+  top-lit gradient added to each hex's background, and the same well-deepen /
+  warm-bloom pair added as `inset` shadows on the existing unclipped rim
+  overlay, since hex's `clip-path` only crops non-inset shadows). No file
+  `main` owns was touched. Purely static presentation, no new or changed
+  animation, so the visual budget's ms limits don't apply; "never cover the
+  board", "no new dependency" and "colour stays inside the existing language"
+  do, and all three hold — no images, no library, and the warm glow is a
+  low-saturation additive bloom layered under the unchanged emerald/amber
+  signal rings rather than a new hue with its own meaning. `npm test` (208
+  passed), `npx tsc -b --noEmit` (clean), and `npm run smoke` (18/18 checks,
+  build ~1.7-1.8s) all green before push. Verified live in headless Chromium
+  on both boards, including a real before/after comparison: stashed this
+  item's diff, rebuilt, and captured the same hovered-legal-cell scene against
+  the pre-change build, then restored the diff and captured it again from the
+  same build/scene. An amplified pixel-diff of the two crops showed exactly
+  the three intended regions changing — a warm band across the top of the
+  tray, a uniform deepened-shadow outline on every cell, and a warm-tinted
+  ring specifically around the plain legal (non-hovered, non-preview,
+  non-cashable) neighbor cells — with the hover/row-col-preview/cashable
+  rings themselves unchanged, confirming the bloom only ever layers onto the
+  plain "selectable" case and never fights a higher-precedence ring.
+  Screenshots (session-local, not committed): `board-01-empty.png`,
+  `board-02-legal-highlight.png`, `board-03-cell-zoom.png`,
+  `board-03b-hover-target.png`, `board-04-after-place.png`,
+  `hex-01-empty.png`, `hex-02-legal-highlight.png`, `hex-03-cell-zoom.png`,
+  `before-01-hover-target.png`, `crop-before.png`, `crop-after.png`,
+  `crop-diff-amplified.png`.
