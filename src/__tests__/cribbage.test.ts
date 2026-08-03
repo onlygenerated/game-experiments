@@ -10,6 +10,9 @@ import {
   cribValue,
   findRuns,
 } from '../lens/cribbage';
+import { getLens } from '../lens';
+import { pokerLens } from '../lens/poker';
+import { RULESETS } from '../rulesets';
 
 const rankOf: Record<string, Rank> = {
   A: 14,
@@ -264,5 +267,72 @@ describe('cribbageLens', () => {
       12 * 10 + 4 * CONFIG.cribbage.baseChipsPerCard,
     );
     expect(cribbageLens.evaluate(hand('4H 5S 5D 6C'), 'mult', cfg).value).toBe(4);
+  });
+});
+
+// --- the rules panel --------------------------------------------------------
+//
+// The examples printed in the app are checked against the scorer here, because
+// a rules screen that quietly disagrees with the game is worse than no rules
+// screen: the player trusts it and cannot tell it is wrong.
+
+describe('lens.rules', () => {
+  it('states the fifteens example correctly', () => {
+    const { items } = cribbageCount(hand('5H JS TD'), CONFIG);
+    expect(items).toContainEqual({ label: 'Fifteen ×2', points: 4 });
+  });
+
+  it('states the pairs example correctly', () => {
+    const { items } = cribbageCount(hand('7H 7S 7C'), CONFIG);
+    expect(items).toContainEqual({ label: 'Pair ×3', points: 6 });
+  });
+
+  it('states the runs example correctly', () => {
+    const { items } = cribbageCount(hand('4D 5H 5S 6C'), CONFIG);
+    expect(items).toContainEqual({ label: 'Run of 3 ×2', points: 6 });
+  });
+
+  it('quotes each ruleset‘s own numbers rather than the defaults', () => {
+    const flush3: Config = { ...CONFIG, cribbage: { ...CONFIG.cribbage, flushMin: 3 } };
+    const labels = (cfg: Config) =>
+      cribbageLens.rules(cfg).flatMap((s) => s.lines.map((l) => l.label));
+
+    expect(labels(CONFIG).some((l) => l.includes('from 4'))).toBe(true);
+    expect(labels(flush3).some((l) => l.includes('from 3'))).toBe(true);
+
+    const pure: Config = { ...CONFIG, cribbage: { ...CONFIG.cribbage, baseChipsPerCard: 0 } };
+    const chipsLine = (cfg: Config) => labels(cfg).find((l) => l.startsWith('Chips ='))!;
+    expect(chipsLine(CONFIG)).toContain('per card');
+    expect(chipsLine(pure)).not.toContain('per card');
+  });
+
+  it('tells the player which poker hands the line cap puts out of reach', () => {
+    const details = (cfg: Config) =>
+      pokerLens.rules(cfg).flatMap((s) => s.lines.map((l) => `${l.label} ${l.detail}`)).join('\n');
+
+    // At the default cap of 5 every hand can occur.
+    expect(details(CONFIG)).not.toContain('Out of reach');
+    // At 4 the five-card hands cannot, and the panel has to say so rather than
+    // listing them as if they were achievable.
+    const short = details({ ...CONFIG, lineCap: 4 });
+    expect(short).toContain('Out of reach');
+    for (const hand of ['Straight', 'Flush', 'Full House', 'Straight Flush']) {
+      expect(short).toContain(hand);
+    }
+  });
+
+  it('produces usable rules for every shipped ruleset', () => {
+    for (const rs of RULESETS) {
+      const sections = getLens(rs.config.lensId).rules(rs.config);
+      expect(sections.length).toBeGreaterThan(0);
+      for (const s of sections) {
+        expect(s.title).not.toHaveLength(0);
+        expect(s.lines.length).toBeGreaterThan(0);
+        for (const l of s.lines) {
+          expect(l.label).not.toHaveLength(0);
+          expect(l.detail).not.toHaveLength(0);
+        }
+      }
+    }
   });
 });

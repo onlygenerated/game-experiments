@@ -13,6 +13,7 @@ import { DEFAULT_RULESET, getRuleset } from './rulesets';
 import { getLens, type ScoredPlacement } from './lens';
 import { RulesetMenu } from './components/RulesetMenu';
 import { MetricsPage } from './components/MetricsPage';
+import { ScoringPanel } from './components/ScoringPanel';
 import type { Card } from './deck';
 import { TOUCH_QUERY, useMediaQuery, WIDE_QUERY } from './useMediaQuery';
 import { useCardDrag } from './useCardDrag';
@@ -69,6 +70,7 @@ export default function App() {
   const [target, setTarget] = useState<string | null>(null);
   const [devOpen, setDevOpen] = useState(false);
   const [showMetrics, setShowMetrics] = useState(false);
+  const [showScoring, setShowScoring] = useState(false);
 
   const wide = useMediaQuery(WIDE_QUERY);
   const touch = useMediaQuery(TOUCH_QUERY);
@@ -384,10 +386,17 @@ export default function App() {
               ? `hex, 3 axes, best ${cfg.hexWindow}`
               : `row → chips · col → mult · ${cfg.lineCap}-card cap`}
           </span>
+          {/* Rules belong in front of the player, not behind a Dev toggle. */}
+          <button
+            onClick={() => setShowScoring(true)}
+            className="ml-auto shrink-0 rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-300 active:bg-neutral-800 min-[1280px]:hidden"
+          >
+            Scoring
+          </button>
           <button
             onClick={() => setDevOpen((v) => !v)}
             aria-expanded={devOpen}
-            className="ml-auto shrink-0 rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-300 active:bg-neutral-800 min-[1280px]:hidden"
+            className="shrink-0 rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-300 active:bg-neutral-800 min-[1280px]:hidden"
           >
             Dev {devOpen ? '▲' : '▼'}
           </button>
@@ -396,6 +405,12 @@ export default function App() {
           className={`flex flex-col gap-2 min-[1280px]:ml-auto min-[1280px]:flex-row min-[1280px]:items-center ${devOpen ? '' : 'hidden min-[1280px]:flex'}`}
         >
           <RulesetMenu current={ruleset} onSelect={handleRuleset} />
+          <button
+            onClick={() => setShowScoring(true)}
+            className="hidden shrink-0 rounded border border-neutral-700 px-3 py-1 text-sm font-semibold text-neutral-300 min-[1280px]:block min-[1280px]:hover:bg-neutral-800"
+          >
+            Scoring
+          </button>
           <button
             onClick={() => setShowMetrics(true)}
             className="shrink-0 rounded border border-neutral-700 px-3 py-2 text-sm font-semibold text-neutral-300 active:bg-neutral-800 min-[1280px]:py-1 min-[1280px]:hover:bg-neutral-800"
@@ -475,6 +490,8 @@ export default function App() {
           <ScoreLog log={logRows} />
         </aside>
       </main>
+
+      {showScoring && <ScoringPanel ruleset={ruleset} onClose={() => setShowScoring(false)} />}
 
       {docked && (
         <div

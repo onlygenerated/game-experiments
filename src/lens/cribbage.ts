@@ -148,4 +148,55 @@ export const cribbageLens: Lens = {
       value: 1 + Math.floor(total / cfg.cribbage.multPerPoint),
     };
   },
+
+  rules(cfg) {
+    const c = cfg.cribbage;
+    return [
+      {
+        title: 'Counting a line',
+        lines: [
+          {
+            label: 'Fifteens — 2 points each',
+            detail:
+              'Every distinct group of two or more cards in the line adding up to exactly 15. Aces count 1; jacks, queens and kings count 10. One line can contain several.',
+            example: '5 ♥ · J ♠ · 10 ♦ → two fifteens (5+J, 5+10) = 4 points',
+          },
+          {
+            label: 'Pairs — 2 points each',
+            detail:
+              'Every pair of matching ranks, counted separately. Three of a kind is three pairs, four of a kind is six.',
+            example: '7 ♥ · 7 ♠ · 7 ♣ → three pairs = 6 points',
+          },
+          {
+            label: 'Runs — 1 point per card',
+            detail:
+              'Three or more consecutive ranks, in any order. Only the longest run counts, so 3-4-5-6 is one run of four rather than two of three. A duplicated rank makes a second run. Ace is low only — K-A-2 is not a run.',
+            example: '4 ♦ · 5 ♥ · 5 ♠ · 6 ♣ → two runs of three = 6 points',
+          },
+          {
+            label: `Flush — 1 point per card, from ${c.flushMin}`,
+            detail: `The whole line in one suit, at least ${c.flushMin} cards long.`,
+          },
+        ],
+      },
+      {
+        title: 'Turning the count into a score',
+        lines: [
+          {
+            label: `Chips = count × ${c.chipsPerPoint}${
+              c.baseChipsPerCard ? ` + ${c.baseChipsPerCard} per card` : ''
+            }`,
+            detail: c.baseChipsPerCard
+              ? 'The flat amount per card means a line with no count is still worth something, so no placement is completely wasted.'
+              : 'No flat amount per card, so a line that counts nothing scores nothing — a placement really can be wasted.',
+          },
+          {
+            label: `Mult = 1 + count ÷ ${c.multPerPoint}`,
+            detail:
+              'Rounded down. The count is additive, so mult climbs gradually instead of sitting at ×1 until a hand happens to form.',
+          },
+        ],
+      },
+    ];
+  },
 };

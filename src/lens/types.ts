@@ -23,12 +23,31 @@ export interface LineEval {
  */
 export type AxisRole = 'chips' | 'mult';
 
+/** One rule, as the player reads it. */
+export interface RuleLine {
+  label: string;
+  detail: string;
+  /** Worked example, where one says it faster than a sentence. */
+  example?: string;
+}
+
+export interface RuleSection {
+  title: string;
+  lines: RuleLine[];
+}
+
 export interface Lens {
   id: string;
   name: string;
   /** One line, shown in the ruleset menu. */
   blurb: string;
   evaluate(cards: readonly Card[], role: AxisRole, cfg: Config): LineEval;
+  /**
+   * How this lens scores, in the player's terms and with this config's actual
+   * numbers in it. Lives on the lens so the explanation cannot drift from the
+   * implementation the way a hand-written rules page would.
+   */
+  rules(cfg: Config): RuleSection[];
 }
 
 /**
