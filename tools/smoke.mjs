@@ -1,8 +1,7 @@
 /**
  * End-to-end smoke test: does the game still work?
  *
- *   npx vite build && npx vite preview --port 4173 &
- *   node tools/smoke.mjs
+ *   npm run smoke        (builds, serves, drives, tears down)
  *
  * `npm test` proves the scorers are right and `tsc` proves the types line up,
  * but neither notices when a component prop is renamed on one branch while the
@@ -13,14 +12,46 @@
  * Run it after merging the UI branch into main, and after any refactor that
  * moves state between modules. Exits non-zero if anything fails.
  */
+import { spawn } from 'node:child_process';
 import { launch } from './browser.mjs';
+
+const PORT = Number(process.env.SMOKE_PORT || 4173);
+const ORIGIN = `http://localhost:${PORT}`;
+
+/**
+ * Serve the build ourselves rather than relying on the caller to start one.
+ *
+ * An npm script cannot reliably clean up a backgrounded server — `kill %1`
+ * needs job control, which npm's non-interactive shell does not have, so the
+ * script hangs forever waiting on a server nobody stops. Worse, if a stale
+ * server is already on the port, the new one fails to bind and the tests
+ * silently pass against the *old* build. Owning the process removes both.
+ */
+async function serve() {
+  const proc = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
+    stdio: 'ignore',
+  });
+  for (let i = 0; i < 60; i++) {
+    try {
+      const r = await fetch(ORIGIN);
+      if (r.ok) return proc;
+    } catch {
+      /* not up yet */
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  proc.kill();
+  throw new Error(`vite preview never came up on ${PORT} — is the port already in use?`);
+}
+
+const server = await serve();
 const SP = process.env.SMOKE_OUT || '/tmp';
 const b = await launch();
 const errs = [];
 const p = await b.newPage({ viewport: { width: 1500, height: 1000 } });
 p.on('console', (m) => m.type() === 'error' && errs.push(m.text()));
 p.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
-await p.goto('http://localhost:4173/');
+await p.goto(ORIGIN);
 await p.waitForTimeout(700);
 
 let failures = 0;
@@ -137,4 +168,5 @@ if (real.length) {
 }
 console.log(failures ? `\n${failures} FAILED` : '\nall checks passed');
 await b.close();
+server.kill();
 process.exit(failures ? 1 : 0);

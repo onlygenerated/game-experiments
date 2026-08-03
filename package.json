@@ -11,7 +11,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc -b --noEmit",
     "probe": "vitest run --config vitest.probe.config.ts",
-    "smoke": "vite build && (vite preview --port 4173 & sleep 4; node tools/smoke.mjs; code=$?; kill %1 2>/dev/null; exit $code)"
+    "smoke": "vite build && node tools/smoke.mjs"
   },
   "dependencies": {
     "react": "^19.1.0",
