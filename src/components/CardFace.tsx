@@ -158,7 +158,20 @@ function CardCenter({ card }: { card: Card }) {
   );
 }
 
-/** Corner indices, pips or monogram, and stock texture, on a lightly lit card. */
+/**
+ * Two faces, because the two sizes are read for different reasons.
+ *
+ * `lg` — in hand, or in flight under the pointer — is looked *at*: a handful of
+ * cards, close together, with time to appreciate them. It gets the full
+ * treatment: corner indices, a real pip layout, a monogram for the court cards.
+ *
+ * `md` — on the board — is *scanned*. Reading the board is the core activity:
+ * hunting fifteens, pairs and runs means sweeping a grid for ranks, and at
+ * roughly 52px a pip layout turns the rank into a ~10px corner index while nine
+ * little hearts compete for the middle. So the board keeps the plain, large,
+ * centred rank-over-suit it always had. Prettier cards that are slower to read
+ * are a bad trade on the half of the screen the game is played on.
+ */
 export function CardFace({
   card,
   size = 'md',
@@ -170,6 +183,22 @@ export function CardFace({
   className?: string;
   style?: React.CSSProperties;
 }) {
+  const ink = isRed(card.suit) ? 'text-red-600' : 'text-neutral-900';
+
+  if (size === 'md') {
+    return (
+      <div
+        className={`card-face flex select-none flex-col items-center justify-center font-semibold leading-none ${ink} ${className}`}
+        style={{ ...GEOMETRY[size], ...style }}
+      >
+        <span>{RANK_LABEL[card.rank]}</span>
+        <span className="leading-none" style={{ fontSize: '1.35em' }}>
+          {SUIT_GLYPH[card.suit]}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`card-face relative select-none overflow-hidden font-semibold ${className}`}

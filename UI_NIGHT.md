@@ -69,6 +69,7 @@ good.
 | No new dependency | Everything here is CSS and React. A motion library is a decision for the user, not for 3am. |
 | Never cover the board | The bug that started this backlog was a panel covering the cell being aimed at. |
 | Time-to-first-placement must not grow | Measured by the smoke test. Polish that slows the opening is a regression. |
+| **A card on the board must stay scannable** | The board is read, not admired. Detail that costs rank legibility at cell size is a regression however good it looks in hand. |
 
 Colour stays inside the existing language: sky = chips, amber = mult, emerald =
 score, violet/pink = full lines, grey = sealed. Adding a hue means inventing a
@@ -578,6 +579,19 @@ was moving — a note that an idea failed is worth as much as one that landed.
   for legibility at hand size and reads cleanly. Screenshots (session-local,
   not committed): `hand-01.png`, `board-01.png`, `ten-zoom.png`,
   `ace-zoom.png`, `hex-01.png`.
+
+- **Item 7, corrected after review.** The new faces were applied at both sizes
+  — `CardFace` only varied its geometry — so a 9 rendered nine pips inside a
+  ~52px board cell and the rank dropped from a large centred numeral to a ~10px
+  corner index. On the board that is a real loss: reading the board *is* the
+  game under the cribbage lens, since spotting fifteens, pairs and runs means
+  sweeping the grid for ranks. `md` now keeps the plain large rank-over-suit it
+  always had and `lg` keeps the full pip treatment, which is the split the two
+  sizes actually want — the hand is looked at, the board is scanned.
+
+  Nothing in the visual budget caught this, because the budget constrained
+  timing and said nothing about legibility. That gap is now closed with a rule
+  of its own above. A future card-face item must preserve the split.
 
 ## Results log
 
