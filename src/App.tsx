@@ -9,10 +9,11 @@ import {
 } from './hex/board';
 import { discardHexCards, newHexGame, placeHexCard, type HexGameState } from './hex/game';
 import { parseHex, type Hex } from './hex/coords';
-import { DEFAULT_RULESET, getRuleset } from './rulesets';
+import { DEFAULT_RULESET, getRuleset, type Ruleset } from './rulesets';
 import { getLens, type ScoredPlacement } from './lens';
 import { RulesetMenu } from './components/RulesetMenu';
 import { MetricsPage } from './components/MetricsPage';
+import { SetupPage } from './components/SetupPage';
 import { ScoringPanel } from './components/ScoringPanel';
 import type { Card } from './deck';
 import { TOUCH_QUERY, useMediaQuery, WIDE_QUERY } from './useMediaQuery';
@@ -58,8 +59,7 @@ interface FlyingCard {
 }
 
 export default function App() {
-  const [rulesetId, setRulesetId] = useState(DEFAULT_RULESET);
-  const ruleset = getRuleset(rulesetId);
+  const [ruleset, setRuleset] = useState<Ruleset>(() => getRuleset(DEFAULT_RULESET));
   const cfg = ruleset.config;
 
   // Undo is just a stack of whole states — every field rolls back together.
@@ -71,6 +71,7 @@ export default function App() {
   const [devOpen, setDevOpen] = useState(false);
   const [showMetrics, setShowMetrics] = useState(false);
   const [showScoring, setShowScoring] = useState(false);
+  const [showSetup, setShowSetup] = useState(false);
 
   const wide = useMediaQuery(WIDE_QUERY);
   const touch = useMediaQuery(TOUCH_QUERY);
@@ -314,8 +315,12 @@ export default function App() {
   }
 
   function handleRuleset(id: string) {
-    setRulesetId(id);
-    setHistory([startRun(state.seed, getRuleset(id).config)]);
+    applyRuleset(getRuleset(id));
+  }
+
+  function applyRuleset(next: Ruleset) {
+    setRuleset(next);
+    setHistory([startRun(state.seed, next.config)]);
     setSelected(new Set());
     setTarget(null);
   }
@@ -369,6 +374,17 @@ export default function App() {
   );
 
   if (showMetrics) return <MetricsPage onClose={() => setShowMetrics(false)} />;
+  if (showSetup)
+    return (
+      <SetupPage
+        initial={ruleset}
+        onClose={() => setShowSetup(false)}
+        onStart={(next) => {
+          applyRuleset(next);
+          setShowSetup(false);
+        }}
+      />
+    );
 
   return (
     <div
@@ -410,6 +426,12 @@ export default function App() {
             className="hidden shrink-0 rounded border border-neutral-700 px-3 py-1 text-sm font-semibold text-neutral-300 min-[1280px]:block min-[1280px]:hover:bg-neutral-800"
           >
             Scoring
+          </button>
+          <button
+            onClick={() => setShowSetup(true)}
+            className="shrink-0 rounded border border-neutral-700 px-3 py-1 text-sm font-semibold text-neutral-300 min-[1280px]:hover:bg-neutral-800"
+          >
+            Setup
           </button>
           <button
             onClick={() => setShowMetrics(true)}

@@ -123,6 +123,31 @@ re-enable it, or delete it.
 
 ## Decisions log
 
+**Every shipped ruleset is a point in the parameter space, and there is a test
+that says so.** The setup screen (`src/setup.ts`, `SetupPage.tsx`) exposes the
+whole of `Config`, and `setup.test.ts` asserts that `matchingPreset` recognises
+all 30 presets from their own configs, and that every field two presets disagree
+on is reachable from the form. If a preset ever stops being reproducible there,
+that test fails rather than the claim quietly becoming false.
+
+What is *not* a parameter is a new primitive: a lens (poker and cribbage are
+modules implementing `Lens`), a structure (grid and hex implement `Structure`),
+or a mechanic (lock-and-cash needed engine and UI work before it could become a
+boolean). Choosing among implemented primitives is configuration; adding one is
+code. The parameter space is the cross product of what exists.
+
+`normalise` repairs the combinations no hidden field can express — a line cap
+longer than the board, a discard bigger than the hand, more placements than
+cells, and lock-and-cash together with deferred payout (the engine checks
+lock-and-cash first, so the other would silently do nothing). Preset matching
+compares normalised forms, because a few presets carry an unreachable
+`maxDiscardSelection` larger than their hand size.
+
+The one thing a custom config cannot carry is a **calibrated target**. Presets
+have theirs set from a measured greedy median; a hand-picked target still plays
+correctly but makes winning and losing close to meaningless. The setup screen
+says so in place rather than pretending otherwise.
+
 **Commit signatures are fine. Never rewrite history over them.** Commits here
 really are signed — every one carries a `gpgsig` header, checkable with
 `git cat-file commit HEAD`. What was missing was the ability to *verify* one:
