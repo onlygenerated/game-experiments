@@ -109,10 +109,16 @@ Ordered so a short night still lands the items that change how a placement
 
 ## Where things live
 
-- **Artifact (this branch)**: minted on the first firing. Publish the polish
-  build to its own URL and record it here, so it never overwrites the build on
-  `main` that the user is playing. Passing the recorded URL as `url` keeps the
-  link stable; omitting it mints a new one every time.
+- **Artifact (this branch)**: https://claude.ai/code/artifact/55baefb7-5439-4a2e-b45b-236ca617ff05
+  Title "Grid Poker — UI polish", favicon ✨ — keep both stable. Always pass
+  that address as `url`; omitting it mints a new artifact every firing and the
+  user loses the link. It currently holds the *pre-polish baseline*, so the
+  first firing's publish is also the first before/after comparison.
+
+  **Never publish to the artifact on `main`**
+  (`6613c961-31a5-4a7b-8c61-abeb633d25e6`). That is the build the user plays
+  while the rules stream works, and overwriting it from here would replace their
+  game with a half-finished polish branch.
 - **Build**: `npx vite build`, then inline `dist/assets/*.css` and `*.js` into a
   single body-only HTML file — no doctype, html, head or body tags, the host
   wraps it. Nothing may reference an external host.
