@@ -520,13 +520,19 @@ export default function App() {
           ref={footerRef}
           className="fixed inset-x-0 bottom-0 z-30 flex flex-col gap-2 border-t border-white/10 bg-[#0d1015]/95 p-2 backdrop-blur"
         >
-          {shownPreview && (
+          {/* Never while dragging. The footer is fixed to the bottom of the
+              screen, so opening the full breakdown mid-drag grows it upward
+              over the lower rows of the board — covering the very cell the
+              card is being dragged to. The drag carries its own readout
+              instead. */}
+          {shownPreview && !drag && (
             <PreviewPanel
               preview={shownPreview}
               actionLabel={cashPreview ? 'Cash' : 'Place'}
               onPlace={() => {
                 if (cashPreview && target) cash(target);
-                else if (activeTarget) place(drag?.handIndex ?? selectedIndex ?? -1, activeTarget);
+                // Unreachable during a drag, so the hand index is the selection.
+                else if (activeTarget) place(selectedIndex ?? -1, activeTarget);
               }}
               onCancel={() => setTarget(null)}
             />
@@ -562,6 +568,28 @@ export default function App() {
           }}
         >
           <CardFace card={drag.card} size="lg" />
+        </div>
+      )}
+
+      {/* What the drop is worth, riding just above the card. Small enough not
+          to cover the board, and it sits above the pointer rather than under
+          it, so it never hides the cell being aimed at. */}
+      {drag && preview && (
+        <div
+          className="pointer-events-none fixed z-50"
+          style={{
+            left: drag.x,
+            top: `calc(${drag.y}px - var(--hand-card-w) * 1.12)`,
+            transform: 'translate(-50%, -100%)',
+          }}
+        >
+          <span className="flex items-baseline gap-1 rounded-full border border-white/10 bg-[#0d1015]/95 px-2.5 py-1 font-mono text-[13px] font-bold shadow-lg backdrop-blur">
+            <span className="text-sky-400">{preview.chips}</span>
+            <span className="text-neutral-600">×</span>
+            <span className="text-amber-400">{preview.mult}</span>
+            <span className="text-neutral-600">=</span>
+            <span className="text-base text-emerald-400">{preview.score}</span>
+          </span>
         </div>
       )}
     </div>
