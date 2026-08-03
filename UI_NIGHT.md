@@ -95,7 +95,7 @@ Ordered so a short night still lands the items that change how a placement
 - [x] **4. Line-scoring cascade.** When a placement scores, light the
       contributing cells one at a time rather than all at once, chips axis then
       mult axis. Makes the row/column split legible as motion instead of colour.
-- [ ] **5. Line-complete punctuation.** A run reaching the cap currently gets a
+- [x] **5. Line-complete punctuation.** A run reaching the cap currently gets a
       static marker. Give it a beat: a snap, a brief glow, and the marker
       arriving rather than appearing.
 - [ ] **6. Near-miss feedback.** An illegal drop is silently refused. Show why
@@ -344,6 +344,60 @@ was moving — a note that an idea failed is worth as much as one that landed.
   `hex-cascade-01-early.png`, `hex-cascade-02-done.png`,
   `page@7b2dbd0054c2709c0e24f0de9c84ef26.webm`.
 
+- **Item 5.** The "static marker" the queue item means is `BoardGrid`'s
+  `rowComplete`/`colComplete` violet/pink inset border (`isLineComplete` in
+  `board.ts`, reached when a run hits `cfg.lineCap`) — a different thing from
+  the grey `lockedRow`/`lockedCol` "sealed" border, which is cashing, not
+  capping, and already has its own instant appearance that this item doesn't
+  touch. Hex has no cap concept at all (`lineCap` and `isLineComplete` are
+  grid-only, hex uses `hexWindow` instead), so this item is a no-op there —
+  noting it here since a later firing might otherwise go looking for a hex
+  counterpart that was never meant to exist.
+- Detecting the *transition* (not just "is complete") needed a place to
+  remember what had already punctuated, since `isLineComplete` recomputes
+  fresh from board state every render and has no memory of its own. A grid
+  row/col is addressable by its fixed index for the life of a run, so a plain
+  `Set<string>` of `row:${r}` / `col:${c}` in a ref, cleared on `state.seed`
+  change (new run), was enough — no need to diff board snapshots.
+- Reused the same `logRows`-growth signal items 1 and 4 already trigger off
+  of, and for the same reason: it fires exactly once per placement or cash,
+  never on a discard/undo/reset. Read `last.atLabel` back into `{r, c}` with
+  the existing `parseGrid` rather than threading new coordinates through.
+- A cash locks both axes of its cross in the same board update (item 4's
+  decision log already established this for the cascade). That means a line
+  reaching the cap *by being cashed* never shows the violet/pink marker at
+  all — `BoardGrid` only draws it when `!lockedRow`/`!lockedCol` — so the
+  punch effect gates on the identical condition (`!cell.lockedRow &&
+  isLineComplete(...)`) it would otherwise light a marker that never
+  actually renders.
+- The punch is one simultaneous beat across every cell of the completing
+  line, not staggered like item 4's cascade. The cascade stages cells
+  because it is *narrating* a computation (chips axis, then mult axis); a
+  line hitting its cap is a single fact about to be true, so all its cells
+  reading it at once is what "a snap" means here. Verified this literally: an
+  `animationstart` listener recorded all 5 cells of a completed row firing
+  within 0.2ms of each other.
+- Layered a `pointer-events-none absolute inset-0` overlay per cell, same
+  technique as the cascade flash and for the same reason (never touches the
+  permanent border logic, which stays exactly as it was) — except this one
+  carries its own `box-shadow` (the punch's glow) rather than a `background`,
+  since the permanent marker is itself a border effect and a solid fill
+  would have covered the card. `box-shadow`'s outer blur draws past the
+  cell's own edges regardless of what's layered under it, so it reads even
+  when a cascade flash from the same placement is filling the interior.
+- Considered stretching the punch to the full 250ms budget. Landed on 220ms,
+  matching the score-fly and cascade-cell constants already in the file —
+  one more number to keep in that family rather than a new one.
+- Verified live in headless Chromium on both axes: built a row to the cap on
+  one run (`animationstart` fired for all 5 `line-punch-row` cells at once,
+  the completing placement's score/log updated with no delay, and 400ms
+  later the punch classes were gone while the permanent violet top/bottom
+  border remained) and a column to the cap on a fresh run the same way
+  (`line-punch-col`, pink). Screenshots and a clip (session-local, not
+  committed): `punch-00-before.png`, `punch-01-mid.png`, `punch-02-done.png`,
+  `punch-col-01-mid.png`, `punch-col-02-done.png`,
+  `page@815436aa26499fc6edb76775dd04e689.webm`.
+
 ## Results log
 
 For each item: what shipped, what it cost in milliseconds, and a screenshot or
@@ -417,3 +471,28 @@ movement, record a short capture with `page.video` and name the file here.
   `cascade-01-early.png`, `cascade-02-mid.png`, `cascade-03-done.png`,
   `hex-cascade-01-early.png`, `hex-cascade-02-done.png`,
   `page@7b2dbd0054c2709c0e24f0de9c84ef26.webm`.
+- **Item 5 — line-complete punctuation** (2026-08-03). New
+  `src/components/linePunch.ts` (the `LinePunch` type), a punch-building
+  effect in `App.tsx` (keyed off the same `logRows` growth signal as items 1
+  and 4, remembering already-punctuated lines in a ref keyed by axis+index so
+  each line punctuates once per run), a `linePunch` prop threaded into
+  `BoardGrid.tsx` for the per-cell overlay, and `line-punch-in` /
+  `.line-punch[-row|-col]` in `index.css`. Grid-only — hex has no `lineCap`/
+  `isLineComplete` concept, so `HexBoardView.tsx` was not touched. No file
+  `main` owns was modified; `board.ts`'s `cellAt`, `lineCoords` and
+  `isLineComplete` were imported read-only, the same pattern items 1 and 4
+  used for `logRows`. The punch is 220ms, under the 250ms cap; nothing gates
+  input, since it only starts after the placement that completed the line has
+  already committed, and the permanent violet/pink border it's layered over
+  is unchanged. `npm test` (208 passed), `npx tsc -b --noEmit` (clean), and
+  `npm run smoke` (18/18 checks, build ~1.85s) all green before push.
+  Verified live in headless Chromium on both axes with a real run: built a
+  row out to the 5-card cap and confirmed via `animationstart` timestamps
+  that all 5 cells' `line-punch-row` fired within 0.2ms of each other (the
+  intended single simultaneous snap, not a stagger), that the completing
+  placement's score and log updated with no delay, and that 400ms later the
+  punch was gone while the permanent border remained; repeated on a column on
+  a fresh run to confirm `line-punch-col` (pink) fires the same way.
+  Screenshots and a clip (session-local, not committed): `punch-00-before.png`,
+  `punch-01-mid.png`, `punch-02-done.png`, `punch-col-01-mid.png`,
+  `punch-col-02-done.png`, `page@815436aa26499fc6edb76775dd04e689.webm`.

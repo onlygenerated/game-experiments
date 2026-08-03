@@ -228,6 +228,45 @@ button,
   background: rgba(251, 191, 36, 0.55);
 }
 
+/* A run reaching the cap gets a permanent violet/pink inset border, computed
+   fresh every render from board state in BoardGrid — this overlay rides on
+   top of that for one pulse so the marker reads as arriving with a snap and
+   a glow, rather than the border just being present on the next paint. 220ms,
+   under the 250ms cap; `both` so it starts invisible rather than flashing at
+   full strength on its very first frame. */
+@keyframes line-punch-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+.line-punch {
+  animation: line-punch-in 220ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.line-punch-row {
+  box-shadow:
+    inset 0 3px 0 0 rgba(167, 139, 250, 0.9),
+    inset 0 -3px 0 0 rgba(167, 139, 250, 0.9),
+    0 0 14px rgba(167, 139, 250, 0.6);
+}
+
+.line-punch-col {
+  box-shadow:
+    inset 3px 0 0 0 rgba(244, 114, 182, 0.9),
+    inset -3px 0 0 0 rgba(244, 114, 182, 0.9),
+    0 0 14px rgba(244, 114, 182, 0.6);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

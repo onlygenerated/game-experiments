@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { PlacementScore } from './board';
+import { cellAt, isLineComplete, lineCoords, type PlacementScore } from './board';
 import type { HexPlacementScore } from './hex/board';
 import { parseHex } from './hex/coords';
 import { getLens } from './lens';
@@ -19,6 +19,7 @@ import { ScoreLog } from './components/ScoreLog';
 import { StatusBar } from './components/StatusBar';
 import { RunEndPanel } from './components/RunEndPanel';
 import type { Cascade, CascadeCell } from './components/cascade';
+import type { LinePunch } from './components/linePunch';
 
 // Matches the count-up in StatusBar, so the flying total lands right as the
 // number underneath finishes ticking to meet it.
@@ -30,6 +31,10 @@ const SCORE_FLY_MS = 220;
 // never one continuous one.
 const CASCADE_FLASH_MS = 200;
 const CASCADE_STAGGER_MS = 45;
+
+// Line-complete punctuation: one snap-and-glow pulse over the run that just
+// reached the cap. Under the 250ms cap on its own.
+const LINE_PUNCH_MS = 220;
 
 // The ghost's resting lean when held still, same angle the static tilt used
 // before this existed.
@@ -202,6 +207,70 @@ export default function App() {
   }, [logRows]);
 
   useEffect(() => () => void (cascadeTimer.current && clearTimeout(cascadeTimer.current)), []);
+
+  // Line-complete punctuation: a run reaching the cap gets a static violet or
+  // pink marker from BoardGrid already (`rowComplete`/`colComplete`, computed
+  // fresh every render from board state) — this only adds the "arriving"
+  // beat on top, keyed off the same logRows-growth signal as the score-fly
+  // and the cascade above. Hex has no cap concept (`board.ts`'s `lineCap` is
+  // grid-only, `isLineComplete` takes a grid `Board`), so this is a no-op for
+  // hex runs. A completed line is remembered by axis + index (`row:3`,
+  // `col:5`) so it only punctuates once, and forgotten on a new run since a
+  // fresh board can complete the same index again.
+  const [linePunch, setLinePunch] = useState<LinePunch | null>(null);
+  const prevPunchLen = useRef(logRows.length);
+  const completedLines = useRef<Set<string>>(new Set());
+  const punchGenId = useRef(0);
+  const punchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    completedLines.current = new Set();
+  }, [state.seed]);
+
+  useEffect(() => {
+    const prev = prevPunchLen.current;
+    prevPunchLen.current = logRows.length;
+    if (logRows.length <= prev || run.kind === 'hex') return;
+
+    const last = logRows[logRows.length - 1];
+    const { r, c } = parseGrid(last.atLabel);
+    const board = run.s.board;
+    const cell = cellAt(board, r, c, cfg);
+    if (!cell) return;
+
+    // A cash locks both axes of its cross in the same board update (see item
+    // 4's decision log), so a line that just got cashed reads as sealed, not
+    // "reached the cap" — that is a different marker and not this item's job.
+    const axes: { axis: 'row' | 'col'; id: string }[] = [];
+    if (!cell.lockedRow && isLineComplete(board, r, c, 'row', cfg)) {
+      const id = `row:${r}`;
+      if (!completedLines.current.has(id)) axes.push({ axis: 'row', id });
+    }
+    if (!cell.lockedCol && isLineComplete(board, r, c, 'col', cfg)) {
+      const id = `col:${c}`;
+      if (!completedLines.current.has(id)) axes.push({ axis: 'col', id });
+    }
+    if (!axes.length) return;
+    axes.forEach((a) => completedLines.current.add(a.id));
+
+    const cells = new Map<string, 'row' | 'col'>();
+    for (const a of axes) {
+      for (const p of lineCoords(board, r, c, a.axis, cfg)) {
+        const k = `${p.r},${p.c}`;
+        if (!cells.has(k)) cells.set(k, a.axis);
+      }
+    }
+
+    if (punchTimer.current) clearTimeout(punchTimer.current);
+    const id = ++punchGenId.current;
+    setLinePunch({ id, cells });
+    punchTimer.current = setTimeout(
+      () => setLinePunch((p) => (p?.id === id ? null : p)),
+      LINE_PUNCH_MS,
+    );
+  }, [logRows, run, cfg]);
+
+  useEffect(() => () => void (punchTimer.current && clearTimeout(punchTimer.current)), []);
 
   // Weighted drag: `useCardDrag` only tracks position, so velocity — and the
   // tilt it drives — is derived here from consecutive `drag.x` samples rather
@@ -405,6 +474,7 @@ export default function App() {
                 docked={docked}
                 dragActive={Boolean(drag)}
                 cascade={cascade}
+                linePunch={linePunch}
               />
             )}
 

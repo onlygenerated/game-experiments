@@ -10,6 +10,7 @@ import {
 } from '../board';
 import type { Card } from '../deck';
 import type { Cascade } from './cascade';
+import type { LinePunch } from './linePunch';
 import { CardFace } from './CardFace';
 import { PreviewPanel } from './PreviewPanel';
 
@@ -35,6 +36,7 @@ export function BoardGrid({
   docked,
   dragActive,
   cascade,
+  linePunch,
 }: {
   cfg: Config;
   board: Board;
@@ -54,6 +56,8 @@ export function BoardGrid({
   dragActive: boolean;
   /** Cells to light one at a time after the most recent score, chips axis then mult. */
   cascade: Cascade | null;
+  /** Cells of the run that just reached the cap, for a one-shot snap + glow. */
+  linePunch: LinePunch | null;
 }) {
   const size = cfg.gridSize;
 
@@ -124,6 +128,7 @@ export function BoardGrid({
           const isJustPlaced = justPlaced?.r === r && justPlaced?.c === c;
           const isLifted = isTarget && selectable && dragActive;
           const cascadeHit = cascade?.cells.get(k);
+          const punchAxis = linePunch?.cells.get(k);
 
           // A cashed line is sealed: it can never be extended or banked again,
           // which is a stronger statement than merely being full.
@@ -225,6 +230,14 @@ export function BoardGrid({
                     cascadeHit.role === 'chips' ? 'cascade-flash-chips' : 'cascade-flash-mult'
                   }`}
                   style={{ animationDelay: `${cascadeHit.delay}ms` }}
+                />
+              )}
+              {punchAxis && (
+                <div
+                  key={`${linePunch!.id}-${k}`}
+                  className={`line-punch pointer-events-none absolute inset-0 rounded-md ${
+                    punchAxis === 'row' ? 'line-punch-row' : 'line-punch-col'
+                  }`}
                 />
               )}
             </div>
