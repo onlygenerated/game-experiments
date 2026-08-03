@@ -85,14 +85,26 @@ button,
     0 3px 6px rgba(0, 0, 0, 0.35);
 }
 
-/* The tray the grid sits in — a recessed table surface. */
+/*
+ * The tray the grid sits in — a recessed table surface. Three layers, thinnest
+ * on top: a warm lamp wash (the table is lit from above, not the cool chrome
+ * around it), a fine woven grain (felt, not glass), then the same navy well
+ * the rest of the UI uses so the board still reads as part of one screen.
+ */
 .board-tray {
   background:
+    radial-gradient(65% 45% at 50% 0%, rgba(255, 197, 138, 0.06) 0%, transparent 70%),
+    radial-gradient(circle at 1px 1px, rgba(0, 0, 0, 0.14) 0.5px, transparent 0.5px),
     radial-gradient(130% 110% at 50% 0%, #232a3a 0%, #181d28 55%, #12161e 100%);
+  background-size:
+    100% 100%,
+    4px 4px,
+    100% 100%;
   border: 1px solid #272d3a;
   border-radius: 12px;
   box-shadow:
-    inset 0 2px 12px rgba(0, 0, 0, 0.65),
+    inset 0 3px 18px rgba(0, 0, 0, 0.72),
+    inset 0 0 46px rgba(0, 0, 0, 0.32),
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
     0 10px 26px rgba(0, 0, 0, 0.4);
 }

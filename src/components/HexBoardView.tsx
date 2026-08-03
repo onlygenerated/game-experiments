@@ -151,7 +151,10 @@ export function HexBoardView({
               width: `calc(1.733 * ${size})`,
               height: `calc(2 * ${size})`,
               clipPath: POINTY_TOP,
-              background: bg,
+              // Same top-lit well as the grid cells, so the two boards read as
+              // one material even though hex draws its shape with clip-path
+              // instead of a rounded rect.
+              background: `linear-gradient(180deg, rgba(0,0,0,.4), rgba(255,255,255,.05)), ${bg}`,
               boxShadow: ring ? `inset 0 0 0 3px ${ring}` : undefined,
               // clip-path cuts the shadow, so the rim is drawn as an inset ring.
               outline: selectable && !ring ? 'none' : undefined,
@@ -163,15 +166,19 @@ export function HexBoardView({
           >
             {/* clip-path clips borders too, so every rim is drawn as an inset
                 layer. Without one the empty hexes vanish and the disc reads as
-                a lopsided smear rather than a board. */}
+                a lopsided smear rather than a board. Inset shadows are exempt
+                from the clip-path cropping item 2/6 hit — those only cut
+                *outer* shadows and off-box children, not paint confined to
+                the element's own box — so the well depth and the warm glow
+                bloom both work the same way here as on the grid. */}
             {!ring && (
               <div
                 className="pointer-events-none absolute inset-0"
                 style={{
                   clipPath: POINTY_TOP,
                   boxShadow: selectable
-                    ? 'inset 0 0 0 2px rgba(52,211,153,.6)'
-                    : 'inset 0 0 0 1.5px rgba(255,255,255,.07)',
+                    ? 'inset 0 0 0 2px rgba(52,211,153,.6), inset 0 0 14px rgba(255,196,130,.22)'
+                    : 'inset 0 0 0 1.5px rgba(255,255,255,.07), inset 0 4px 8px rgba(0,0,0,.55)',
                 }}
               />
             )}
