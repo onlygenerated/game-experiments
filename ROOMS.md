@@ -215,8 +215,10 @@ stand on. Sized for 30 minutes each.
   `origin/main` in first, so the branches never diverge by more than one firing
   and the eventual merge back is nearly a fast-forward. If that merge conflicts,
   **stop and report**; do not resolve it.
-- **Artifact**: minted on the first firing. Record the URL here and pass it as
-  `url` every time after. **Never publish to the artifact on `main`**
+- **Artifact**: https://claude.ai/code/artifact/5a1898dd-dcba-4509-8c6c-867f68bc6a20
+  — minted on item 1's firing. Pass this URL as `url` every time after (WebFetch
+  it first — publishing 409s unless the current version has been read).
+  **Never publish to the artifact on `main`**
   (`6613c961-31a5-4a7b-8c61-abeb633d25e6`) — that is the build being played.
 - **Build**: `npx vite build`, then inline `dist/assets/*.css` and `*.js` into a
   single body-only HTML file. Nothing may reference an external host.
