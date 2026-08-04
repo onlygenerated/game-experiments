@@ -11,6 +11,7 @@ import {
   roomExits,
   roomInterior,
   structureReachesExit,
+  trapCellsNear,
 } from '../rooms/room';
 import { HOURGLASS_ROOM, ROOM_SHAPES, ROUND_ROOM } from '../rooms/shapes';
 
@@ -305,5 +306,31 @@ describe('roomEndState', () => {
   it('score exactly at the threshold counts as met', () => {
     expect(roomEndState(room, onExit, 99).scoreMet).toBe(false);
     expect(roomEndState(room, onExit, 100).scoreMet).toBe(true);
+  });
+});
+
+describe('trapCellsNear (item 12)', () => {
+  const trapCell = { q: 0, r: -1 };
+  const room = makeRoom('Test', hexesWithinRadius(1), [{ q: 1, r: 0 }], 0, [
+    [trapCell, { kind: 'trap' }],
+  ]);
+
+  it('finds a trap sitting directly on the queried cell', () => {
+    expect(trapCellsNear(room, trapCell).map(hexKey)).toEqual([hexKey(trapCell)]);
+  });
+
+  it('finds a trap on a neighbouring cell — "beside", not only "on"', () => {
+    expect(hexNeighbors(trapCell).map(hexKey)).toContain(hexKey(ORIGIN));
+    expect(trapCellsNear(room, ORIGIN).map(hexKey)).toEqual([hexKey(trapCell)]);
+  });
+
+  it('finds nothing at a cell with no trap on or beside it', () => {
+    expect(trapCellsNear(room, { q: 1, r: 0 }).length).toBe(0);
+  });
+
+  it('does not care whether the trap has already been sprung — that is expedition.ts state', () => {
+    // Purely geometric: calling it twice for the same cell returns the same
+    // answer, since this function has no notion of "already triggered".
+    expect(trapCellsNear(room, trapCell)).toEqual(trapCellsNear(room, trapCell));
   });
 });

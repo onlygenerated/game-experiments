@@ -22,6 +22,21 @@
  * no scoring effect at all (nothing in `scoring.ts` reads it), it just makes
  * `isLegalRoomPlacement` reject the cell outright, the same way an already-
  * occupied cell is rejected.
+ *
+ * Item 12's `'trap'` tile is the first tile kind with state that belongs
+ * here rather than on `Room` — see `tile.ts`'s note on why "which traps have
+ * sprung" is a per-expedition fact, not part of a room's static shape.
+ * `ExpeditionState.revealedTraps` is the set of trap cells (by hex key) that
+ * have already fired *this room, this expedition*; it resets to empty on
+ * every room transition in `leaveRoom`, the same way the board itself does.
+ * `placeInRoom` checks `trapCellsNear` (`room.ts`) for any trap at the
+ * placed cell or one of its neighbours that isn't in that set yet, marks it
+ * revealed, and pays its cost — one card, taken off the top of the deck if
+ * there is one, off the front of the hand otherwise. That ordering matters
+ * for the deck accounting: the cost is deducted *before* the normal
+ * end-of-turn refill draw, so the refill (if the deck still has cards after
+ * the trap's own cost) draws from whatever is left, not from a phantom
+ * pre-trap deck.
  */
 import { CONFIG, type Config } from '../config';
 import { draw, shuffledDeck, type Card } from '../deck';
@@ -34,8 +49,8 @@ import {
   type HexBoard,
   type HexPlacementScore,
 } from '../hex/board';
-import { type Hex } from '../hex/coords';
-import { isInRoom, roomCells, roomEndState, type Room, type RoomEndState } from './room';
+import { hexKey, type Hex } from '../hex/coords';
+import { isInRoom, roomCells, roomEndState, trapCellsNear, type Room, type RoomEndState } from './room';
 import { scoreRoomPlacement } from './scoring';
 import { tileAt } from './tile';
 
@@ -48,6 +63,8 @@ export interface ExpeditionLogEntry extends HexPlacementScore {
   roomName: string;
   /** Running total (across cleared rooms) plus the current room's score, after this placement. */
   totalAfter: number;
+  /** Cards lost to a trap sprung by this placement (item 12) — empty on almost every entry. */
+  cardsLost: Card[];
 }
 
 export interface ExpeditionState {
@@ -63,6 +80,8 @@ export interface ExpeditionState {
   /** Sum of every *cleared* room's score. Survives room transitions; never resets. */
   runningTotal: number;
   placementsLeft: number;
+  /** Trap cells (item 12) that have already sprung in the current room, by hex key. Resets every room. */
+  revealedTraps: ReadonlySet<string>;
   log: ExpeditionLogEntry[];
   status: ExpeditionStatus;
 }
@@ -125,9 +144,28 @@ export function newExpedition(
     score: 0,
     runningTotal: 0,
     placementsLeft: cfg.roomPlacementBudget,
+    revealedTraps: new Set(),
     log: [],
     status: 'playing',
   };
+}
+
+/**
+ * The one card a sprung trap (item 12) costs: the deck's own top card if it
+ * has one — the card that would otherwise have been drawn next — or the
+ * front of the hand if the deck is empty. Deterministic rather than a
+ * player choice or a random pick: nothing on `ExpeditionState` carries an
+ * RNG stream past the opening shuffle, and the item's text asks for a cost,
+ * not a decision. Returns `lost: null`, spending nothing, only when both
+ * the deck and the hand are already empty.
+ */
+function payTrapCost(
+  hand: readonly Card[],
+  deck: readonly Card[],
+): { hand: Card[]; deck: Card[]; lost: Card | null } {
+  if (deck.length > 0) return { hand: [...hand], deck: deck.slice(1), lost: deck[0] };
+  if (hand.length > 0) return { hand: hand.slice(1), deck: [...deck], lost: hand[0] };
+  return { hand: [...hand], deck: [...deck], lost: null };
 }
 
 /** Place hand[handIndex] at `h` in the current room. Unchanged if the move isn't legal. */
@@ -144,28 +182,49 @@ export function placeInRoom(
   if (!card) return state;
   if (!isLegalRoomPlacement(state, h, cfg)) return state;
 
-  const result = scoreRoomPlacement(state.board, h, card, currentRoom(state).tiles, cfg);
+  const room = currentRoom(state);
+  const result = scoreRoomPlacement(state.board, h, card, room.tiles, cfg);
   const board = withHexCard(state.board, h, card);
   const score = state.score + result.score;
 
   const remainingHand = state.hand.filter((_, i) => i !== handIndex);
-  const { drawn, deck } = draw(state.deck, cfg.handSize - remainingHand.length);
+
+  // Item 12: any trap at this cell or beside it, not already sprung, fires
+  // now — revealed, and each one costs a card before the refill draw below.
+  const sprungTraps = trapCellsNear(room, h).filter((t) => !state.revealedTraps.has(hexKey(t)));
+  const revealedTraps = sprungTraps.length
+    ? new Set([...state.revealedTraps, ...sprungTraps.map(hexKey)])
+    : state.revealedTraps;
+
+  let hand = remainingHand;
+  let deck = state.deck;
+  const cardsLost: Card[] = [];
+  for (let i = 0; i < sprungTraps.length; i++) {
+    const paid = payTrapCost(hand, deck);
+    hand = paid.hand;
+    deck = paid.deck;
+    if (paid.lost) cardsLost.push(paid.lost);
+  }
+
+  const { drawn, deck: deckAfterDraw } = draw(deck, cfg.handSize - hand.length);
 
   return settleExpedition(
     {
       ...state,
       board,
       score,
-      hand: [...remainingHand, ...drawn],
-      deck,
+      hand: [...hand, ...drawn],
+      deck: deckAfterDraw,
+      revealedTraps,
       placementsLeft: state.placementsLeft - 1,
       log: [
         ...state.log,
         {
           ...result,
           n: state.log.length + 1,
-          roomName: currentRoom(state).name,
+          roomName: room.name,
           totalAfter: state.runningTotal + score,
+          cardsLost,
         },
       ],
     },
@@ -203,6 +262,7 @@ export function leaveRoom(state: ExpeditionState, cfg: Config = CONFIG): Expedit
       score: 0,
       runningTotal,
       placementsLeft: cfg.roomPlacementBudget,
+      revealedTraps: new Set(),
     },
     cfg,
   );

@@ -84,6 +84,7 @@ function tileLineBonus(
     }
     case 'marker':
     case 'blocked':
+    case 'trap':
       return null;
   }
 }

@@ -150,3 +150,24 @@ describe('blocked tiles (item 11)', () => {
     expect(tileAt(room.tiles, east)?.kind).toBe('blocked');
   });
 });
+
+describe('trap tiles (item 12)', () => {
+  it('stores and retrieves a trap tile like any other kind', () => {
+    const tiles = withTile(emptyTileMap(), ORIGIN, { kind: 'trap' });
+    expect(tileAt(tiles, ORIGIN)).toEqual({ kind: 'trap' });
+  });
+
+  it('badges with a fixed glyph, since a trap has no configurable field', () => {
+    expect(tileBadge({ kind: 'trap' })).toBe('☠');
+  });
+
+  it('coexists with a blocked tile at a different cell in the same room', () => {
+    const east = { q: 1, r: 0 };
+    const room = makeRoom('Test', [ORIGIN, east], [], 0, [
+      [ORIGIN, { kind: 'blocked' }],
+      [east, { kind: 'trap' }],
+    ]);
+    expect(tileAt(room.tiles, ORIGIN)?.kind).toBe('blocked');
+    expect(tileAt(room.tiles, east)?.kind).toBe('trap');
+  });
+});

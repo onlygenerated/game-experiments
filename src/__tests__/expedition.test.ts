@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG, type Config } from '../config';
-import { ORIGIN, hexesWithinRadius, type Hex } from '../hex/coords';
+import { ORIGIN, hexKey, hexesWithinRadius, type Hex } from '../hex/coords';
 import { makeRoom, type Room } from '../rooms/room';
 import {
   currentEndState,
@@ -186,6 +186,79 @@ describe('room clearing and leaving', () => {
     state = leaveRoom(state, c);
     expect(state.status).toBe('complete');
     expect(state.runningTotal).toBe(firstScore + secondScore);
+  });
+});
+
+describe('traps (item 12)', () => {
+  const TRAP_CELL: Hex = { q: 0, r: -1 };
+  const trapRoom = (name: string, exits: Hex[] = [{ q: 1, r: 0 }]): Room =>
+    makeRoom(name, hexesWithinRadius(1), exits, 0, [[TRAP_CELL, { kind: 'trap' }]]);
+
+  it('starts hidden — nothing revealed before any placement', () => {
+    const state = newExpedition('exp-1', [trapRoom('Trap')], cfg());
+    expect(state.revealedTraps.size).toBe(0);
+  });
+
+  it('triggers and reveals when a card lands directly on it, costing exactly one card', () => {
+    const state = newExpedition('exp-1', [trapRoom('Trap')], cfg());
+    const before = state.deck.length + state.hand.length;
+    const next = placeInRoom(state, 0, TRAP_CELL, cfg());
+    expect(next.revealedTraps.has(hexKey(TRAP_CELL))).toBe(true);
+    expect(next.board.size).toBe(1);
+    // One card moved from hand to board (net zero) and one further card was
+    // lost outright to the trap — the whole pool (deck+hand+board) shrinks by 1.
+    expect(next.deck.length + next.hand.length + next.board.size).toBe(before - 1);
+    expect(next.log[0].cardsLost).toHaveLength(1);
+  });
+
+  it('triggers when a card lands beside it, not only directly on it', () => {
+    const state = newExpedition('exp-1', [trapRoom('Trap')], cfg());
+    const next = placeInRoom(state, 0, ORIGIN, cfg()); // (0,0) neighbours the trap at (0,-1)
+    expect(next.revealedTraps.has(hexKey(TRAP_CELL))).toBe(true);
+    expect(next.log[0].cardsLost).toHaveLength(1);
+  });
+
+  it('does not cost a second card once already revealed', () => {
+    const state = newExpedition('exp-1', [trapRoom('Trap')], cfg());
+    const afterFirst = placeInRoom(state, 0, ORIGIN, cfg()); // triggers via "beside"
+    const total = afterFirst.deck.length + afterFirst.hand.length + afterFirst.board.size;
+    const afterSecond = placeInRoom(afterFirst, 0, TRAP_CELL, cfg()); // lands on the now-revealed trap
+    expect(afterSecond.revealedTraps.size).toBe(1); // still just the one trap cell
+    // A normal placement: one card moves hand -> board, nothing further lost.
+    expect(afterSecond.deck.length + afterSecond.hand.length + afterSecond.board.size).toBe(total);
+    expect(afterSecond.log[1].cardsLost).toHaveLength(0);
+  });
+
+  it('a placement nowhere near a trap costs nothing extra', () => {
+    const room = makeRoom('NoTrap', hexesWithinRadius(1), [{ q: 1, r: 0 }]);
+    const state = newExpedition('exp-1', [room], cfg());
+    const before = state.deck.length + state.hand.length;
+    const next = placeInRoom(state, 0, ORIGIN, cfg());
+    expect(next.revealedTraps.size).toBe(0);
+    expect(next.deck.length + next.hand.length + next.board.size).toBe(before);
+  });
+
+  it('falls back to a hand card once the deck is empty', () => {
+    const state = { ...newExpedition('exp-1', [trapRoom('Trap')], cfg()), deck: [] };
+    const handBefore = state.hand.length;
+    const next = placeInRoom(state, 0, TRAP_CELL, cfg());
+    // No cards anywhere to refill from: one placed onto the board, one more
+    // taken from hand to pay the trap, and the empty deck can't replace either.
+    expect(next.deck.length).toBe(0);
+    expect(next.hand.length).toBe(handBefore - 2);
+    expect(next.log[0].cardsLost).toHaveLength(1);
+  });
+
+  it('resets to hidden on leaving the room — a fresh room does not inherit a sprung trap', () => {
+    const c = cfg({ roomPlacementBudget: 5 });
+    let state = newExpedition('exp-1', [trapRoom('First', [TRAP_CELL]), trapRoom('Second')], c);
+    state = placeInRoom(state, 0, TRAP_CELL, c); // lands on the exit, which is also the trap cell
+    expect(state.revealedTraps.size).toBe(1);
+    expect(currentEndState(state).cleared).toBe(true); // reached (on the exit) + threshold 0
+
+    const next = leaveRoom(state, c);
+    expect(next.roomIndex).toBe(1);
+    expect(next.revealedTraps.size).toBe(0);
   });
 });
 

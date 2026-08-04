@@ -21,8 +21,11 @@
  * contributes to each line it joins. Item 10 adds one `'lineMultiplier'`
  * tile: the word square, doubling a whole line's total rather than just the
  * placed card's share of it. Item 11 adds one `'blocked'` tile: rubble that
- * can never be placed on. Trap/artifact tiles (items 12-13) still have
- * nothing here yet.
+ * can never be placed on. Item 12 adds one `'trap'` tile at `(-2,1)` — off
+ * on its own, not adjacent to any of the other tiles or to any cell the
+ * smoke test's established placement sequence already lands on, so it stays
+ * genuinely hidden until a placement deliberately lands on or beside it.
+ * Artifact tiles (item 13) still have nothing here yet.
  */
 import { hexesWithinRadius, type Hex } from '../hex/coords';
 import { makeRoom, type Room } from './room';
@@ -44,6 +47,7 @@ export const ROUND_ROOM: Room = makeRoom(
     [{ q: 0, r: -1 }, { kind: 'cardMultiplier', multiplier: 2 }],
     [{ q: -1, r: -1 }, { kind: 'lineMultiplier', multiplier: 2 }],
     [{ q: 1, r: -1 }, { kind: 'blocked' }],
+    [{ q: -2, r: 1 }, { kind: 'trap' }],
   ],
 );
 

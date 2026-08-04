@@ -30,9 +30,16 @@
  * Item 8 adds `tiles`, a `TileMap` (see `tile.ts`) alongside `cells`/`exits` —
  * a room's tile layout is part of its hand-authored shape, the same way its
  * exits are, not something that changes as cards get placed on top of it.
+ *
+ * Item 12 adds `trapCellsNear`, a pure geometry query for the trap tile
+ * kind: which trap cells, if any, sit at a given hex or one of its six
+ * neighbours ("on or beside", per the backlog item's own wording). It says
+ * nothing about whether those traps have already sprung — that is
+ * `expedition.ts`'s job (see `tile.ts`'s note on why reveal state lives
+ * there, not on `Room`).
  */
 import { hexKey, hexNeighbors, parseHex, type Hex } from '../hex/coords';
-import { emptyTileMap, tileMapFrom, type Tile, type TileMap } from './tile';
+import { emptyTileMap, tileAt, tileMapFrom, type Tile, type TileMap } from './tile';
 
 export interface Room {
   name: string;
@@ -95,6 +102,16 @@ export const isExit = (room: Room, h: Hex): boolean => room.exits.has(hexKey(h))
 
 export function roomExits(room: Room): Hex[] {
   return [...room.exits].map(parseHex);
+}
+
+/**
+ * Every `'trap'`-tile cell at `h` itself or one of its six neighbours —
+ * "on or beside" a trap, item 12's own phrasing. Purely geometric: whether
+ * a returned trap has already fired this expedition is not this function's
+ * concern (see the header comment).
+ */
+export function trapCellsNear(room: Room, h: Hex): Hex[] {
+  return [h, ...hexNeighbors(h)].filter((c) => tileAt(room.tiles, c)?.kind === 'trap');
 }
 
 /**

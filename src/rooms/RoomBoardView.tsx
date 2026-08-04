@@ -39,6 +39,15 @@ const POINTY_TOP = 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%
  * top of it, so a blocked cell reads as "not part of the playable shape"
  * even where it sits on the border. It gets the same badge treatment as
  * every other tile kind, no special-casing there.
+ *
+ * Item 12 adds `'trap'`, the one kind with "hidden before, revealed on
+ * trigger" state — and that state lives on the expedition, not the room
+ * (see `tile.ts`/`expedition.ts`), so this view needs a new optional
+ * `revealedTraps` prop to know which trap cells to actually show. A trap
+ * whose key isn't in that set is treated as if there were no tile there at
+ * all: no badge, no distinct tint, indistinguishable from a plain cell —
+ * that is what "hidden" means. Once revealed it gets a fifth tint (rose),
+ * layered the same way `'blocked'`'s is.
  */
 export function RoomBoardView({
   room,
@@ -46,12 +55,14 @@ export function RoomBoardView({
   structure,
   board,
   onCellClick,
+  revealedTraps,
 }: {
   room: Room;
   size?: number;
   structure?: ReadonlySet<string>;
   board?: ReadonlyMap<string, Card>;
   onCellClick?: (h: Hex) => void;
+  revealedTraps?: ReadonlySet<string>;
 }) {
   const cells = useMemo(() => roomCells(room), [room]);
 
@@ -79,8 +90,11 @@ export function RoomBoardView({
         const exit = isExit(room, h);
         const card = board?.get(k);
         const occupied = card !== undefined || (structure?.has(k) ?? false);
-        const tile = tileAt(room.tiles, h);
+        const rawTile = tileAt(room.tiles, h);
+        const trapHidden = rawTile?.kind === 'trap' && !(revealedTraps?.has(k) ?? false);
+        const tile = trapHidden ? undefined : rawTile;
         const blocked = tile?.kind === 'blocked';
+        const sprungTrap = tile?.kind === 'trap';
         return (
           <div
             key={k}
@@ -99,20 +113,24 @@ export function RoomBoardView({
               cursor: onCellClick ? (blocked ? 'not-allowed' : 'pointer') : undefined,
               background: blocked
                 ? 'rgba(41,37,36,.75)'
-                : exit
-                  ? 'rgba(74,222,128,.35)'
-                  : border
-                    ? 'rgba(244,114,182,.28)'
-                    : 'rgba(56,189,248,.16)',
+                : sprungTrap
+                  ? 'rgba(244,63,94,.30)'
+                  : exit
+                    ? 'rgba(74,222,128,.35)'
+                    : border
+                      ? 'rgba(244,114,182,.28)'
+                      : 'rgba(56,189,248,.16)',
               boxShadow: blocked
                 ? 'inset 0 0 0 2px rgba(120,113,108,.6)'
                 : occupied
                   ? 'inset 0 0 0 3px rgba(250,204,21,.9)'
-                  : exit
-                    ? 'inset 0 0 0 2px rgba(74,222,128,.85)'
-                    : border
-                      ? 'inset 0 0 0 2px rgba(244,114,182,.75)'
-                      : 'inset 0 0 0 1px rgba(255,255,255,.08)',
+                  : sprungTrap
+                    ? 'inset 0 0 0 2px rgba(244,63,94,.85)'
+                    : exit
+                      ? 'inset 0 0 0 2px rgba(74,222,128,.85)'
+                      : border
+                        ? 'inset 0 0 0 2px rgba(244,114,182,.75)'
+                        : 'inset 0 0 0 1px rgba(255,255,255,.08)',
             }}
           >
             {tile && (

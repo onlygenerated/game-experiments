@@ -23,6 +23,17 @@
  * the multiplier kinds it has no scoring effect and touches no code in
  * `scoring.ts`; its one effect is on legality, in `expedition.ts`'s
  * `isLegalRoomPlacement`.
+ *
+ * Item 12 adds `'trap'` — also no fields, same reasoning as `'blocked'`.
+ * Unlike every other kind, a trap has a *hidden/revealed* state, and that
+ * state is deliberately not a field here: whether a given trap has already
+ * sprung is a fact about one expedition's playthrough, not about the room's
+ * shape, and a `Room` (via `shapes.ts`) is shared data replayed across many
+ * expeditions. `expedition.ts` tracks which trap cells have fired on
+ * `ExpeditionState` instead (see `revealedTraps` there), and `RoomBoardView`
+ * only renders a trap's badge once its cell shows up in that set — this file
+ * still hands back a fixed badge for it unconditionally, the same as every
+ * other kind; the *caller* decides whether reveal state permits showing it.
  */
 import { hexKey, type Hex } from '../hex/coords';
 
@@ -30,7 +41,8 @@ export type Tile =
   | { kind: 'marker'; label: string }
   | { kind: 'cardMultiplier'; multiplier: number }
   | { kind: 'lineMultiplier'; multiplier: number }
-  | { kind: 'blocked' };
+  | { kind: 'blocked' }
+  | { kind: 'trap' };
 
 /** The short text a tile shows on the board — every kind needs one, but not
  * every kind stores it under the same field (a marker's is arbitrary text,
@@ -49,6 +61,8 @@ export function tileBadge(tile: Tile): string {
       return `L×${tile.multiplier}`;
     case 'blocked':
       return '▓';
+    case 'trap':
+      return '☠';
   }
 }
 

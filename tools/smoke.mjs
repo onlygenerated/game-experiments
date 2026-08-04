@@ -279,8 +279,30 @@ ok(
 );
 await placeHand0('-1,-1');
 ok('the line tile boosted the placement to the expected score', (await text()).includes('scored 115'));
+const afterLineTile = Number((await text()).match(/Score (\d+) \/ 50/)?.[1] ?? -1);
+ok('score after the line-multiplier placement reflects the boosted placement', afterLineTile === afterCardTile + 115);
+
+// The room also carries a real 'trap' tile at (-2,1) (item 12) — hidden
+// until a placement lands on or beside it. The next cell in the placement
+// chain, (-1,0), neighbours the trap without sitting on it, so this move
+// demonstrates the "beside" trigger case rather than the more obvious "on"
+// one. The exact score (70) was worked out offline against `expedition.ts`
+// directly (same throwaway-script convention as items 7-10, run and
+// discarded, not committed) — a trap costs a card, not points, so the
+// score itself is untouched by the reveal happening on the same move.
+ok(
+  'the trap tile is hidden before anything triggers it',
+  (await p.locator('[data-room-cell="-2,1"]').getAttribute('data-room-tile')) === null,
+);
+await placeHand0('-1,0');
+ok('the placement beside the trap scored normally', (await text()).includes('scored 70'));
+ok(
+  'the trap is revealed once triggered',
+  (await p.locator('[data-room-cell="-2,1"]').getAttribute('data-room-tile')) === 'trap',
+);
+ok('the log reports the trap cost', (await text()).includes('a trap sprang'));
 const finalScore = Number((await text()).match(/Score (\d+) \/ 50/)?.[1] ?? -1);
-ok('final score reflects the line-boosted placement', finalScore === afterCardTile + 115);
+ok('final score includes the trap-triggering placement', finalScore === afterLineTile + 70);
 
 await p.locator('[data-room-leave]').click();
 await p.waitForTimeout(300);

@@ -176,7 +176,7 @@ stand on. Sized for 30 minutes each.
 - [x] **11. Blocked tiles.** Rubble that cannot be placed on, so a room's shape
       can constrain routes rather than just bound them. Cheap, and it makes
       reach a real problem.
-- [ ] **12. Traps.** Placing on or beside one costs you a card from hand or
+- [x] **12. Traps.** Placing on or beside one costs you a card from hand or
       deck. Revealed on trigger; hidden before. Test the deck accounting
       carefully — silently losing the wrong card is the worst class of bug here.
 - [ ] **13. Artifact cards.** A card sitting on the board that joins your deck
@@ -1063,6 +1063,107 @@ and the existing grid/hex probe rows are explicitly required to stay
 byte-identical. C½ adds measurement; it does not revisit anything items 1-11
 concluded.
 
+**Item 12.** `{ kind: 'trap' }` has no fields, same reasoning as `'blocked'` —
+there is nothing to configure about a trap beyond where it sits. The one real
+design question the item's own text raises without settling it: a trap has
+*state* ("hidden before, revealed on trigger") that every earlier tile kind
+lacked, and that state does not belong on `Tile`/`Room` the way a
+`cardMultiplier`'s number does. A `Room` (via `shapes.ts`) is static data
+replayed across every expedition that plays it; "has this particular trap
+already sprung" is a fact about *one playthrough*, not the shape. So
+`ExpeditionState` gained a new field, `revealedTraps: ReadonlySet<string>`
+(hex keys), rather than the trap tile itself carrying a hidden/revealed flag —
+the same static-vs-dynamic split item 8's own decisions log already drew for
+"which cells have traps" versus "which traps have been sprung this run",
+just now actually needed instead of hypothetical. It resets to an empty set
+on every room transition in `leaveRoom`, alongside the board and score, since
+a fresh room's traps are all unsprung regardless of what happened in the
+last one — proven directly in `expedition.test.ts` with two rooms that reuse
+the same trap coordinate.
+
+Trigger geometry ("on or beside") is a new pure function, `trapCellsNear(room,
+h)` in `room.ts` — `[h, ...hexNeighbors(h)]` filtered down to cells actually
+carrying a `'trap'` tile. Deliberately geometry-only, with no notion of
+"already sprung": that split keeps `room.ts` free of any expedition-shaped
+state, matching every other function in that file, and lets `expedition.ts`
+do the one-line filter (`.filter((t) => !state.revealedTraps.has(hexKey(t)))`)
+itself. A placement can, in principle, sit beside more than one still-hidden
+trap at once (two traps sharing a neighbour) — `placeInRoom` handles that by
+looping over every newly-triggered trap and charging one cost per trap, not
+capping it at one trigger per placement; nothing in the item's text suggests
+a placement should get a discount for triggering multiple traps at once, and
+neither hand-authored room needs more than one trap to make the point, so
+this is untested against a real two-trap room — noted here rather than
+silently assumed correct.
+
+The other real design question: which card, from hand or deck, and which
+one specifically. The item's own text offers a choice ("hand *or* deck")
+without saying how to pick, and nothing on `ExpeditionState` carries an RNG
+stream past the seed's one-time use in `shuffledDeck` — reaching for
+`Math.random()` here would make the same seed produce different runs, which
+none of `newExpedition`'s design has ever allowed. Resolved deterministically
+instead: a sprung trap takes the deck's own top card if the deck has one (the
+card that would otherwise have been drawn next), falling back to the front
+of the hand only once the deck is empty. Taking from the deck first, not the
+hand, was a real choice, not the only reasonable one — it means a trap
+usually costs you a card you never see rather than one sitting in your hand,
+which reads as "the room takes a toll on what's left to draw" rather than
+"the room reaches into your hand," and it also means the common case (deck
+non-empty) never touches hand bookkeeping at all, which is one less place for
+the "silently losing the wrong card" bug the item's own text warns about to
+hide. Order matters for correctness, not just phrasing: the trap's cost is
+paid *before* the normal end-of-turn refill draw runs, computed off the
+post-trap-cost hand length, so the refill (when the deck still has cards
+left after paying the trap) draws exactly enough from what the trap left
+behind to top the hand back up, rather than under- or over-drawing against a
+stale pre-trap count. The "falls back to a hand card once the deck is empty"
+test exercises the sharpest version of this — deck and hand both shrink on
+the same placement — and asserts the exact resulting hand length, not just
+that it changed.
+
+Accounting is the one thing this item's own text says to test carefully, so
+`expedition.test.ts` doesn't just check that a card moved — it checks the
+*count*: `next.deck.length + next.hand.length + next.board.size` is exactly
+one less than before a sprung trap, and exactly unchanged for a placement
+that doesn't trigger one or that hits an already-revealed trap a second
+time. That is the assertion shape that would have caught "lost the wrong
+card" (a card vanishing from the wrong pile still balances a size-only
+check) as well as "lost no card" or "lost two" — a pure `.length` comparison
+on one pile would not have.
+
+`scoring.ts`'s `tileLineBonus` switch grew a `'trap'` case falling through to
+the same `return null` as `'marker'`/`'blocked'` — the exhaustiveness check
+caught it the moment the union grew, same as items 9-11. A trap has no
+scoring effect; `scoreRoomPlacement`'s only per-placement side effect from a
+trap is the card cost, applied in `expedition.ts`, not `scoring.ts`.
+
+`RoomBoardView` needed a genuinely new prop, `revealedTraps`, since "hidden"
+here means something none of the earlier four tile kinds ever needed:
+*no visible difference from a plain cell at all*, not just a distinct badge.
+A trap tile whose key isn't in the given set is treated as if `tileAt` had
+returned nothing — no badge, no tint, indistinguishable from an empty room
+cell — which is also why `data-room-tile` reads as absent (not `"trap"`)
+before the reveal, so the smoke test can assert on hiddenness with the same
+attribute every other tile kind already exposes rather than a bespoke one.
+Once revealed it gets a fifth cell tint (rose), inserted into the background
+chain after `'blocked'` but, in the boxShadow chain, *after* `occupied` too —
+unlike `blocked` cells (which can never be occupied, since they reject
+placement outright) a trap can absolutely have a card sitting on it, and the
+existing gold occupied ring stayed the higher-priority signal there; the
+skull badge above the card (item 8's "underneath the card" convention)
+already carries the "this was a trap" information once a card has landed.
+
+`ROUND_ROOM` gained one `{ kind: 'trap' }` tile at `(-2,1)` — deliberately
+not adjacent to any of the room's other four tiles or to any of the five
+cells the established smoke sequence (items 7-10) had already placed on, so
+it stays genuinely hidden through all of them rather than firing as an
+accidental side effect of an earlier move. Extended the sequence with a
+sixth real placement, hand[0] onto `(-1,0)` — a plain cell that neighbours
+the trap without sitting on it, chosen over landing directly on the trap
+cell so the smoke test demonstrates the "beside" case specifically, not
+just the more obvious "on" one. `HOURGLASS_ROOM` stays bare, same reasoning
+items 8-11 already gave: one room proving each new tile kind is enough.
+
 ## Results log
 
 **Item 1.** `npm test` 203/203 (was 208 — 5 tests removed, all for formulas
@@ -1501,3 +1602,51 @@ on the border), so a blocked cell reads as "not part of the playable shape"
 at a glance rather than as a fourth thing to notice on top of the existing
 three-tint system. No video — this item is a legality rejection, not
 movement or feel.
+
+**Item 12.** `npm test` 319/319 (was 305 — 3 new in `tile.test.ts` for the
+`trap` shape, its `☠` badge, and coexistence with a blocked tile; 4 new in
+`room.test.ts` for `trapCellsNear` covering "on", "beside", "neither", and
+that it is purely geometric — same answer called twice, no notion of
+already-triggered; 7 new in `expedition.test.ts`: starts hidden, triggers
+and reveals on landing directly on a trap (costing exactly one card, checked
+by the deck+hand+board pool shrinking by exactly one), triggers on landing
+beside one, does not cost a second card once already revealed, a placement
+nowhere near a trap costs nothing extra, the hand-fallback once the deck is
+empty with an exact resulting hand length, and reveal state resetting to
+empty on leaving a room even when the next room reuses the same trap
+coordinate). `npx tsc -b --noEmit` clean, including the exhaustiveness check
+on `scoring.ts`'s `tileLineBonus` switch catching the missing `'trap'` case
+the moment the `Tile` union grew, same as items 9-11. `npm run smoke` 57/57
+(was 52 at HEAD, confirmed by running it before this item's own changes —
+item 11's own log undercounted itself as "50/50"; not corrected retroactively
+here, just noted so this count is reproducible — 5 new: the trap tile is
+absent from the DOM's tile attribute before anything triggers it, the
+triggering placement scores normally (a trap costs a card, not points), the
+tile attribute reads `'trap'` once revealed, the last-placement line reports
+the card cost in the UI, and the final score after the trap-triggering
+placement is exactly the pre-trap score plus that placement's own points).
+
+The exact numbers (seed `rooms-1`, default `CONFIG`, same throwaway-script
+convention as items 7-11 — run directly against `expedition.ts`, discarded,
+not committed): the established five-move sequence onto `(2,0)`, `(1,0)`,
+`(0,0)`, `(0,-1)`, `(-1,-1)` is untouched (scores 7, 31, 73, 88, 115,
+matching item 10's own log exactly — the new trap tile at a cell not
+adjacent to any of these five never fires during them), then a sixth
+placement of hand[0] onto `(-1,0)` — beside, not on, the trap at `(-2,1)` —
+scores **70** with no change from the trap (a trap costs a card, not
+points) while `revealedTraps` gains `'-2,1'` and the deck drops by one extra
+card (from 40 to 38 rather than the usual one-card refill dip) as the lost
+card `7♦`. Final room score 346, carried into `runningTotal` after leaving.
+
+Drove `RoomRunPage` in headless Chromium via `tools/browser.mjs` (throwaway
+script, same server-then-screenshot pattern as `smoke.mjs`, fresh port per
+item 7/8's stale-port note, run and discarded, not committed):
+
+| screenshot | shows |
+|---|---|
+| zoomed on `(-2,1)` before anything triggers it | an ordinary pink border-tinted hex, no badge, indistinguishable from any other unremarkable border cell |
+| the same cell after the sixth placement | a rose-tinted hex with a centred "☠" badge — visibly distinct from every other tile tint on the board |
+| full board after all six placements | all five tile kinds visible at once (`T8` marker, `×2` card multiplier, `L×2` line multiplier, the blocked cell, and the now-revealed trap), header reading "Score 346 / 50 (met)" / "Cleared", and the log line "Last placement: 2♠ at -1,0 scored 70 — a trap sprang, costing 1 card" |
+
+No video — this item is a hidden/revealed state flip and a bookkeeping
+side effect, not movement or feel.

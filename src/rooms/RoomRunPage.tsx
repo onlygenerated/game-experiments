@@ -91,7 +91,13 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
       )}
 
       <div className="flex flex-wrap items-start gap-8">
-        <RoomBoardView room={room} size={44} board={state.board} onCellClick={place} />
+        <RoomBoardView
+          room={room}
+          size={44}
+          board={state.board}
+          onCellClick={place}
+          revealedTraps={state.revealedTraps}
+        />
 
         <div className="flex flex-col gap-1" data-room-panel={room.name}>
           <p className="text-[11px] text-neutral-500">
@@ -165,6 +171,13 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
         <p data-room-last-score className="mt-2 text-center text-[11px] text-neutral-500">
           Last placement: {cardLabel(state.log.at(-1)!.card)} at {hexKey(state.log.at(-1)!.at)} scored{' '}
           {state.log.at(-1)!.score}
+          {state.log.at(-1)!.cardsLost.length > 0 && (
+            <span data-room-trap-triggered className="text-rose-400">
+              {' '}
+              — a trap sprang, costing {state.log.at(-1)!.cardsLost.length} card
+              {state.log.at(-1)!.cardsLost.length > 1 ? 's' : ''}
+            </span>
+          )}
         </p>
       )}
     </div>
