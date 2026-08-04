@@ -11,6 +11,7 @@ import {
   roomEndState,
   roomExits,
   roomInterior,
+  roomTraps,
   structureReachesExit,
   trapCellsNear,
 } from '../rooms/room';
@@ -358,5 +359,28 @@ describe('artifactCellsNear (item 13)', () => {
 
   it('does not care whether the artifact has already been collected — that is expedition.ts state', () => {
     expect(artifactCellsNear(room, artifactCell)).toEqual(artifactCellsNear(room, artifactCell));
+  });
+});
+
+describe('roomTraps (item 16)', () => {
+  it('finds every trap in the room, not just ones on or beside a given cell', () => {
+    const trapCell = { q: 0, r: -1 };
+    const room = makeRoom('Test', hexesWithinRadius(1), [{ q: 1, r: 0 }], 0, [[trapCell, { kind: 'trap' }]]);
+    expect(roomTraps(room).map(hexKey)).toEqual([hexKey(trapCell)]);
+  });
+
+  it('returns an empty list for a room with no traps', () => {
+    const room = makeRoom('Test', hexesWithinRadius(1), [{ q: 1, r: 0 }]);
+    expect(roomTraps(room)).toHaveLength(0);
+  });
+
+  it('finds ROUND_ROOM\'s one hand-authored trap', () => {
+    expect(roomTraps(ROUND_ROOM).map(hexKey)).toEqual(['-2,1']);
+  });
+
+  it('is ignorant of sprung state — same answer called twice, no expedition to consult', () => {
+    const trapCell = { q: 0, r: -1 };
+    const room = makeRoom('Test', hexesWithinRadius(1), [{ q: 1, r: 0 }], 0, [[trapCell, { kind: 'trap' }]]);
+    expect(roomTraps(room)).toEqual(roomTraps(room));
   });
 });

@@ -233,7 +233,7 @@ a shallow one — it still never walks to the door.
 - [x] **15. Item: a second counter.** Grants a counting method for the rest of
       the run, using item 2's machinery. The clearest expression of "carried
       items may let you switch or combine scoring methods".
-- [ ] **16. Item: sight.** See the next room's shape, or reveal this room's
+- [x] **16. Item: sight.** See the next room's shape, or reveal this room's
       hidden tiles. Changes decisions without touching score, which is the point
       of keeping items away from multipliers.
 - [ ] **17. Item: reach.** Something that helps the spatial condition — place
@@ -2444,3 +2444,110 @@ Hourglass:
 
 No video — this item is a scoring effect and an inventory-line update, not
 movement or feel.
+
+**Item 16.** `npm test` 365/365 (was 350 — 15 new: 6 in `item.test.ts` for
+`itemLabel`/`applyItemEffects`'s identity arm on `'sight'` and `hasSightItem`
+across empty/other-only/mixed inventories; 4 in `room.test.ts` for `roomTraps`
+— finds a hand-authored trap, returns empty for a trapless room, matches
+`ROUND_ROOM`'s own single trap cell, and is sprung-state-ignorant like
+`trapCellsNear`; 5 in a new `visibleTraps / sight item (item 16)` block in
+`expedition.test.ts` — without sight shows only `revealedTraps` itself (`toBe`,
+same reference), with sight reveals an unsprung trap, a sight-revealed trap
+still costs a card the first time it's actually triggered, a genuinely sprung
+trap stays visible without sight carried, and a trapless room reveals nothing
+even with sight). `npx tsc -b --noEmit` clean. `npm run smoke` 75/75 (was 70 —
+5 new: a fresh expedition's Round Room starts with its trap hidden exactly
+like the very first pass through it did, the sight pickup control is enabled
+and then disables once carried, the inventory line reads "Sight (reveals
+traps)", the trap tile becomes visible with zero placements made, and the
+placement budget reads unchanged — "placements left 12" — proving the reveal
+cost nothing).
+
+Drove `RoomRunPage` in headless Chromium via `tools/browser.mjs` (throwaway
+script, same server-then-screenshot pattern as `smoke.mjs`, run and discarded,
+not committed): opened Rooms, screenshotted the fresh Round Room (trap at
+`(-2,1)` indistinguishable from a plain border cell — no badge, no rose tint),
+clicked "Dev: pick up sight", and screenshotted again — the same cell now
+shows the rose "trap" tint and skull badge, the header reads `Items: Sight
+(reveals traps)`, the pickup button is disabled, and every other readout
+(`Score 0 / 50`, `placements left 12`) is byte-identical to the first
+screenshot. A tight crop on just that cell makes the badge legible at full
+resolution. No video — this item is a static reveal, not movement or feel.
+
+**Item 16.** The backlog item's own text offers an "or" — see the next
+room's shape, or reveal this room's hidden tiles — and gives no reason to
+prefer one. Picked the trap-reveal reading: it reuses a real substrate
+(item 12's hidden/revealed trap state) rather than needing a first look at
+"what does a room preview even show" with no second room shape ever visible
+mid-run today (the sequence is fixed, item 21's room graph is what would
+make "the next room" a real, examinable thing rather than an implementation
+detail nobody's built UI for yet). Traps are also the *only* tile kind with
+hidden state — item 8/11/13's own decisions logs are explicit that a
+marker, a multiplier, a blocked cell and an artifact are all visible from
+the moment the room loads — so "reveal this room's hidden tiles" has
+exactly one kind of tile to mean in this codebase today.
+
+The one real design question was where the effect lives. `applyItemEffects`
+(item 14's hook) exists to produce the `Config` a room's legality and
+scoring run under — the natural home for `'secondCounter'` (item 15), which
+genuinely changes a rule. Sight changes neither: whether a trap has
+*sprung* — the only fact `placeInRoom`'s cost logic reads — is completely
+unaffected by whether a player has *seen* it. Routing `'sight'` through
+`applyItemEffects` anyway (returning `acc` unchanged, the same identity arm
+`'placeholder'` already uses) would have been technically harmless but
+conceptually wrong — it would imply sight is a rules effect that just
+happens to be a no-op, rather than a different *kind* of item altogether.
+So the real effect lives in a new, separate function, `expedition.ts`'s
+`visibleTraps(state)`: a pure union of `state.revealedTraps` (traps that
+have actually sprung — untouched, still the only thing `placeInRoom` reads)
+with every trap in the current room (`room.ts`'s new `roomTraps`, "all of
+them," a broader query than item 12's own `trapCellsNear`, "on or beside
+one cell") when the inventory carries a sight item
+(`item.ts`'s new `hasSightItem`). `RoomRunPage` passes this, not
+`state.revealedTraps` directly, into `RoomBoardView`'s existing
+`revealedTraps` prop — that prop already meant "which trap cells to render
+as shown," and a sight-widened superset of the real reveal set satisfies
+that contract exactly, so no new prop or rendering code was needed at all,
+only a different value flowing into the one that already existed.
+
+Tested the boundary explicitly, not just the reveal itself:
+`expedition.test.ts`'s new suite proves a sight-revealed-but-unsprung trap
+still costs a card the first time a placement actually lands on or beside
+it (`cardsLost` still length 1, the card pool still shrinks by exactly one)
+— sight only ever changes what renders, never what `placeInRoom` does. Also
+covered the reverse direction most other item tests don't need to state
+explicitly: once a trap has genuinely sprung, it stays visible in
+`visibleTraps` even *without* sight carried — the union is additive, never
+gating the real reveal behind carrying the item.
+
+No new pickup mechanic beyond the same kind of dev stand-in item 15 used,
+for the identical reason logged there: nothing from 15 through 18 specifies
+an in-room acquisition path. "Dev: pick up sight" sits beside "Dev: pick up
+cribbage counter" in `RoomRunPage`'s header row, calling `addItem` with
+`{ kind: 'sight' }` directly and self-disabling once carried, same shape.
+
+Demonstrating the effect needed a fresh room rather than reusing the
+established smoke sequence: by the time that sequence reaches item 15's own
+segment, the Round Room's one trap (`(-2,1)`) has already sprung (move 6,
+item 12's own log), so picking up sight there would just be looking at an
+already-revealed tile — no proof sight did anything. `RoomRunPage`'s "New
+expedition" button (present since item 7, previously only exercised by
+hand, never by an automated test) resets to a brand-new Round Room with an
+empty inventory — the first automated use of that control anywhere in the
+test suite — giving a clean "hidden by default" baseline to contrast
+against "visible once sight is picked up," both checked with no placement
+having happened at all, so the score/budget readouts prove the reveal
+carries no side cost.
+
+`applyItemEffects(CONFIG, [{ kind: 'sight' }])` returns `CONFIG` itself
+(`toBe`, not `toEqual`) — the same reference-equality guarantee item
+14/15's own tests lock down for `'placeholder'`/inert `'secondCounter'`
+cases, extended to cover that a `'sight'` item mixed into any inventory
+never perturbs a `'secondCounter'` item's real effect sitting alongside it.
+
+**Not done this item, on purpose.** No "see the next room's shape" reading
+— set aside above, and left for whichever later item (most plausibly one
+alongside item 21's room graph, where "the next room" becomes a real,
+choosable thing rather than a fixed sequence) wants to build it, rather
+than bolted on here as a second, thinner effect just because the backlog
+text allowed it.

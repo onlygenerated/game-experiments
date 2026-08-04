@@ -11,6 +11,7 @@ import {
   legalRoomCells,
   newExpedition,
   placeInRoom,
+  visibleTraps,
 } from '../rooms/expedition';
 import type { Item } from '../rooms/item';
 
@@ -462,5 +463,45 @@ describe('second counter item (item 15)', () => {
     const bareNext = placeInRoom(bare, 0, ORIGIN, c);
     const withItemNext = placeInRoom(withItem, 0, ORIGIN, c);
     expect(withItemNext.score).toBeGreaterThan(bareNext.score);
+  });
+});
+
+describe('visibleTraps / sight item (item 16)', () => {
+  const TRAP_CELL: Hex = { q: 0, r: -1 };
+  const trapRoom = (name: string, exits: Hex[] = [{ q: 1, r: 0 }]): Room =>
+    makeRoom(name, hexesWithinRadius(1), exits, 0, [[TRAP_CELL, { kind: 'trap' }]]);
+  const SIGHT: Item = { kind: 'sight' };
+
+  it('without sight, shows only sprung traps — same set as revealedTraps itself', () => {
+    const state = newExpedition('exp-1', [trapRoom('Trap')], cfg());
+    expect(visibleTraps(state)).toBe(state.revealedTraps);
+  });
+
+  it('with sight, reveals a trap before anything has sprung it', () => {
+    const state = addItem(newExpedition('exp-1', [trapRoom('Trap')], cfg()), SIGHT);
+    expect(state.revealedTraps.size).toBe(0); // nothing has actually triggered yet
+    expect(visibleTraps(state).has(hexKey(TRAP_CELL))).toBe(true);
+  });
+
+  it('revealing a trap with sight does not exempt it from its cost once triggered', () => {
+    const c = cfg({ roomPlacementBudget: 5 });
+    const state = addItem(newExpedition('exp-1', [trapRoom('Trap')], c), SIGHT);
+    const before = state.deck.length + state.hand.length;
+    const next = placeInRoom(state, 0, ORIGIN, c); // beside the trap
+    expect(next.revealedTraps.has(hexKey(TRAP_CELL))).toBe(true); // now genuinely sprung too
+    expect(next.log[0].cardsLost).toHaveLength(1); // sight never waived the cost
+    expect(next.deck.length + next.hand.length + next.board.size).toBe(before - 1);
+  });
+
+  it('once actually sprung, the trap stays visible even without sight', () => {
+    const state = newExpedition('exp-1', [trapRoom('Trap')], cfg());
+    const next = placeInRoom(state, 0, ORIGIN, cfg()); // triggers it "beside", no sight carried
+    expect(visibleTraps(next).has(hexKey(TRAP_CELL))).toBe(true);
+  });
+
+  it('a room with no traps reveals nothing even with sight carried', () => {
+    const room = makeRoom('NoTrap', hexesWithinRadius(1), [{ q: 1, r: 0 }]);
+    const state = addItem(newExpedition('exp-1', [room], cfg()), SIGHT);
+    expect(visibleTraps(state).size).toBe(0);
   });
 });

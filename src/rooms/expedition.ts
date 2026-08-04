@@ -60,10 +60,19 @@
  * one thing that's per-room. Every `cfg` this file reads on `state`'s behalf
  * — the legality check and the scorer — now goes through
  * `applyItemEffects(cfg, state.items)` (`item.ts`) first, the single hook an
- * item's effect on the room's rules applies through. No item kind does
- * anything yet, so this is the identity transform everywhere it's called;
- * see `item.ts`'s header for why the hook is shaped as a `Config` transform
- * rather than a score post-processor like `applyTileEffects`.
+ * item's effect on the room's rules applies through. Item 15's
+ * `'secondCounter'` is the first kind that actually changes what
+ * `applyItemEffects` returns.
+ *
+ * Item 16's `'sight'` kind is different in shape: it changes nothing about
+ * legality or scoring (`applyItemEffects`'s `'sight'` arm is the identity
+ * transform, same as `'placeholder'`), only what a room's traps *look like*
+ * before they trigger. `visibleTraps` is the one new function this item
+ * adds — a pure, rendering-only union of `revealedTraps` (traps that have
+ * actually sprung) with every trap in the room when the inventory carries
+ * sight. `placeInRoom`'s own trap-cost logic still reads `revealedTraps`
+ * directly and is untouched by this item, which is exactly the point:
+ * seeing a trap and paying for it stay two different facts.
  */
 import { CONFIG, type Config } from '../config';
 import { draw, shuffledDeck, type Card } from '../deck';
@@ -77,12 +86,13 @@ import {
   type HexPlacementScore,
 } from '../hex/board';
 import { hexKey, type Hex } from '../hex/coords';
-import { applyItemEffects, type Item } from './item';
+import { applyItemEffects, hasSightItem, type Item } from './item';
 import {
   artifactCellsNear,
   isInRoom,
   roomCells,
   roomEndState,
+  roomTraps,
   trapCellsNear,
   type Room,
   type RoomEndState,
@@ -135,6 +145,22 @@ export const currentStructure = (state: ExpeditionState): ReadonlySet<string> =>
 
 export const currentEndState = (state: ExpeditionState): RoomEndState =>
   roomEndState(currentRoom(state), currentStructure(state), state.score);
+
+/**
+ * Item 16: which trap cells should actually render as revealed right now —
+ * the ones that have genuinely sprung (`state.revealedTraps`, still the only
+ * thing `placeInRoom` reads to decide whether a placement pays a trap's
+ * cost) plus, if the expedition carries a sight item, every trap in the
+ * current room whether it has sprung or not. Deliberately a rendering-only
+ * union that never writes back to `state.revealedTraps` itself — seeing
+ * where a trap is and paying its cost the first time a placement actually
+ * lands on or beside it are different facts, and sight only ever changes
+ * the first one.
+ */
+export function visibleTraps(state: ExpeditionState): ReadonlySet<string> {
+  if (!hasSightItem(state.items)) return state.revealedTraps;
+  return new Set([...state.revealedTraps, ...roomTraps(currentRoom(state)).map(hexKey)]);
+}
 
 export function isLegalRoomPlacement(state: ExpeditionState, h: Hex, cfg: Config = CONFIG): boolean {
   const room = currentRoom(state);

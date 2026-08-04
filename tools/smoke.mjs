@@ -378,6 +378,37 @@ ok(
   (await p.locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'true',
 );
 
+// Item 16: sight — a carried item that reveals a room's hidden tiles (traps)
+// ahead of triggering any of them, without touching score or their cost —
+// "changes decisions without touching score" is the whole point of keeping
+// items away from multipliers. The established Round Room sequence above
+// already sprang its one trap by the time this point in the run is reached,
+// so demonstrating "hidden until sight reveals it" needs a fresh room —
+// "New expedition" resets to a brand-new Round Room with an empty inventory.
+await p.locator('button:has-text("New expedition")').click();
+await p.waitForTimeout(300);
+ok('a fresh expedition starts back in the Round Room', (await text()).includes('Room 1 / 2 — Round Room'));
+ok(
+  'the trap is still hidden by default on a fresh expedition — sight has not been picked up yet',
+  (await p.locator('[data-room-cell="-2,1"]').getAttribute('data-room-tile')) === null,
+);
+ok('sight pickup is available', await p.locator('[data-pickup-sight]').isEnabled());
+await p.locator('[data-pickup-sight]').click();
+await p.waitForTimeout(150);
+ok(
+  'inventory shows the carried sight item',
+  (await p.locator('[data-expedition-items]').innerText()).includes('Sight'),
+);
+ok('the sight pickup control disables once carried', await p.locator('[data-pickup-sight]').isDisabled());
+ok(
+  'the trap is now visible without anything having triggered it',
+  (await p.locator('[data-room-cell="-2,1"]').getAttribute('data-room-tile')) === 'trap',
+);
+ok(
+  'nothing has actually been placed near the trap, so its cost has not been paid',
+  (await text()).includes('placements left 12'),
+);
+
 await p.locator('button:has-text("Back to the board")').click();
 await p.waitForTimeout(300);
 

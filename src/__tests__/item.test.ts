@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
-import { applyItemEffects, itemLabel, type Item } from '../rooms/item';
+import { applyItemEffects, hasSightItem, itemLabel, type Item } from '../rooms/item';
 
 describe('itemLabel', () => {
   it('returns a placeholder item\'s own label', () => {
@@ -62,5 +62,37 @@ describe('itemLabel (secondCounter)', () => {
   it("names the lens it grants, not the raw id", () => {
     expect(itemLabel({ kind: 'secondCounter', lensId: 'cribbage' })).toBe('Cribbage (2nd counter)');
     expect(itemLabel({ kind: 'secondCounter', lensId: 'poker' })).toBe('Poker (2nd counter)');
+  });
+});
+
+describe('sight item (item 16)', () => {
+  it('itemLabel names what it reveals', () => {
+    expect(itemLabel({ kind: 'sight' })).toBe('Sight (reveals traps)');
+  });
+
+  it('applyItemEffects is the identity transform — sight has no rules/scoring effect', () => {
+    expect(applyItemEffects(CONFIG, [{ kind: 'sight' }])).toBe(CONFIG);
+  });
+
+  it('mixes harmlessly with other items without disturbing their effect', () => {
+    const cfg = { ...CONFIG, lensId: 'cribbage', secondLensId: '' };
+    const items: Item[] = [{ kind: 'sight' }, { kind: 'secondCounter', lensId: 'poker' }];
+    expect(applyItemEffects(cfg, items).secondLensId).toBe('poker');
+  });
+});
+
+describe('hasSightItem', () => {
+  it('is false for an empty inventory', () => {
+    expect(hasSightItem([])).toBe(false);
+  });
+
+  it('is false when carrying only other kinds of item', () => {
+    const items: Item[] = [{ kind: 'placeholder', label: 'A' }, { kind: 'secondCounter', lensId: 'poker' }];
+    expect(hasSightItem(items)).toBe(false);
+  });
+
+  it('is true once a sight item is carried, alongside other items', () => {
+    const items: Item[] = [{ kind: 'placeholder', label: 'A' }, { kind: 'sight' }];
+    expect(hasSightItem(items)).toBe(true);
   });
 });

@@ -45,6 +45,11 @@
  * same shape as `trapCellsNear` regardless, rather than a narrower
  * neighbours-only query, so the two stay obviously parallel and neither
  * silently depends on the other's placement rules to be correct.
+ *
+ * Item 16 adds `roomTraps` — every trap in the room, full stop, not just the
+ * ones near a given cell. The sight item (`item.ts`) uses it to reveal a
+ * room's traps ahead of any of them triggering; see `expedition.ts`'s
+ * `visibleTraps` for how that stays a rendering-only fact.
  */
 import { hexKey, hexNeighbors, parseHex, type Hex } from '../hex/coords';
 import { emptyTileMap, tileAt, tileMapFrom, type Tile, type TileMap } from './tile';
@@ -120,6 +125,17 @@ export function roomExits(room: Room): Hex[] {
  */
 export function trapCellsNear(room: Room, h: Hex): Hex[] {
   return [h, ...hexNeighbors(h)].filter((c) => tileAt(room.tiles, c)?.kind === 'trap');
+}
+
+/**
+ * Every `'trap'`-tile cell anywhere in the room, sprung or not, near a
+ * placement or not — the full set item 16's sight item reveals ahead of any
+ * of them actually triggering. Purely geometric, same as `trapCellsNear`:
+ * whether a trap has sprung is `expedition.ts` state, not this file's
+ * concern.
+ */
+export function roomTraps(room: Room): Hex[] {
+  return roomCells(room).filter((h) => tileAt(room.tiles, h)?.kind === 'trap');
 }
 
 /**

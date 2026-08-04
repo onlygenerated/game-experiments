@@ -10,6 +10,7 @@ import {
   leaveRoom,
   newExpedition,
   placeInRoom,
+  visibleTraps,
   type ExpeditionState,
 } from './expedition';
 import { itemLabel, type Item } from './item';
@@ -75,6 +76,13 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
     setState((s) => addItem(s, SECOND_COUNTER));
   }
 
+  // Item 16's real acquisition path is unbuilt for the same reason item 15's
+  // is — no backlog item through 18 specifies one. Same dev-button stand-in.
+  const carryingSight = state.items.some((it) => it.kind === 'sight');
+  function pickUpSight() {
+    setState((s) => addItem(s, { kind: 'sight' }));
+  }
+
   return (
     <div className="mx-auto w-full max-w-5xl p-3 min-[1280px]:p-4">
       <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -93,6 +101,14 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
           className="rounded border border-neutral-700 px-3 py-1.5 text-sm font-semibold text-neutral-300 disabled:cursor-not-allowed disabled:opacity-50 active:bg-neutral-800 min-[1280px]:hover:bg-neutral-800"
         >
           Dev: pick up cribbage counter
+        </button>
+        <button
+          data-pickup-sight
+          onClick={pickUpSight}
+          disabled={!playing || carryingSight}
+          className="rounded border border-neutral-700 px-3 py-1.5 text-sm font-semibold text-neutral-300 disabled:cursor-not-allowed disabled:opacity-50 active:bg-neutral-800 min-[1280px]:hover:bg-neutral-800"
+        >
+          Dev: pick up sight
         </button>
         <button
           onClick={restart}
@@ -126,7 +142,7 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
           size={44}
           board={state.board}
           onCellClick={place}
-          revealedTraps={state.revealedTraps}
+          revealedTraps={visibleTraps(state)}
           collectedArtifacts={state.collectedArtifacts}
         />
 
