@@ -7,6 +7,7 @@ import {
   makeRoom,
   roomBorder,
   roomCells,
+  roomEndState,
   roomExits,
   roomInterior,
   structureReachesExit,
@@ -255,5 +256,54 @@ describe('ROUND_ROOM and HOURGLASS_ROOM exits', () => {
     // check specifically that removing the near exit from the structure loses reach.
     const withoutNearExit = new Set([hexKey({ q: -1, r: -3 }), hexKey({ q: 0, r: -3 })]);
     expect(structureReachesExit(HOURGLASS_ROOM, withoutNearExit)).toBe(false);
+  });
+});
+
+describe('makeRoom threshold default', () => {
+  it('defaults to 0 when not given', () => {
+    const room = makeRoom('Test', [ORIGIN]);
+    expect(room.threshold).toBe(0);
+  });
+
+  it('carries the value given', () => {
+    const room = makeRoom('Test', [ORIGIN], [], 200);
+    expect(room.threshold).toBe(200);
+  });
+});
+
+describe('roomEndState', () => {
+  const room = makeRoom('Test', hexesWithinRadius(1), [{ q: 1, r: 0 }], 100);
+  const onExit = new Set([hexKey({ q: 1, r: 0 })]);
+  const offExit = new Set([hexKey({ q: -1, r: 0 })]);
+
+  it('is cleared only when both reach and score are met', () => {
+    const end = roomEndState(room, onExit, 100);
+    expect(end).toEqual({ reached: true, score: 100, threshold: 100, scoreMet: true, cleared: true });
+  });
+
+  it('reads as a near-miss — reached but short on score — rather than a flat loss', () => {
+    const end = roomEndState(room, onExit, 40);
+    expect(end.reached).toBe(true);
+    expect(end.scoreMet).toBe(false);
+    expect(end.cleared).toBe(false);
+  });
+
+  it('score alone, without reach, does not clear the room', () => {
+    const end = roomEndState(room, offExit, 500);
+    expect(end.reached).toBe(false);
+    expect(end.scoreMet).toBe(true);
+    expect(end.cleared).toBe(false);
+  });
+
+  it('neither condition met clears nothing', () => {
+    const end = roomEndState(room, offExit, 0);
+    expect(end.reached).toBe(false);
+    expect(end.scoreMet).toBe(false);
+    expect(end.cleared).toBe(false);
+  });
+
+  it('score exactly at the threshold counts as met', () => {
+    expect(roomEndState(room, onExit, 99).scoreMet).toBe(false);
+    expect(roomEndState(room, onExit, 100).scoreMet).toBe(true);
   });
 });

@@ -171,7 +171,7 @@ await p.waitForTimeout(600);
 ok('setup starts a run', (await p.locator('[data-cell],[data-hex]').count()) > 0);
 ok('combo preset scores under both counters', (await text()).toLowerCase().includes('cribbage + poker'));
 
-// --- rooms preview (item 4: shape substrate; item 5: exits and reach) ------
+// --- rooms preview (item 4: shape substrate; item 5: exits and reach; item 6: threshold and clearing) ---
 await p.locator('button:has-text("Rooms"):visible').first().click();
 await p.waitForTimeout(400);
 ok('rooms preview opens', (await text()).includes('Rooms (dev preview)'));
@@ -203,11 +203,32 @@ ok(
   'clicking the exit cell reaches it',
   (await roundRoom.locator('[data-room-reach]').getAttribute('data-room-reach')) === 'true',
 );
+
+// Item 6: reach alone is not clear — score must meet the threshold too, and
+// the two conditions must read separately (a near-miss, not a flat "lost").
+ok(
+  'reached but under threshold does not clear',
+  (await roundRoom.locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'false',
+);
+ok(
+  'the score line reads as short, not met',
+  (await roundRoom.locator('[data-room-score-met]').getAttribute('data-room-score-met')) === 'false',
+);
+await roundRoom.locator('input[type="number"]').fill('50');
+await p.waitForTimeout(150);
+ok(
+  'reach + score at the threshold clears the room',
+  (await roundRoom.locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'true',
+);
 await roundRoom.locator('[data-room-cell="2,0"]').click();
 await p.waitForTimeout(150);
 ok(
   'unclicking the exit cell loses reach again',
   (await roundRoom.locator('[data-room-reach]').getAttribute('data-room-reach')) === 'false',
+);
+ok(
+  'losing reach loses clear even though score is still met',
+  (await roundRoom.locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'false',
 );
 
 await p.locator('button:has-text("Back to the board")').click();

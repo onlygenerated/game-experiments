@@ -8,6 +8,11 @@
  * Each room also hand-picks its exits (item 5) — opposite doorways rather
  * than one, so reaching "an" exit is a real choice of direction and not a
  * single forced target.
+ *
+ * Both rooms' thresholds (item 6) are round-number placeholders, not
+ * calibration — no room has an engine wired to it yet to measure a real
+ * score distribution against (item 7), and thresholds get set from probed
+ * medians in item 22, per the standing "never tune a room by eye" rule.
  */
 import { hexesWithinRadius, type Hex } from '../hex/coords';
 import { makeRoom, type Room } from './room';
@@ -16,10 +21,15 @@ import { makeRoom, type Room } from './room';
  * an irregular shape (below) is judged against: one outer ring, no interior
  * cell ever touches the outside. Exits sit at due east and due west on that
  * ring — opposite doorways across the disc. */
-export const ROUND_ROOM: Room = makeRoom('Round Room', hexesWithinRadius(2), [
-  { q: 2, r: 0 },
-  { q: -2, r: 0 },
-]);
+export const ROUND_ROOM: Room = makeRoom(
+  'Round Room',
+  hexesWithinRadius(2),
+  [
+    { q: 2, r: 0 },
+    { q: -2, r: 0 },
+  ],
+  50,
+);
 
 /**
  * Two seven-hex chambers (a centre plus its six neighbours) joined by a
@@ -43,9 +53,14 @@ const HOURGLASS_COORDS: Hex[] = [
 /** The two tips, straight through the neck from each other — the far end of
  * each chamber, opposite the doorway a structure would have to cross the
  * neck to reach from the other side. */
-export const HOURGLASS_ROOM: Room = makeRoom('Hourglass', HOURGLASS_COORDS, [
-  { q: 0, r: -4 },
-  { q: 0, r: 4 },
-]);
+export const HOURGLASS_ROOM: Room = makeRoom(
+  'Hourglass',
+  HOURGLASS_COORDS,
+  [
+    { q: 0, r: -4 },
+    { q: 0, r: 4 },
+  ],
+  50,
+);
 
 export const ROOM_SHAPES: readonly Room[] = [ROUND_ROOM, HOURGLASS_ROOM];

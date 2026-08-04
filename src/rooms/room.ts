@@ -16,6 +16,16 @@
  * connectivity (not a bare set-membership test) because a structure need
  * not be one contiguous blob (free placement, item 17's alternate origins);
  * reach only credits whichever connected piece actually contains an exit.
+ *
+ * Item 6 adds the other half of clearing a room: a score `threshold`, and
+ * `roomEndState` which reports reach and score as two separate booleans
+ * rather than collapsing them into one pass/fail, so a structure that
+ * reached the exit but fell short on score reads as "you got there but
+ * were short" and not just "lost". Both hand-authored rooms' thresholds
+ * (see `shapes.ts`) are undocumented placeholders — there is no engine
+ * wired to a room yet (that's item 7) to probe a real score distribution
+ * against, and the standing rule is not to tune a room by eye. Item 22's
+ * calibration pass is where these become real numbers.
  */
 import { hexKey, hexNeighbors, parseHex, type Hex } from '../hex/coords';
 
@@ -25,11 +35,18 @@ export interface Room {
   cells: ReadonlySet<string>;
   /** Border cells marked as doorways. Always a subset of the room's border. */
   exits: ReadonlySet<string>;
+  /** Score a structure must reach, in addition to reaching an exit, to clear the room. */
+  threshold: number;
 }
 
-export function makeRoom(name: string, coords: readonly Hex[], exits: readonly Hex[] = []): Room {
+export function makeRoom(
+  name: string,
+  coords: readonly Hex[],
+  exits: readonly Hex[] = [],
+  threshold = 0,
+): Room {
   const cells = new Set(coords.map(hexKey));
-  const room: Room = { name, cells, exits: new Set() };
+  const room: Room = { name, cells, exits: new Set(), threshold };
 
   for (const e of exits) {
     const k = hexKey(e);
@@ -106,4 +123,31 @@ export function structureReachesExit(room: Room, structure: ReadonlySet<string>)
   }
 
   return false;
+}
+
+/** Reach and score, reported separately, plus their conjunction. */
+export interface RoomEndState {
+  reached: boolean;
+  score: number;
+  threshold: number;
+  scoreMet: boolean;
+  /** True only when both conditions hold. */
+  cleared: boolean;
+}
+
+/**
+ * The room's end condition: reach an exit *and* meet the threshold, both
+ * always (see the pre-declared decision in ROOMS.md). Returns the two
+ * conditions separately rather than one boolean so a caller can render the
+ * near-miss cases distinctly — reached but short, or clear of the score bar
+ * but never made it to a door.
+ */
+export function roomEndState(
+  room: Room,
+  structure: ReadonlySet<string>,
+  score: number,
+): RoomEndState {
+  const reached = structureReachesExit(room, structure);
+  const scoreMet = score >= room.threshold;
+  return { reached, score, threshold: room.threshold, scoreMet, cleared: reached && scoreMet };
 }

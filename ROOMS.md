@@ -148,7 +148,7 @@ stand on. Sized for 30 minutes each.
       compute whether the placed structure connects to one. Show reached/not
       reached. This is pure geometry — it wants a proper test, including a
       structure that touches the border but not at an exit.
-- [ ] **6. Room threshold and clearing.** Clear = reached an exit **and** score
+- [x] **6. Room threshold and clearing.** Clear = reached an exit **and** score
       ≥ threshold. A room-end state showing both conditions separately, so a
       near-miss reads as "you got there but were short" rather than just "lost".
 - [ ] **7. Two rooms joined.** Leave through an exit, arrive in the next room
@@ -541,6 +541,48 @@ without waiting on item 7's real run. Reworded the preview's subtitle now
 that exits exist — "no threshold or run integration yet" is what's still
 missing, not "no exits."
 
+**Item 6.** `Room` gained a fourth field, `threshold: number`, set through
+`makeRoom`'s new optional fourth parameter (default `0`, so every existing
+call site and test — including all of item 4/5's suite — kept compiling
+and passing with no `threshold` argument). The clearing logic itself is one
+new function, `roomEndState(room, structure, score): RoomEndState`,
+returning `{ reached, score, threshold, scoreMet, cleared }` rather than a
+single boolean — the item's own text asks for "both conditions
+separately", and a caller that only wants pass/fail can still read
+`.cleared` off it. `cleared` is exactly `reached && scoreMet`, per the
+pre-declared decision table's "both, always"; no partial-credit path
+exists or was added.
+
+The harder call was what threshold value to give the two hand-authored
+rooms. The standing rule is "never tune a room by eye," but item 22 is
+explicitly where thresholds get set from probed medians, and no room has
+an engine wired to it yet to probe (that's item 7) — a room-shaped score
+doesn't exist to measure. Rather than block on that or quietly pick a
+number and call it calibrated, gave both rooms the same round placeholder
+(`50`) and said so in both `shapes.ts`'s comment and `room.ts`'s doc
+comment, the same way item 1/2's `targetScore` placeholders were labelled
+placeholders rather than presented as tuned. `roomEndState` reads
+`threshold` straight off whatever `Room` it's given, so recalibrating in
+item 22 is a one-line change per room, not a signature change anywhere
+that calls it.
+
+The preview page needed a stand-in for "score" the same way item 5 needed
+a stand-in for "structure" — clicking cells for placement, a plain number
+input for score, since there is still no card/engine wiring into a room
+(item 7). Chose a single mutable number per room rather than trying to
+derive one from the clicked cells: there is no scorer that turns "these
+hexes are occupied" into a point value without cards on them, and building
+one here would be reaching into item 7's job. The panel now prints three
+lines instead of one: reach (unchanged from item 5), a score line showing
+`score / threshold` and `(met)`/`(short)`, and a cleared line whose text
+depends on *which* condition is missing — "you got there but were short"
+when reached-but-not-scoreMet (the exact near-miss wording the item asks
+for), a symmetrical "score is enough, but you have not reached an exit"
+for the other near-miss, and a plain "Not cleared" only when neither
+holds. `data-room-cleared` and `data-room-score-met` attributes were added
+alongside the existing `data-room-reach` so the smoke test can assert on
+each condition independently rather than screen-scraping the prose.
+
 ## Results log
 
 **Item 1.** `npm test` 203/203 (was 208 — 5 tests removed, all for formulas
@@ -747,3 +789,36 @@ with every link in the chain visibly marked occupied — the clearest
 demonstration that this is genuine path connectivity and not a per-cell
 membership check. No video — this item is still geometry and a state
 flip, not movement or feel.
+
+**Item 6.** `npm test` 253/253 (was 246 — 7 new in `room.test.ts`: two for
+`makeRoom`'s threshold default/override, five for `roomEndState` covering
+cleared, the reached-but-short near-miss, the scored-but-not-reached
+near-miss, neither, and the score-exactly-at-threshold boundary). `npx tsc
+-b --noEmit` clean. `npm run smoke` 34/34 — added 4 checks: reached-but-
+under-threshold does not clear and its score line reads "short, not
+met"; filling the stand-in score to the threshold while still on the exit
+clears the room; unclicking the exit afterward loses reach *and* loses
+clear even though the score is still met, proving `cleared` tracks both
+conditions live rather than latching once true.
+
+Both hand-authored rooms' thresholds (both `50`, chosen as a round
+placeholder — see decisions log for why a real one isn't possible before
+item 7/22):
+
+| room | threshold |
+|---|---|
+| Round Room | 50 |
+| Hourglass | 50 |
+
+Drove `RoomsPreviewPage` in headless Chromium via `tools/browser.mjs`
+(throwaway script, same server-then-screenshot pattern as `smoke.mjs`, run
+and discarded, not committed): one screenshot with the round room's
+structure on the east exit and the stand-in score at 20 shows "Reached" /
+"Score 20 / 50 (short)" / "You got there but were short" in amber-and-grey
+next to the still-untouched hourglass reading "Not reached" / "Not
+cleared"; a second screenshot with the same structure and the score raised
+to 60 shows all three lines flip to emerald and "Cleared". The two
+screenshots side by side are the whole point of this item — a near-miss
+and a genuine clear are visually and textually distinct, not two shades of
+"you lost". No video — this item is a state readout, not movement or
+feel.
