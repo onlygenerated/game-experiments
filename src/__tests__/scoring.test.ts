@@ -62,6 +62,16 @@ describe('applyTileEffects / scoreRoomPlacement', () => {
     expect(withTiles.score).toBe(base.score);
   });
 
+  it('leaves the score unchanged for an artifact tile — it has no scoring effect at all', () => {
+    const c = card('5H');
+    const tiles = tileMapFrom([
+      [ORIGIN, { kind: 'artifact', card: { id: 'artifact-AS', rank: 14, suit: 'S' } }],
+    ]);
+    const base = scoreHexPlacement(emptyHexBoard(), ORIGIN, c, cfg);
+    const withTiles = scoreRoomPlacement(emptyHexBoard(), ORIGIN, c, tiles, cfg);
+    expect(withTiles.score).toBe(base.score);
+  });
+
   it('doubles a lone card\'s contribution on every one of its (three, empty-neighbourhood) lines', () => {
     const tiles = tileMapFrom([[ORIGIN, { kind: 'cardMultiplier', multiplier: 2 }]]);
     const base = scoreHexPlacement(emptyHexBoard(), ORIGIN, card('5H'), cfg);

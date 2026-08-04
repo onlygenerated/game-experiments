@@ -179,7 +179,7 @@ stand on. Sized for 30 minutes each.
 - [x] **12. Traps.** Placing on or beside one costs you a card from hand or
       deck. Revealed on trigger; hidden before. Test the deck accounting
       carefully — silently losing the wrong card is the worst class of bug here.
-- [ ] **13. Artifact cards.** A card sitting on the board that joins your deck
+- [x] **13. Artifact cards.** A card sitting on the board that joins your deck
       when your structure connects to it. The reason to detour.
 
 ### C½. Teaching the probe to play a room
@@ -1164,6 +1164,106 @@ cell so the smoke test demonstrates the "beside" case specifically, not
 just the more obvious "on" one. `HOURGLASS_ROOM` stays bare, same reasoning
 items 8-11 already gave: one room proving each new tile kind is enough.
 
+**Item 13.** The item's own text ("joins your deck when your structure
+connects to it") does not say what "connects" means once an artifact cell
+turns out not to be placeable. Considered, and rejected, treating an
+artifact cell like an exit (a normal, placeable cell — "touch" is
+occupancy, per item 5's own precedent) purely because it re-uses existing
+machinery: "a card sitting on the board" reads as a card that is already
+there, an occupant, not an empty tile waiting for one — the same reading
+item 8-12's tile kinds all share for whatever physically sits on a cell
+(rubble, a hidden spring). Went with the trap's geometry instead: `{ kind:
+'artifact'; card: Card }`, rejected by `isLegalRoomPlacement` the same way
+`'blocked'` is, and collected via a new `artifactCellsNear(room, h)`
+(`room.ts`) — the exact same "on or beside" query as `trapCellsNear`, kept
+in that shape rather than narrowed to neighbours-only even though "on" can
+never fire in practice (the cell is never a legal placement target), so the
+two stay obviously parallel rather than one silently depending on the
+other's legality rules to be correct. Unlike a trap, an artifact carries no
+hidden/revealed state — "the reason to detour" only works if the reward is
+visible before you commit to going there, the opposite of a trap's whole
+point — so `tileBadge` shows the artifact's own card label (`A♠`) rather
+than a fixed glyph, and `RoomBoardView` renders it identically before and
+after collection except for a dimmed tint (see below), never hidden.
+
+State that differs run to run — "has this specific artifact already joined
+the deck this room" — lives on `ExpeditionState.collectedArtifacts`
+(a `ReadonlySet<string>` of hex keys), resetting to empty on every room
+transition in `leaveRoom`, exactly mirroring `revealedTraps`'s split
+between `Room`'s static shape and one playthrough's state (item 12's own
+decisions log already drew this line; item 13 just needed it a second
+time). `placeInRoom` computes `artifactCellsNear(room, h)` filtered against
+that set, same shape as the trap loop immediately above it in the
+function, and processes collection *after* trap costs but *before* the
+end-of-turn refill draw — a newly collected artifact is exactly as
+eligible to be drawn into hand this turn as any other deck card, not stuck
+waiting a full extra placement to become available. No room built so far
+puts a trap and an artifact within triggering range of the same placement,
+so this ordering is untested against that specific interaction — noted
+here rather than silently assumed correct, same as item 12's own
+one-placement-triggers-two-traps gap.
+
+Where in the deck a collected card joins was a real choice, not a forced
+one. "The reason to detour" reads as *reward*, so it should feel available
+soon, not buried — pushed to the *front* of the deck (`[...cardsGained,
+...deck]`), the same "next to be drawn" position a trap's cost is paid
+from (item 12), so `cardsGained` on the log entry reads as `cardsLost`'s
+mirror image rather than an unrelated mechanic. No RNG stream exists on
+`ExpeditionState` past the opening shuffle (same constraint item 12's own
+log already noted), so a deterministic front-of-deck insertion was the
+only reproducible option anyway, not merely the simplest one.
+
+The card's own `id` needed to not collide with `freshDeck`'s own card of
+the same rank and suit — `RoomRunPage`'s hand strip keys each card by
+`card.id`, and two cards sharing an id is a real (if minor) React-key bug,
+not just untidy data. `ROUND_ROOM`'s artifact card is `{ id: 'artifact-AS',
+rank: 14, suit: 'S' }` — a real ace of spades for scoring and display
+purposes, distinguishable by id from the deck's own `'AS'` if both are ever
+in play at once (a chosen card was more interesting than a blank; nothing
+about the mechanic requires this specific rank/suit).
+
+The other real design question was rendering. A trap's rendering problem
+was hidden/revealed; an artifact's is *collected/uncollected*, a fact that
+needs to stay visible rather than toggling something on or off. Gave it a
+sixth cell tint (gold, `rgba(250,204,21,.32)` uncollected) rather than
+reusing any existing colour — every other special tint already means
+something else (rose is a revealed trap, dark stone is permanently
+blocked) — and dimmed it once collected (`rgba(161,138,66,.18)`, a muted
+version of the same hue) rather than reverting to a plain cell's tint, so
+"this was an artifact" stays legible as a landmark for the rest of the
+room the way a discovered trap's rose tint does, not a fact that vanishes
+the moment it stops mattering mechanically. `data-room-artifact-collected`
+was added alongside the existing `data-room-tile` so the smoke test (and
+any future one) can assert on collected state without parsing badge text
+or colour. Cursor and legality share one `nonPlaceable` flag (`blocked ||
+artifact`) rather than two separate checks, since both kinds reject a
+click for the same underlying reason — something is already occupying the
+cell.
+
+`scoring.ts`'s `tileLineBonus` switch grew an `'artifact'` case falling
+through to the same `return null` as `'marker'`/`'blocked'`/`'trap'` — the
+exhaustiveness check caught it the moment the union grew, same as items
+9-12. An artifact has no scoring effect of its own; the card that joins the
+deck scores normally on some future placement, like any other card.
+
+`ROUND_ROOM` gained one `{ kind: 'artifact', card: { id: 'artifact-AS',
+rank: 14, suit: 'S' } }` tile at `(-1,2)` — chosen, like the trap's cell in
+item 12, to sit outside adjacency range of every cell the established
+six-move smoke sequence had already placed on, so it stays uncollected
+until a placement deliberately detours there. Verified with a throwaway
+script against `expedition.ts` directly (run and discarded, not
+committed): the established six-move sequence (`(2,0)` → `(1,0)` →
+`(0,0)` → `(0,-1)` → `(-1,-1)` → `(-1,0)`, scores 7, 31, 73, 88, 115, 70,
+matching item 12's own log exactly — the new tile at a cell not adjacent
+to any of these six never fires during them) extended with a seventh
+placement, hand[0] onto `(0,1)` — beside, not on, the artifact at `(-1,2)`
+— scoring **61** with no change from the artifact (an artifact grants a
+card, not points) while `collectedArtifacts` gains `'-1,2'` and the whole
+card pool (deck+hand+board) grows by exactly one, from the ace of spades
+joining it. Final room score 407, carried into `runningTotal` after
+leaving. `HOURGLASS_ROOM` stays bare, same reasoning items 8-12 already
+gave: one room proving each new tile kind is enough.
+
 ## Results log
 
 **Item 1.** `npm test` 203/203 (was 208 — 5 tests removed, all for formulas
@@ -1650,3 +1750,55 @@ item 7/8's stale-port note, run and discarded, not committed):
 
 No video — this item is a hidden/revealed state flip and a bookkeeping
 side effect, not movement or feel.
+
+**Item 13.** `npm test` 335/335 (was 319 — 3 new in `tile.test.ts` for the
+`artifact` shape, its own-card badge (distinct from a fixed glyph), and
+coexistence with a trap tile; 4 new in `room.test.ts` for
+`artifactCellsNear` covering "on", "beside", "neither", and that it does
+not care about collected state, mirroring `trapCellsNear`'s own suite
+exactly; 1 new in `scoring.test.ts` confirming an artifact tile has zero
+scoring effect; 8 new in `expedition.test.ts`: rejects the artifact cell as
+a placement target, starts uncollected, joins the deck on a "beside"
+placement with the whole pool growing by exactly one, the gained card lands
+at the front of the deck (next to be drawn — isolated with a second config
+that produces no refill draw, so the deck's own order stays directly
+observable), does not join a second time once already collected, a
+placement nowhere near an artifact gains nothing extra, collecting costs no
+placement and no card, and reveal-adjacent state resets to empty on leaving
+a room). `npx tsc -b --noEmit` clean, including the exhaustiveness check on
+`scoring.ts`'s `tileLineBonus` switch catching the missing `'artifact'`
+case the moment the `Tile` union grew, same as items 9-12. `npm run smoke`
+63/63 (was 57 — 6 new: the artifact tile renders before anything triggers
+it, badged with its own card (`A♠`); it starts uncollected
+(`data-room-artifact-collected="false"`); the triggering placement scores
+normally; the tile flips to collected; the log reports the card gained;
+and the final score after the artifact-triggering placement is exactly the
+pre-artifact score plus that placement's own points).
+
+The exact numbers (seed `rooms-1`, default `CONFIG`, same throwaway-script
+convention as items 7-12 — run directly against `expedition.ts`, discarded,
+not committed): the established six-move sequence onto `(2,0)`, `(1,0)`,
+`(0,0)`, `(0,-1)`, `(-1,-1)`, `(-1,0)` is untouched (scores 7, 31, 73, 88,
+115, 70, matching item 12's own log exactly — the new artifact tile at a
+cell not adjacent to any of these six never fires during them), then a
+seventh placement of hand[0] onto `(0,1)` — beside, not on, the artifact at
+`(-1,2)` — scores **61** with no change from the artifact (a card sitting
+on the board grants a card, not points) while `collectedArtifacts` gains
+`'-1,2'` and the card pool (deck+hand+board) grows by exactly one, the ace
+of spades joining the deck's front. Final room score 407, carried into
+`runningTotal` after leaving.
+
+Drove `RoomRunPage` in headless Chromium via `tools/browser.mjs` (throwaway
+script, same server-then-screenshot pattern as `smoke.mjs`, fresh port per
+item 7/8's stale-port note, run and discarded, not committed):
+
+| screenshot | shows |
+|---|---|
+| zoomed on `(-1,2)` before anything triggers it | a bright gold hex with a centred "A♠" badge, distinct from every other tile tint on the board |
+| full board just before the seventh placement | all five prior tile kinds visible (`L×2`, `×2`, `T8` marker, the blocked cell, the now-revealed trap) alongside the still-gold, uncollected artifact |
+| the same cell after the seventh placement | the hex dims to a muted stone-gold, the "A♠" badge still legible — collected, not gone |
+| full board after all seven placements | all six tile kinds visible at once, header reading "Score 407 / 50 (met)" / "Cleared", and the log line "Last placement: 5♦ at 0,1 scored 61 — an artifact joined the deck: A♠" |
+| full page | the hand strip's last card is a fresh "A♠" — the artifact card drawn into hand by the very refill this same placement triggered, the clearest end-to-end proof the deck actually gained it, not just the state object |
+
+No video — this item is a static "always visible, becomes collected" state
+flip, not movement or feel.

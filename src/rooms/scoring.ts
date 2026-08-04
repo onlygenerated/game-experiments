@@ -85,6 +85,7 @@ function tileLineBonus(
     case 'marker':
     case 'blocked':
     case 'trap':
+    case 'artifact':
       return null;
   }
 }

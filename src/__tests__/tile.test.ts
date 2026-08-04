@@ -171,3 +171,29 @@ describe('trap tiles (item 12)', () => {
     expect(tileAt(room.tiles, east)?.kind).toBe('trap');
   });
 });
+
+describe('artifact tiles (item 13)', () => {
+  const ACE_SPADES = { id: 'artifact-AS', rank: 14 as const, suit: 'S' as const };
+
+  it('stores and retrieves an artifact tile like any other kind', () => {
+    const tiles = withTile(emptyTileMap(), ORIGIN, { kind: 'artifact', card: ACE_SPADES });
+    expect(tileAt(tiles, ORIGIN)).toEqual({ kind: 'artifact', card: ACE_SPADES });
+  });
+
+  it("badges as its own card's label, not a fixed glyph", () => {
+    expect(tileBadge({ kind: 'artifact', card: ACE_SPADES })).toBe('A♠');
+    expect(
+      tileBadge({ kind: 'artifact', card: { id: 'artifact-2H', rank: 2 as const, suit: 'H' as const } }),
+    ).toBe('2♥');
+  });
+
+  it('coexists with a trap tile at a different cell in the same room', () => {
+    const east = { q: 1, r: 0 };
+    const room = makeRoom('Test', [ORIGIN, east], [], 0, [
+      [ORIGIN, { kind: 'trap' }],
+      [east, { kind: 'artifact', card: ACE_SPADES }],
+    ]);
+    expect(tileAt(room.tiles, ORIGIN)?.kind).toBe('trap');
+    expect(tileAt(room.tiles, east)?.kind).toBe('artifact');
+  });
+});

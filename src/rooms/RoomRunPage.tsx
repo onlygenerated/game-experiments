@@ -97,6 +97,7 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
           board={state.board}
           onCellClick={place}
           revealedTraps={state.revealedTraps}
+          collectedArtifacts={state.collectedArtifacts}
         />
 
         <div className="flex flex-col gap-1" data-room-panel={room.name}>
@@ -176,6 +177,13 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
               {' '}
               — a trap sprang, costing {state.log.at(-1)!.cardsLost.length} card
               {state.log.at(-1)!.cardsLost.length > 1 ? 's' : ''}
+            </span>
+          )}
+          {state.log.at(-1)!.cardsGained.length > 0 && (
+            <span data-room-artifact-triggered className="text-amber-300">
+              {' '}
+              — an artifact joined the deck:{' '}
+              {state.log.at(-1)!.cardsGained.map(cardLabel).join(', ')}
             </span>
           )}
         </p>

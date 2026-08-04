@@ -304,6 +304,34 @@ ok('the log reports the trap cost', (await text()).includes('a trap sprang'));
 const finalScore = Number((await text()).match(/Score (\d+) \/ 50/)?.[1] ?? -1);
 ok('final score includes the trap-triggering placement', finalScore === afterLineTile + 70);
 
+// The room also carries a real 'artifact' tile at (-1,2) (item 13) — a card
+// sitting on the board, always visible (no hidden/revealed state, unlike a
+// trap), that joins the deck once the structure detours beside it. The next
+// cell in the chain, (0,1), neighbours the artifact without landing on it —
+// an artifact cell is never a legal placement target (the card is already
+// there), so "beside" is the only case there is to demonstrate. The exact
+// score (61) and the artifact's badge/id were worked out offline against
+// `expedition.ts` directly (same throwaway-script convention as items 7-12,
+// run and discarded, not committed).
+ok(
+  'the artifact tile renders before anything triggers it, badged with its own card',
+  (await p.locator('[data-room-cell="-1,2"]').getAttribute('data-room-tile')) === 'artifact' &&
+    (await p.locator('[data-room-cell="-1,2"]').innerText()).includes('A♠'),
+);
+ok(
+  'the artifact starts uncollected',
+  (await p.locator('[data-room-cell="-1,2"]').getAttribute('data-room-artifact-collected')) === 'false',
+);
+await placeHand0('0,1');
+ok('the placement beside the artifact scored normally', (await text()).includes('scored 61'));
+ok(
+  'the artifact is marked collected once triggered',
+  (await p.locator('[data-room-cell="-1,2"]').getAttribute('data-room-artifact-collected')) === 'true',
+);
+ok('the log reports the card gained', (await text()).includes('an artifact joined the deck'));
+const finalScoreWithArtifact = Number((await text()).match(/Score (\d+) \/ 50/)?.[1] ?? -1);
+ok('final score includes the artifact-triggering placement', finalScoreWithArtifact === finalScore + 61);
+
 await p.locator('[data-room-leave]').click();
 await p.waitForTimeout(300);
 ok('leaving moves to the next room', (await text()).includes('Room 2 / 2'));
@@ -311,7 +339,7 @@ ok('the next room is the Hourglass', (await p.locator('[data-room="Hourglass"] [
 ok('the new room starts unreached and unscored', (await p.locator('[data-room-reach]').getAttribute('data-room-reach')) === 'false');
 ok(
   "the running total carried the cleared room's score forward",
-  (await text()).includes(`Running total ${finalScore}`),
+  (await text()).includes(`Running total ${finalScoreWithArtifact}`),
 );
 ok('placement budget is fresh in the new room', (await text()).includes('placements left 12'));
 ok('the new room\'s board has no cards on it', (await p.locator('[data-room="Hourglass"] .card-face').count()) === 0);

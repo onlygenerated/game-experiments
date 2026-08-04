@@ -48,6 +48,16 @@ const POINTY_TOP = 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%
  * all: no badge, no distinct tint, indistinguishable from a plain cell —
  * that is what "hidden" means. Once revealed it gets a fifth tint (rose),
  * layered the same way `'blocked'`'s is.
+ *
+ * Item 13 adds `'artifact'`, always visible (no hidden/revealed state —
+ * unlike a trap the point is to be seen so a player can choose to detour
+ * toward it) but with a *collected* fact, so this view needs one further
+ * optional prop, `collectedArtifacts`. It gets a sixth tint (gold) like any
+ * other special cell while uncollected, and the same non-placeable cursor
+ * `'blocked'` cells get (the card sitting there isn't an empty slot). Once
+ * collected the tint dims rather than disappearing — unlike a trap's reveal,
+ * which is a one-time discovery, an artifact stays a landmark on the board
+ * for the rest of the room.
  */
 export function RoomBoardView({
   room,
@@ -56,6 +66,7 @@ export function RoomBoardView({
   board,
   onCellClick,
   revealedTraps,
+  collectedArtifacts,
 }: {
   room: Room;
   size?: number;
@@ -63,6 +74,7 @@ export function RoomBoardView({
   board?: ReadonlyMap<string, Card>;
   onCellClick?: (h: Hex) => void;
   revealedTraps?: ReadonlySet<string>;
+  collectedArtifacts?: ReadonlySet<string>;
 }) {
   const cells = useMemo(() => roomCells(room), [room]);
 
@@ -95,6 +107,9 @@ export function RoomBoardView({
         const tile = trapHidden ? undefined : rawTile;
         const blocked = tile?.kind === 'blocked';
         const sprungTrap = tile?.kind === 'trap';
+        const artifact = tile?.kind === 'artifact';
+        const artifactCollected = artifact && (collectedArtifacts?.has(k) ?? false);
+        const nonPlaceable = blocked || artifact;
         return (
           <div
             key={k}
@@ -103,6 +118,7 @@ export function RoomBoardView({
             data-room-exit={exit}
             data-room-occupied={occupied}
             data-room-tile={tile?.kind}
+            data-room-artifact-collected={artifact ? artifactCollected : undefined}
             onClick={onCellClick ? () => onCellClick(h) : undefined}
             className="absolute flex items-center justify-center text-[10px] font-bold text-white/80"
             style={{
@@ -110,27 +126,35 @@ export function RoomBoardView({
               width: 1.733 * size,
               height: 2 * size,
               clipPath: POINTY_TOP,
-              cursor: onCellClick ? (blocked ? 'not-allowed' : 'pointer') : undefined,
+              cursor: onCellClick ? (nonPlaceable ? 'not-allowed' : 'pointer') : undefined,
               background: blocked
                 ? 'rgba(41,37,36,.75)'
-                : sprungTrap
-                  ? 'rgba(244,63,94,.30)'
-                  : exit
-                    ? 'rgba(74,222,128,.35)'
-                    : border
-                      ? 'rgba(244,114,182,.28)'
-                      : 'rgba(56,189,248,.16)',
+                : artifact
+                  ? artifactCollected
+                    ? 'rgba(161,138,66,.18)'
+                    : 'rgba(250,204,21,.32)'
+                  : sprungTrap
+                    ? 'rgba(244,63,94,.30)'
+                    : exit
+                      ? 'rgba(74,222,128,.35)'
+                      : border
+                        ? 'rgba(244,114,182,.28)'
+                        : 'rgba(56,189,248,.16)',
               boxShadow: blocked
                 ? 'inset 0 0 0 2px rgba(120,113,108,.6)'
                 : occupied
                   ? 'inset 0 0 0 3px rgba(250,204,21,.9)'
-                  : sprungTrap
-                    ? 'inset 0 0 0 2px rgba(244,63,94,.85)'
-                    : exit
-                      ? 'inset 0 0 0 2px rgba(74,222,128,.85)'
-                      : border
-                        ? 'inset 0 0 0 2px rgba(244,114,182,.75)'
-                        : 'inset 0 0 0 1px rgba(255,255,255,.08)',
+                  : artifact
+                    ? artifactCollected
+                      ? 'inset 0 0 0 2px rgba(120,113,108,.5)'
+                      : 'inset 0 0 0 2px rgba(250,204,21,.9)'
+                    : sprungTrap
+                      ? 'inset 0 0 0 2px rgba(244,63,94,.85)'
+                      : exit
+                        ? 'inset 0 0 0 2px rgba(74,222,128,.85)'
+                        : border
+                          ? 'inset 0 0 0 2px rgba(244,114,182,.75)'
+                          : 'inset 0 0 0 1px rgba(255,255,255,.08)',
             }}
           >
             {tile && (

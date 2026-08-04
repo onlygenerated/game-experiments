@@ -25,7 +25,13 @@
  * on its own, not adjacent to any of the other tiles or to any cell the
  * smoke test's established placement sequence already lands on, so it stays
  * genuinely hidden until a placement deliberately lands on or beside it.
- * Artifact tiles (item 13) still have nothing here yet.
+ * Item 13 adds one `'artifact'` tile at `(-1,2)` — a real card (`A♠`) sitting
+ * on the board rather than dealt from the deck, placed well clear of every
+ * other tile and of the smoke test's established six-placement sequence, so
+ * it stays uncollected until a placement deliberately detours beside it. Its
+ * `id` (`artifact-AS`) is deliberately not the same id `freshDeck` gives its
+ * own ace of spades, so the two stay distinguishable if both ever end up in
+ * the same deck or hand at once.
  */
 import { hexesWithinRadius, type Hex } from '../hex/coords';
 import { makeRoom, type Room } from './room';
@@ -48,6 +54,7 @@ export const ROUND_ROOM: Room = makeRoom(
     [{ q: -1, r: -1 }, { kind: 'lineMultiplier', multiplier: 2 }],
     [{ q: 1, r: -1 }, { kind: 'blocked' }],
     [{ q: -2, r: 1 }, { kind: 'trap' }],
+    [{ q: -1, r: 2 }, { kind: 'artifact', card: { id: 'artifact-AS', rank: 14, suit: 'S' } }],
   ],
 );
 

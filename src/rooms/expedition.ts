@@ -37,6 +37,21 @@
  * end-of-turn refill draw, so the refill (if the deck still has cards after
  * the trap's own cost) draws from whatever is left, not from a phantom
  * pre-trap deck.
+ *
+ * Item 13's `'artifact'` tile follows the same "state belongs here, not on
+ * `Room`" split: `ExpeditionState.collectedArtifacts` is the set of artifact
+ * cells already joined to the deck *this room, this expedition*, and it
+ * resets on every room transition exactly like `revealedTraps`. Unlike a
+ * trap, an artifact cell is never a legal placement target (`Room`'s cell
+ * already has a card sitting on it — see `isLegalRoomPlacement`), so
+ * `placeInRoom` only ever finds one "beside" it, via `artifactCellsNear`.
+ * Collecting one costs nothing and adds its card to the *front* of the
+ * deck — the same "next to be drawn" position a trap's cost is paid from,
+ * so an artifact's own log entry (`cardsGained`) reads as the mirror image
+ * of a trap's `cardsLost` rather than an unrelated mechanic. Processed after
+ * trap costs and before the end-of-turn refill draw, so a newly collected
+ * artifact is exactly as eligible to be drawn into hand this turn as any
+ * other deck card would be.
  */
 import { CONFIG, type Config } from '../config';
 import { draw, shuffledDeck, type Card } from '../deck';
@@ -50,7 +65,15 @@ import {
   type HexPlacementScore,
 } from '../hex/board';
 import { hexKey, type Hex } from '../hex/coords';
-import { isInRoom, roomCells, roomEndState, trapCellsNear, type Room, type RoomEndState } from './room';
+import {
+  artifactCellsNear,
+  isInRoom,
+  roomCells,
+  roomEndState,
+  trapCellsNear,
+  type Room,
+  type RoomEndState,
+} from './room';
 import { scoreRoomPlacement } from './scoring';
 import { tileAt } from './tile';
 
@@ -65,6 +88,8 @@ export interface ExpeditionLogEntry extends HexPlacementScore {
   totalAfter: number;
   /** Cards lost to a trap sprung by this placement (item 12) — empty on almost every entry. */
   cardsLost: Card[];
+  /** Cards gained from an artifact collected by this placement (item 13) — empty on almost every entry. */
+  cardsGained: Card[];
 }
 
 export interface ExpeditionState {
@@ -82,6 +107,8 @@ export interface ExpeditionState {
   placementsLeft: number;
   /** Trap cells (item 12) that have already sprung in the current room, by hex key. Resets every room. */
   revealedTraps: ReadonlySet<string>;
+  /** Artifact cells (item 13) already joined to the deck in the current room, by hex key. Resets every room. */
+  collectedArtifacts: ReadonlySet<string>;
   log: ExpeditionLogEntry[];
   status: ExpeditionStatus;
 }
@@ -98,7 +125,8 @@ export function isLegalRoomPlacement(state: ExpeditionState, h: Hex, cfg: Config
   const room = currentRoom(state);
   if (!isInRoom(room, h)) return false;
   if (isHexOccupied(state.board, h)) return false;
-  if (tileAt(room.tiles, h)?.kind === 'blocked') return false;
+  const kind = tileAt(room.tiles, h)?.kind;
+  if (kind === 'blocked' || kind === 'artifact') return false;
   if (cfg.mechanics.requireAdjacency && !isHexBoardEmpty(state.board) && !hasHexNeighbor(state.board, h)) {
     return false;
   }
@@ -145,6 +173,7 @@ export function newExpedition(
     runningTotal: 0,
     placementsLeft: cfg.roomPlacementBudget,
     revealedTraps: new Set(),
+    collectedArtifacts: new Set(),
     log: [],
     status: 'playing',
   };
@@ -206,6 +235,20 @@ export function placeInRoom(
     if (paid.lost) cardsLost.push(paid.lost);
   }
 
+  // Item 13: any artifact at this cell or beside it, not already collected,
+  // joins the deck now — added to the front, the same "next to be drawn"
+  // position a trap's cost is paid from.
+  const newArtifacts = artifactCellsNear(room, h).filter((a) => !state.collectedArtifacts.has(hexKey(a)));
+  const collectedArtifacts = newArtifacts.length
+    ? new Set([...state.collectedArtifacts, ...newArtifacts.map(hexKey)])
+    : state.collectedArtifacts;
+  const cardsGained: Card[] = newArtifacts.map((a) => {
+    const tile = tileAt(room.tiles, a);
+    if (!tile || tile.kind !== 'artifact') throw new Error(`artifactCellsNear returned a non-artifact tile at ${hexKey(a)}`);
+    return tile.card;
+  });
+  if (cardsGained.length) deck = [...cardsGained, ...deck];
+
   const { drawn, deck: deckAfterDraw } = draw(deck, cfg.handSize - hand.length);
 
   return settleExpedition(
@@ -216,6 +259,7 @@ export function placeInRoom(
       hand: [...hand, ...drawn],
       deck: deckAfterDraw,
       revealedTraps,
+      collectedArtifacts,
       placementsLeft: state.placementsLeft - 1,
       log: [
         ...state.log,
@@ -225,6 +269,7 @@ export function placeInRoom(
           roomName: room.name,
           totalAfter: state.runningTotal + score,
           cardsLost,
+          cardsGained,
         },
       ],
     },
@@ -263,6 +308,7 @@ export function leaveRoom(state: ExpeditionState, cfg: Config = CONFIG): Expedit
       runningTotal,
       placementsLeft: cfg.roomPlacementBudget,
       revealedTraps: new Set(),
+      collectedArtifacts: new Set(),
     },
     cfg,
   );

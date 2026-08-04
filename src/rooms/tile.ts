@@ -34,7 +34,19 @@
  * only renders a trap's badge once its cell shows up in that set — this file
  * still hands back a fixed badge for it unconditionally, the same as every
  * other kind; the *caller* decides whether reveal state permits showing it.
+ *
+ * Item 13 adds `'artifact'` — a real `Card` sitting on the board, not one
+ * dealt from the deck. Unlike a trap it carries no hidden/revealed state:
+ * the point is to be visible so a player can choose to detour toward it, not
+ * to be discovered by accident. It does carry a *collected* fact, which
+ * lives on `ExpeditionState` for the same reason `revealedTraps` does — "has
+ * this artifact already joined the deck this room" is a per-playthrough
+ * fact, not part of the room's static shape (see `expedition.ts`'s
+ * `collectedArtifacts`). The cell itself is never placeable (see
+ * `expedition.ts`'s `isLegalRoomPlacement`) — the card is already sitting
+ * there, not an empty tile waiting for one.
  */
+import { cardLabel, type Card } from '../deck';
 import { hexKey, type Hex } from '../hex/coords';
 
 export type Tile =
@@ -42,7 +54,8 @@ export type Tile =
   | { kind: 'cardMultiplier'; multiplier: number }
   | { kind: 'lineMultiplier'; multiplier: number }
   | { kind: 'blocked' }
-  | { kind: 'trap' };
+  | { kind: 'trap' }
+  | { kind: 'artifact'; card: Card };
 
 /** The short text a tile shows on the board — every kind needs one, but not
  * every kind stores it under the same field (a marker's is arbitrary text,
@@ -50,7 +63,9 @@ export type Tile =
  * than a shared `label` field on the union. `lineMultiplier` gets an `L`
  * prefix so the two multiplier kinds read as visually distinct on the board
  * — without it, a card square and a word square carrying the same number
- * would render an identical badge. */
+ * would render an identical badge. An artifact badges as its own card's
+ * label (e.g. `A♠`) — the thing to see is *which* card it is, since that is
+ * exactly what makes detouring for one worth it. */
 export function tileBadge(tile: Tile): string {
   switch (tile.kind) {
     case 'marker':
@@ -63,6 +78,8 @@ export function tileBadge(tile: Tile): string {
       return '▓';
     case 'trap':
       return '☠';
+    case 'artifact':
+      return cardLabel(tile.card);
   }
 }
 

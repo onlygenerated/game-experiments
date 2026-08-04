@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { hexesWithinRadius, hexKey, hexNeighbors, ORIGIN } from '../hex/coords';
 import {
+  artifactCellsNear,
   isExit,
   isInRoom,
   isRoomBorder,
@@ -332,5 +333,30 @@ describe('trapCellsNear (item 12)', () => {
     // Purely geometric: calling it twice for the same cell returns the same
     // answer, since this function has no notion of "already triggered".
     expect(trapCellsNear(room, trapCell)).toEqual(trapCellsNear(room, trapCell));
+  });
+});
+
+describe('artifactCellsNear (item 13)', () => {
+  const ACE_SPADES = { id: 'artifact-AS', rank: 14 as const, suit: 'S' as const };
+  const artifactCell = { q: 0, r: -1 };
+  const room = makeRoom('Test', hexesWithinRadius(1), [{ q: 1, r: 0 }], 0, [
+    [artifactCell, { kind: 'artifact', card: ACE_SPADES }],
+  ]);
+
+  it('finds an artifact sitting directly on the queried cell', () => {
+    expect(artifactCellsNear(room, artifactCell).map(hexKey)).toEqual([hexKey(artifactCell)]);
+  });
+
+  it('finds an artifact on a neighbouring cell — "beside", not only "on"', () => {
+    expect(hexNeighbors(artifactCell).map(hexKey)).toContain(hexKey(ORIGIN));
+    expect(artifactCellsNear(room, ORIGIN).map(hexKey)).toEqual([hexKey(artifactCell)]);
+  });
+
+  it('finds nothing at a cell with no artifact on or beside it', () => {
+    expect(artifactCellsNear(room, { q: 1, r: 0 }).length).toBe(0);
+  });
+
+  it('does not care whether the artifact has already been collected — that is expedition.ts state', () => {
+    expect(artifactCellsNear(room, artifactCell)).toEqual(artifactCellsNear(room, artifactCell));
   });
 });

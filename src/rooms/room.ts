@@ -37,6 +37,14 @@
  * nothing about whether those traps have already sprung — that is
  * `expedition.ts`'s job (see `tile.ts`'s note on why reveal state lives
  * there, not on `Room`).
+ *
+ * Item 13 adds `artifactCellsNear`, the same "on or beside" query for
+ * artifact tiles. An artifact cell is never itself a legal placement target
+ * (see `expedition.ts`'s `isLegalRoomPlacement`), so in practice only the
+ * "beside" half of `[h, ...hexNeighbors(h)]` can ever match — kept in the
+ * same shape as `trapCellsNear` regardless, rather than a narrower
+ * neighbours-only query, so the two stay obviously parallel and neither
+ * silently depends on the other's placement rules to be correct.
  */
 import { hexKey, hexNeighbors, parseHex, type Hex } from '../hex/coords';
 import { emptyTileMap, tileAt, tileMapFrom, type Tile, type TileMap } from './tile';
@@ -112,6 +120,16 @@ export function roomExits(room: Room): Hex[] {
  */
 export function trapCellsNear(room: Room, h: Hex): Hex[] {
   return [h, ...hexNeighbors(h)].filter((c) => tileAt(room.tiles, c)?.kind === 'trap');
+}
+
+/**
+ * Every `'artifact'`-tile cell at `h` itself or one of its six neighbours —
+ * the same "on or beside" geometry as `trapCellsNear`. Says nothing about
+ * whether an artifact has already been collected; that is `expedition.ts`'s
+ * job (see `tile.ts`'s note on `collectedArtifacts`).
+ */
+export function artifactCellsNear(room: Room, h: Hex): Hex[] {
+  return [h, ...hexNeighbors(h)].filter((c) => tileAt(room.tiles, c)?.kind === 'artifact');
 }
 
 /**

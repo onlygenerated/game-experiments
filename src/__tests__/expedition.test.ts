@@ -25,6 +25,8 @@ const BLOCKED_ROOM: Room = makeRoom('Blocked', hexesWithinRadius(1), [{ q: 1, r:
   [BLOCKED_CELL, { kind: 'blocked' }],
 ]);
 
+const ACE_SPADES = { id: 'artifact-AS', rank: 14 as const, suit: 'S' as const };
+
 const cfg = (over: Partial<Config> = {}): Config => ({ ...CONFIG, ...over });
 
 describe('newExpedition', () => {
@@ -74,6 +76,15 @@ describe('isLegalRoomPlacement / legalRoomCells', () => {
     const legal = legalRoomCells(state, cfg());
     expect(legal.some((h) => h.q === BLOCKED_CELL.q && h.r === BLOCKED_CELL.r)).toBe(false);
     expect(legal).toHaveLength(BLOCKED_ROOM.cells.size - 1);
+  });
+
+  it('rejects an artifact cell — the card already sitting there is not an empty slot', () => {
+    const artifactCell: Hex = { q: 0, r: -1 };
+    const room = makeRoom('Artifact', hexesWithinRadius(1), [{ q: 1, r: 0 }], 0, [
+      [artifactCell, { kind: 'artifact', card: ACE_SPADES }],
+    ]);
+    const state = newExpedition('exp-1', [room], cfg());
+    expect(isLegalRoomPlacement(state, artifactCell, cfg())).toBe(false);
   });
 });
 
@@ -259,6 +270,88 @@ describe('traps (item 12)', () => {
     const next = leaveRoom(state, c);
     expect(next.roomIndex).toBe(1);
     expect(next.revealedTraps.size).toBe(0);
+  });
+});
+
+describe('artifacts (item 13)', () => {
+  const ARTIFACT_CELL: Hex = { q: 0, r: -1 };
+  const artifactRoom = (name: string, exits: Hex[] = [{ q: 1, r: 0 }]): Room =>
+    makeRoom(name, hexesWithinRadius(1), exits, 0, [[ARTIFACT_CELL, { kind: 'artifact', card: ACE_SPADES }]]);
+
+  it('starts uncollected — nothing collected before any placement', () => {
+    const state = newExpedition('exp-1', [artifactRoom('Artifact')], cfg());
+    expect(state.collectedArtifacts.size).toBe(0);
+  });
+
+  it('joins the deck when a card lands beside it', () => {
+    const state = newExpedition('exp-1', [artifactRoom('Artifact')], cfg());
+    const before = state.deck.length + state.hand.length;
+    // (0,0) neighbours the artifact at (0,-1) — landing "on" it is illegal
+    // (see the legality test above), so "beside" is the only real case.
+    const next = placeInRoom(state, 0, ORIGIN, cfg());
+    expect(next.collectedArtifacts.has(hexKey(ARTIFACT_CELL))).toBe(true);
+    // One card moved from hand to board (net zero) and one further card
+    // joined the deck from the artifact — the whole pool grows by exactly 1.
+    expect(next.deck.length + next.hand.length + next.board.size).toBe(before + 1);
+    expect(next.log[0].cardsGained).toEqual([ACE_SPADES]);
+  });
+
+  it('adds the collected card to the front of the deck, next to be drawn', () => {
+    const state = newExpedition('exp-1', [artifactRoom('Artifact')], cfg());
+    // A second config that targets exactly the post-placement hand size, so
+    // placeInRoom draws no refill and the deck's own front stays observable
+    // rather than being immediately redrawn into hand.
+    const noRefill = cfg({ handSize: state.hand.length - 1 });
+    const next = placeInRoom(state, 0, ORIGIN, noRefill);
+    expect(next.deck[0]).toEqual(ACE_SPADES);
+  });
+
+  it('does not join a second time once already collected', () => {
+    const state = newExpedition('exp-1', [artifactRoom('Artifact')], cfg());
+    const afterFirst = placeInRoom(state, 0, ORIGIN, cfg()); // triggers via "beside"
+    const total = afterFirst.deck.length + afterFirst.hand.length + afterFirst.board.size;
+    const afterSecond = placeInRoom(afterFirst, 0, { q: 1, r: -1 }, cfg()); // also beside the artifact
+    expect(afterSecond.collectedArtifacts.size).toBe(1); // still just the one artifact cell
+    expect(afterSecond.deck.length + afterSecond.hand.length + afterSecond.board.size).toBe(total);
+    expect(afterSecond.log[1].cardsGained).toEqual([]);
+  });
+
+  it('a placement nowhere near an artifact gains nothing extra', () => {
+    const room = makeRoom('NoArtifact', hexesWithinRadius(1), [{ q: 1, r: 0 }]);
+    const state = newExpedition('exp-1', [room], cfg());
+    const before = state.deck.length + state.hand.length;
+    const next = placeInRoom(state, 0, ORIGIN, cfg());
+    expect(next.collectedArtifacts.size).toBe(0);
+    expect(next.deck.length + next.hand.length + next.board.size).toBe(before);
+  });
+
+  it('does not cost a placement or a card — collecting is free', () => {
+    const c = cfg({ roomPlacementBudget: 5 });
+    const state = newExpedition('exp-1', [artifactRoom('Artifact')], c);
+    const next = placeInRoom(state, 0, ORIGIN, c);
+    expect(next.placementsLeft).toBe(state.placementsLeft - 1); // exactly the one placement spent
+    expect(next.log[0].cardsLost).toEqual([]);
+  });
+
+  it('resets to uncollected on leaving the room — a fresh room does not inherit a collected artifact', () => {
+    // An artifact cell can never itself be an exit (it isn't placeable, and
+    // reach requires occupying the exit), so this exit sits one cell over,
+    // beside the artifact, and doing so both reaches the exit and collects
+    // the artifact in the same placement.
+    const EXIT_BESIDE_ARTIFACT: Hex = { q: 1, r: -1 };
+    const room = (name: string): Room =>
+      makeRoom(name, hexesWithinRadius(1), [EXIT_BESIDE_ARTIFACT], 0, [
+        [ARTIFACT_CELL, { kind: 'artifact', card: ACE_SPADES }],
+      ]);
+    const c = cfg({ roomPlacementBudget: 5 });
+    let state = newExpedition('exp-1', [room('First'), room('Second')], c);
+    state = placeInRoom(state, 0, EXIT_BESIDE_ARTIFACT, c);
+    expect(state.collectedArtifacts.size).toBe(1);
+    expect(currentEndState(state).cleared).toBe(true); // reached (on the exit) + threshold 0
+
+    const next = leaveRoom(state, c);
+    expect(next.roomIndex).toBe(1);
+    expect(next.collectedArtifacts.size).toBe(0);
   });
 });
 
