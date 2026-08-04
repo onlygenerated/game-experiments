@@ -26,8 +26,13 @@
  * wired to a room yet (that's item 7) to probe a real score distribution
  * against, and the standing rule is not to tune a room by eye. Item 22's
  * calibration pass is where these become real numbers.
+ *
+ * Item 8 adds `tiles`, a `TileMap` (see `tile.ts`) alongside `cells`/`exits` —
+ * a room's tile layout is part of its hand-authored shape, the same way its
+ * exits are, not something that changes as cards get placed on top of it.
  */
 import { hexKey, hexNeighbors, parseHex, type Hex } from '../hex/coords';
+import { emptyTileMap, tileMapFrom, type Tile, type TileMap } from './tile';
 
 export interface Room {
   name: string;
@@ -37,6 +42,8 @@ export interface Room {
   exits: ReadonlySet<string>;
   /** Score a structure must reach, in addition to reaching an exit, to clear the room. */
   threshold: number;
+  /** Tiles the room's cells sit on. No effects read this yet — see `tile.ts`. */
+  tiles: TileMap;
 }
 
 export function makeRoom(
@@ -44,9 +51,10 @@ export function makeRoom(
   coords: readonly Hex[],
   exits: readonly Hex[] = [],
   threshold = 0,
+  tileEntries: readonly (readonly [Hex, Tile])[] = [],
 ): Room {
   const cells = new Set(coords.map(hexKey));
-  const room: Room = { name, cells, exits: new Set(), threshold };
+  const room: Room = { name, cells, exits: new Set(), threshold, tiles: emptyTileMap() };
 
   for (const e of exits) {
     const k = hexKey(e);
@@ -54,7 +62,13 @@ export function makeRoom(
     if (!isRoomBorder(room, e)) throw new Error(`Room "${name}": exit ${k} is not a border cell`);
   }
 
-  return { ...room, exits: new Set(exits.map(hexKey)) };
+  for (const [h] of tileEntries) {
+    if (!cells.has(hexKey(h))) {
+      throw new Error(`Room "${name}": tile at ${hexKey(h)} is not one of its cells`);
+    }
+  }
+
+  return { ...room, exits: new Set(exits.map(hexKey)), tiles: tileMapFrom(tileEntries) };
 }
 
 export function roomCells(room: Room): Hex[] {

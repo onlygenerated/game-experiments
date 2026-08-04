@@ -207,8 +207,25 @@ ok('placing on the exit reaches it', (await roomPanel().locator('[data-room-reac
 ok('reached but under threshold does not clear', (await roomPanel().locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'false');
 ok('a real card renders on the placed cell', (await p.locator('[data-room-cell="2,0"] .card-face').count()) > 0);
 
+// The Round Room carries one placeholder 'marker' tile at (1,0) (item 8) —
+// check it renders before anything is placed there, and that it is still in
+// the DOM (not replaced or hidden) once a card lands on the same cell, which
+// is the whole point of the tile layer existing underneath the card layer.
+ok(
+  'the marker tile renders before anything is placed on it',
+  (await p.locator('[data-room-cell="1,0"]').getAttribute('data-room-tile')) === 'marker',
+);
+
 await placeHand0('1,0'); // still short (score 31)
 ok('still short after the second placement', (await roomPanel().locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'false');
+ok(
+  'the tile is still there once a card is placed on the same cell',
+  (await p.locator('[data-room-cell="1,0"]').getAttribute('data-room-tile')) === 'marker',
+);
+ok(
+  'the card is also there, on top of the tile, not instead of it',
+  (await p.locator('[data-room-cell="1,0"] .card-face').count()) === 1,
+);
 
 await placeHand0('0,0'); // crosses the threshold (score 73) — reach was already true
 ok('reach + score at the threshold clears the room', (await roomPanel().locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'true');

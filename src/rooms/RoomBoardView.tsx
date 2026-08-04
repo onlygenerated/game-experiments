@@ -3,6 +3,7 @@ import { CardFace } from '../components/CardFace';
 import type { Card } from '../deck';
 import { hexKey, hexToPixel, type Hex } from '../hex/coords';
 import { isExit, isRoomBorder, roomCells, type Room } from './room';
+import { tileAt } from './tile';
 
 /** Pointy-top, same silhouette as the sprawl's hex cells. */
 const POINTY_TOP = 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)';
@@ -20,6 +21,18 @@ const POINTY_TOP = 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%
  * when given, it wins over `structure` for occupancy and each occupied cell
  * renders the real card instead of a plain dot, so a room in play reads the
  * same way the sprawl does.
+ *
+ * Item 8 reads `room.tiles` directly (there is no separate prop for it —
+ * a room's tiles are part of its shape, same as its exits) and renders each
+ * tile's label as a small badge pinned to the top of its hex, centred
+ * horizontally, rather than a plain corner: a pointy-top hex's `clipPath`
+ * narrows sharply near its corners (the top vertex is a single point), so a
+ * corner badge gets silently clipped away — verified by screenshotting a
+ * first attempt that did exactly that. The centred card leaves the hex's
+ * own top sliver (above where the card starts) untouched, which is where
+ * the badge sits. That is what "rendering underneath cards so a placed card
+ * does not hide what it landed on" means here: nothing is stacked *behind*
+ * the card, the two simply don't occupy the same pixels.
  */
 export function RoomBoardView({
   room,
@@ -60,6 +73,7 @@ export function RoomBoardView({
         const exit = isExit(room, h);
         const card = board?.get(k);
         const occupied = card !== undefined || (structure?.has(k) ?? false);
+        const tile = tileAt(room.tiles, h);
         return (
           <div
             key={k}
@@ -67,6 +81,7 @@ export function RoomBoardView({
             data-room-border={border}
             data-room-exit={exit}
             data-room-occupied={occupied}
+            data-room-tile={tile?.kind}
             onClick={onCellClick ? () => onCellClick(h) : undefined}
             className="absolute flex items-center justify-center text-[10px] font-bold text-white/80"
             style={{
@@ -89,6 +104,14 @@ export function RoomBoardView({
                     : 'inset 0 0 0 1px rgba(255,255,255,.08)',
             }}
           >
+            {tile && (
+              <span
+                className="absolute rounded bg-black/60 px-0.5 text-[8px] font-bold leading-none text-amber-200"
+                style={{ pointerEvents: 'none', top: 0.22 * size, left: '50%', transform: 'translateX(-50%)' }}
+              >
+                {tile.label}
+              </span>
+            )}
             {card ? (
               <CardFace
                 card={card}

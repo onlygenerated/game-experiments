@@ -158,7 +158,7 @@ stand on. Sized for 30 minutes each.
 
 ### C. Tiles
 
-- [ ] **8. The tile layer.** `TileMap` parallel to `HexBoard`, a `Tile` union,
+- [x] **8. The tile layer.** `TileMap` parallel to `HexBoard`, a `Tile` union,
       rendering underneath cards so a placed card does not hide what it landed
       on. No effects yet — this item is the substrate and its tests.
 - [ ] **9. Bonus tiles: card multipliers.** Double or triple the placed card's
@@ -672,6 +672,91 @@ noticing a first screenshot still looked oversized and tracking it down to a
 stale preview-server port left over from an earlier screenshot run, not a
 real bug.
 
+**Item 8.** `src/rooms/tile.ts` is new: `Tile` is a union of exactly one
+member, `{ kind: 'marker'; label: string }`. Items 9-13 each add a real kind
+(card-multiplier bonus, line-multiplier bonus, blocked, trap, artifact) with
+whatever fields that kind actually needs — guessing those field shapes now
+would be doing those items' design work early, for a shape likely to be
+wrong anyway. `'marker'` exists solely to prove the substrate works: stored,
+retrieved, and rendered under a placed card without disappearing. Nothing
+anywhere reads a tile to change legality or scoring — that is what "no
+effects yet" means, and `isLegalRoomPlacement`/`scoreHexPlacement` are both
+untouched by this item.
+
+`TileMap` is `ReadonlyMap<string, Tile>`, the same sparse-map-keyed-by-hex
+pattern `HexBoard` already uses, with the same pure-update shape
+(`withTile` mirrors `withHexCard`). Per the architecture section, tiles
+"are a second map with the same keys rather than a change to the board
+type" — true here in the literal sense that `hex/board.ts` was not touched
+at all by this item.
+
+The harder call was *where* `TileMap` lives: `Room` or `ExpeditionState`.
+`HexBoard` lives on `ExpeditionState` because it is genuinely dynamic — it
+starts empty every room and fills as cards are placed. A room's tile
+*layout*, by contrast, is part of its hand-authored shape, the same way its
+`exits` are: nothing places or removes a tile during play, at least not
+before item 12 (trap reveal) exists. So `Room` grew a fourth field, `tiles:
+TileMap`, set through `makeRoom`'s new optional fifth parameter
+(`tileEntries: readonly (readonly [Hex, Tile])[] = []`, defaulting to
+`emptyTileMap()` so every existing call site and test kept compiling with
+no changes). `expedition.ts` needed zero changes as a result — a room's
+tiles are just read off `currentRoom(state).tiles` wherever needed, the
+same way its `threshold` already is. If a later item needs *per-instance*
+tile state (a trap's hidden/revealed flag differing expedition to
+expedition), that is a new, separate concern for that item to add — most
+naturally as its own field on `ExpeditionState` keyed by cell, not by
+redesigning this substrate, since "which cells have traps" (static, on
+`Room`) and "which traps have been sprung this run" (dynamic, per
+expedition) are different facts.
+
+`makeRoom` validates tile placement the same way it already validates exit
+placement: throws if a tile's coordinate is not one of the room's own
+cells. Did not add the equivalent of `isRoomBorder` checking for tiles —
+unlike an exit, there is no reason a tile must sit on the border, and nothing
+in the item's text suggests one.
+
+One `'marker'` tile was placed in `ROUND_ROOM` at `(1,0)`, labelled `'T8'`,
+purely so the substrate is visible and screenshot-able in the actual running
+app rather than only provable in a test file — the same reasoning item 4
+used for its dev-preview page, except this time the real room shape carries
+it directly since `RoomRunPage` already exists. Documented in `shapes.ts` as
+a placeholder to be replaced by a real tile once items 9-13 land. `(1,0)` was
+chosen deliberately: it is the second cell in the smoke test's existing
+placement sequence (`(2,0)` → `(1,0)` → `(0,0)`), so extending that sequence
+to check the tile survives a card landing on it needed no new sequence to
+work out.
+
+The one real design problem, not just a placeholder number: where on the hex
+to put the badge. A first attempt pinned it to the top-left corner
+(`left: 4px, top: 6px`) and it rendered as *nothing* — invisible, not just
+faint. Root cause, found by screenshotting the empty tile in isolation and
+seeing a blank hex: the cell's `clipPath` (`POINTY_TOP`, a hexagon whose top
+and bottom vertices are single points) clips its full subtree, and a
+pointy-top hex has almost zero width near its corners — a badge offset to
+the side at a shallow y-coordinate sits entirely outside the clipped path
+and never paints. The centred `CardFace` gets away with looking
+unclipped only because it is narrow enough (60% of the hex's *widest* point)
+to just barely still fit within the hex's tapered width even near where the
+card's own corners land — a coincidence of the existing card-sizing formula,
+not something a fixed-offset corner badge shares. Fix: centre the badge
+horizontally (`left: 50%, transform: translateX(-50%)`) and place it in the
+hex's untouched top sliver, above where the card's bounding box begins
+(`top: 0.22 * size`, comfortably above the card's own top edge at
+`(2*size - 1.35*size)/2 ≈ 0.325 * size` from the top) — measured against the
+actual `CardFace` sizing formula `RoomBoardView` already uses for cards, not
+guessed. Verified with a screenshot crop of just that cell, both before and
+after a card lands on it (see results log).
+
+Added `data-room-tile={tile?.kind}` to each cell div, mirroring
+`data-room-border`/`data-room-exit`/`data-room-occupied`, so the smoke test
+can assert on tile presence without screen-scraping the badge text.
+
+**Not done this item, on purpose.** No tile blocks placement (item 11's
+job), no tile changes a score (items 9-10's), no tile hides itself
+(item 12's "hidden before" reveal semantics). `HOURGLASS_ROOM` got no tile —
+one room proving the substrate is enough; adding a second would be testing
+the same code path twice for no new information.
+
 ## Results log
 
 **Item 1.** `npm test` 203/203 (was 208 — 5 tests removed, all for formulas
@@ -974,3 +1059,32 @@ regression — resolved by moving to a fresh port, not by touching the fix.)
 No video — item 7 is a room-transition state machine, not movement or
 feel; the four-screenshot sequence is the equivalent evidence for a
 transition rather than a motion.
+
+**Item 8.** `npm test` 279/279 (was 269 — 10 new in `tile.test.ts`: the
+empty-map/withTile/tileAt/isTiled substrate, `tileMapFrom`, and
+`Room.tiles` via `makeRoom` including the out-of-room rejection and a tile
+coexisting with an exit on the same cell). `npx tsc -b --noEmit` clean.
+`npm run smoke` 42/42 (was 39 — 3 new: the marker tile renders at `(1,0)`
+before anything is placed there, it is still present after a card lands on
+that same cell, and the card itself is also there — on top, not instead of).
+
+Drove `RoomRunPage` in headless Chromium via `tools/browser.mjs` (throwaway
+script, same server-then-screenshot pattern as `smoke.mjs`, run and
+discarded, not committed, using a fresh port per item 7's own note about a
+stale-port false positive):
+
+| screenshot | shows |
+|---|---|
+| fresh Round Room, zoomed to just cell `(1,0)` | the "T8" badge legible near the top of the empty hex |
+| same cell after a card is placed there | the badge still visible above the card (5♣), the card itself unclipped and fully legible below it |
+| full board mid-run | both placed cards (`2♣` on the east exit, `5♣` on the tile cell) with the badge peeking above the second one, exactly the "underneath" effect the item asks for |
+
+One real bug, not just a placeholder: the badge's first position (pinned to
+the top-left corner) rendered as nothing at all — screenshotting the empty
+tile cell in isolation showed a blank hex, not a faint or misplaced badge.
+Traced to the hex's own `clipPath`, which clips its full subtree and leaves
+almost no width near a pointy-top hex's corners; a corner-offset badge sat
+entirely outside the clipped path. Fixed by centring the badge horizontally
+in the hex's untouched top sliver instead — confirmed by re-screenshotting
+the same isolated cell and seeing the badge appear, not by reasoning about
+the CSS alone.
