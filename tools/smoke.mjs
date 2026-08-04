@@ -195,6 +195,12 @@ const roomPanel = () => p.locator('[data-room-panel="Round Room"]');
 ok('room starts not reached', (await roomPanel().locator('[data-room-reach]').getAttribute('data-room-reach')) === 'false');
 ok('leave is disabled before clearing', await p.locator('[data-room-leave]').isDisabled());
 
+// Item 14: the inventory substrate. Nothing in the game grants an item yet
+// (that starts at item 15), so the panel reads "none" for the whole run —
+// this only proves the substrate is wired into the page, not that it does
+// anything, matching the item's own "no items yet" scope.
+ok('inventory starts empty', (await p.locator('[data-expedition-items]').innerText()) === 'Items: none');
+
 // The room also carries a real 'blocked' tile at (1,-1) (item 11) — rubble
 // that can never be placed on. Checked before any real placement happens, so
 // the check doesn't depend on timing elsewhere in the sequence. `placeInRoom`
@@ -343,6 +349,7 @@ ok(
 );
 ok('placement budget is fresh in the new room', (await text()).includes('placements left 12'));
 ok('the new room\'s board has no cards on it', (await p.locator('[data-room="Hourglass"] .card-face').count()) === 0);
+ok('inventory still reads none after a room transition', (await p.locator('[data-expedition-items]').innerText()) === 'Items: none');
 
 await p.locator('button:has-text("Back to the board")').click();
 await p.waitForTimeout(300);

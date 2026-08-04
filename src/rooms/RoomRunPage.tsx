@@ -11,6 +11,7 @@ import {
   placeInRoom,
   type ExpeditionState,
 } from './expedition';
+import { itemLabel } from './item';
 import { RoomBoardView } from './RoomBoardView';
 import { roomExits } from './room';
 import { ROOM_SHAPES } from './shapes';
@@ -64,6 +65,9 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
           Room {state.roomIndex + 1} / {state.rooms.length} — {room.name}
         </span>
         <span className="text-[11px] text-neutral-500">Running total {state.runningTotal}</span>
+        <span data-expedition-items className="text-[11px] text-neutral-500">
+          Items: {state.items.length ? state.items.map(itemLabel).join(', ') : 'none'}
+        </span>
         <button
           onClick={restart}
           className="rounded border border-neutral-700 px-3 py-1.5 text-sm font-semibold text-neutral-300 active:bg-neutral-800 min-[1280px]:hover:bg-neutral-800"

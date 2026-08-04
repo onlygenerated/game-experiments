@@ -52,6 +52,18 @@
  * trap costs and before the end-of-turn refill draw, so a newly collected
  * artifact is exactly as eligible to be drawn into hand this turn as any
  * other deck card would be.
+ *
+ * Item 14 adds `ExpeditionState.items` — the inventory. Unlike
+ * `revealedTraps`/`collectedArtifacts`, it does *not* reset on a room
+ * transition: ROOMS.md's own "what persists between rooms" table lists
+ * "deck, inventory, running total" as the survivors, placement budget as the
+ * one thing that's per-room. Every `cfg` this file reads on `state`'s behalf
+ * — the legality check and the scorer — now goes through
+ * `applyItemEffects(cfg, state.items)` (`item.ts`) first, the single hook an
+ * item's effect on the room's rules applies through. No item kind does
+ * anything yet, so this is the identity transform everywhere it's called;
+ * see `item.ts`'s header for why the hook is shaped as a `Config` transform
+ * rather than a score post-processor like `applyTileEffects`.
  */
 import { CONFIG, type Config } from '../config';
 import { draw, shuffledDeck, type Card } from '../deck';
@@ -65,6 +77,7 @@ import {
   type HexPlacementScore,
 } from '../hex/board';
 import { hexKey, type Hex } from '../hex/coords';
+import { applyItemEffects, type Item } from './item';
 import {
   artifactCellsNear,
   isInRoom,
@@ -109,6 +122,8 @@ export interface ExpeditionState {
   revealedTraps: ReadonlySet<string>;
   /** Artifact cells (item 13) already joined to the deck in the current room, by hex key. Resets every room. */
   collectedArtifacts: ReadonlySet<string>;
+  /** Carried items (item 14). Survives room transitions — see the header comment. */
+  items: Item[];
   log: ExpeditionLogEntry[];
   status: ExpeditionStatus;
 }
@@ -127,7 +142,12 @@ export function isLegalRoomPlacement(state: ExpeditionState, h: Hex, cfg: Config
   if (isHexOccupied(state.board, h)) return false;
   const kind = tileAt(room.tiles, h)?.kind;
   if (kind === 'blocked' || kind === 'artifact') return false;
-  if (cfg.mechanics.requireAdjacency && !isHexBoardEmpty(state.board) && !hasHexNeighbor(state.board, h)) {
+  const effectiveCfg = applyItemEffects(cfg, state.items);
+  if (
+    effectiveCfg.mechanics.requireAdjacency &&
+    !isHexBoardEmpty(state.board) &&
+    !hasHexNeighbor(state.board, h)
+  ) {
     return false;
   }
   return true;
@@ -174,9 +194,15 @@ export function newExpedition(
     placementsLeft: cfg.roomPlacementBudget,
     revealedTraps: new Set(),
     collectedArtifacts: new Set(),
+    items: [],
     log: [],
     status: 'playing',
   };
+}
+
+/** Adds `item` to the expedition's inventory. Pure, same shape as `withHexCard`/`withTile`. */
+export function addItem(state: ExpeditionState, item: Item): ExpeditionState {
+  return { ...state, items: [...state.items, item] };
 }
 
 /**
@@ -212,7 +238,8 @@ export function placeInRoom(
   if (!isLegalRoomPlacement(state, h, cfg)) return state;
 
   const room = currentRoom(state);
-  const result = scoreRoomPlacement(state.board, h, card, room.tiles, cfg);
+  const effectiveCfg = applyItemEffects(cfg, state.items);
+  const result = scoreRoomPlacement(state.board, h, card, room.tiles, effectiveCfg);
   const board = withHexCard(state.board, h, card);
   const score = state.score + result.score;
 

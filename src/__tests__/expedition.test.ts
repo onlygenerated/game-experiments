@@ -3,6 +3,7 @@ import { CONFIG, type Config } from '../config';
 import { ORIGIN, hexKey, hexesWithinRadius, type Hex } from '../hex/coords';
 import { makeRoom, type Room } from '../rooms/room';
 import {
+  addItem,
   currentEndState,
   currentRoom,
   isLegalRoomPlacement,
@@ -11,6 +12,7 @@ import {
   newExpedition,
   placeInRoom,
 } from '../rooms/expedition';
+import type { Item } from '../rooms/item';
 
 // A small room, threshold 0, so "cleared" reduces to "reached the exit" and
 // every test can drive it deterministically without predicting a lens score.
@@ -380,5 +382,38 @@ describe('failure — running out without clearing', () => {
     state = placeInRoom(state, 0, { q: -1, r: 0 }, c);
     expect(state.status).toBe('lost');
     expect(leaveRoom(state, c)).toBe(state);
+  });
+});
+
+describe('inventory (item 14)', () => {
+  const TEST_ITEM: Item = { kind: 'placeholder', label: 'Test Item' };
+
+  it('starts empty', () => {
+    const state = newExpedition('exp-1', [SMALL_ROOM], cfg());
+    expect(state.items).toEqual([]);
+  });
+
+  it('addItem appends without mutating the original state', () => {
+    const state = newExpedition('exp-1', [SMALL_ROOM], cfg());
+    const next = addItem(state, TEST_ITEM);
+    expect(next).not.toBe(state);
+    expect(next.items).toEqual([TEST_ITEM]);
+    expect(state.items).toEqual([]);
+  });
+
+  it('a placeholder item changes nothing about a placement — same score as with no items', () => {
+    const c = cfg({ roomPlacementBudget: 5 });
+    const bare = placeInRoom(newExpedition('exp-1', [SMALL_ROOM], c), 0, ORIGIN, c);
+    const withItem = placeInRoom(addItem(newExpedition('exp-1', [SMALL_ROOM], c), TEST_ITEM), 0, ORIGIN, c);
+    expect(withItem.score).toBe(bare.score);
+  });
+
+  it('survives a room transition — unlike revealedTraps/collectedArtifacts, inventory is not per-room', () => {
+    const c = cfg({ roomPlacementBudget: 5 });
+    let state = addItem(newExpedition('exp-1', [SMALL_ROOM, SECOND_ROOM], c), TEST_ITEM);
+    state = placeInRoom(state, 0, EXIT, c);
+    const next = leaveRoom(state, c);
+    expect(next.roomIndex).toBe(1);
+    expect(next.items).toEqual([TEST_ITEM]);
   });
 });

@@ -228,7 +228,7 @@ a shallow one — it still never walks to the door.
 
 ### D. What you carry
 
-- [ ] **14. Inventory and the effect hook.** An items list on the Expedition and
+- [x] **14. Inventory and the effect hook.** An items list on the Expedition and
       one place where item effects apply. No items yet — substrate and tests.
 - [ ] **15. Item: a second counter.** Grants a counting method for the rest of
       the run, using item 2's machinery. The clearest expression of "carried
@@ -1518,6 +1518,70 @@ tune by eye, and this is exactly the texture a later calibration pass (item
 22, or a dedicated look at `mech-lock-cash`) should use, not something to
 paper over here.
 
+**Item 14.** New file `src/rooms/item.ts`: `Item` is a union of exactly one
+member, `{ kind: 'placeholder'; label: string }` — the same "one proof-of-
+substrate kind, real kinds arrive with the items that need them" shape item
+8's header used for `Tile` before items 9-13 gave it real kinds. No render
+concern parallels item 8's badge-placement problem here, since an item lives
+in the inventory, not on a board cell.
+
+The harder call was what shape the "one place where item effects apply"
+hook should take. `applyTileEffects` (`scoring.ts`) is a score
+post-processor because a tile's effect *is* a score change. The
+pre-declared decision table says the opposite for items — "tools that
+change rules (sight, movement, counting), not stacked score multipliers" —
+and item 15's own text ("grants a counting method... using item 2's
+machinery") points specifically at `Config.secondLensId`, a rules field, not
+a score delta. So `applyItemEffects(cfg: Config, items: readonly Item[]):
+Config` is a `Config` transform, not a placement post-processor: given the
+expedition's inventory, it returns the config actually in force. With no
+real kind yet this is the identity transform (`items.reduce` over a
+`switch` with one arm that returns its accumulator unchanged), proven in
+`item.test.ts` by reference equality (`applyItemEffects(CONFIG, [])`
+and `applyItemEffects(CONFIG, [placeholder, placeholder])` both `toBe`
+the same `CONFIG` object, not just deep-equal).
+
+`ExpeditionState` gained `items: Item[]`, initialised to `[]` in
+`newExpedition`. The one design decision with real teeth: unlike
+`revealedTraps`/`collectedArtifacts`, `items` is *not* reset in `leaveRoom`
+— the pre-declared decision table is explicit that "deck, inventory,
+running total" are what persists between rooms, placement budget the one
+per-room thing. Since `leaveRoom`'s room-transition object literal already
+builds off `{...state, ...}` and simply never mentions `items`, this needed
+no new code, only *not* adding a reset the way `revealedTraps: new Set()`
+got one — tested directly in `expedition.test.ts` ("survives a room
+transition") rather than trusted to fall out of the diff by inspection.
+
+`addItem(state, item): ExpeditionState` is the only way to add to
+inventory — a pure append, same shape as `withHexCard`/`withTile`. Nothing
+in this item grants one during play (that starts at item 15), so it exists
+purely as the substrate's own write path and its test harness's way of
+constructing a non-empty inventory to prove the hook is actually wired
+through, not just present and unused.
+
+Wiring: every site in `expedition.ts` that already took a bare `cfg` now
+computes `applyItemEffects(cfg, state.items)` before using it —
+`isLegalRoomPlacement`'s adjacency check and `placeInRoom`'s call into
+`scoreRoomPlacement`. Both functions already receive `state`, so this
+needed no new parameters anywhere, and since `applyItemEffects` returns the
+identical `cfg` reference whenever `items` is empty, every existing test
+and every existing ruleset behaves exactly as before — confirmed by the
+full suite passing unchanged (342/342, up from 335 by exactly the 7 new
+tests this item added) rather than assumed from the identity-transform
+argument alone.
+
+`RoomRunPage` grew one line, `Items: {list or 'none'}`
+(`data-expedition-items`), next to the running-total label — visible and
+screenshotable per the standing rule, the same reasoning item 4's dev
+preview and item 8's marker tile used, even though nothing in this item can
+make it read anything but "none" during actual play. Extended the smoke
+test at both ends of the existing room sequence (right after the page
+opens, and again after the room transition) to assert exactly that text,
+rather than skipping smoke coverage on the grounds that "nothing happens
+yet" — a substrate that silently fails to render is exactly the kind of
+regression a later item's own smoke assertions would misattribute to
+itself.
+
 ## Results log
 
 **Item 1.** `npm test` 203/203 (was 208 — 5 tests removed, all for formulas
@@ -2231,3 +2295,26 @@ the `d`/`dm` computation feeding them).
 No screenshots and no video — like 13b/13c, this item changed a measurement
 tool only; `git diff --stat` for the whole item shows exactly one file,
 `tools/probe.test.ts`, so there is nothing rendered to point a browser at.
+
+**Item 14.** `npm test` 342/342 (was 335 — 7 new: 3 in `item.test.ts` for
+`itemLabel`/`applyItemEffects`, 4 in a new `inventory (item 14)` block in
+`expedition.test.ts` covering `addItem`, the empty-inventory default, the
+same-score proof, and cross-room persistence). `npx tsc -b --noEmit` clean.
+`npm run smoke` 65/65 (was 63), the two new checks asserting `Items: none`
+right after the Rooms page opens and again after the room transition to the
+Hourglass.
+
+Screenshot taken via a throwaway script against `tools/browser.mjs` (same
+convention as prior UI items — run and discarded, not committed): the
+Rooms page's header row now reads `Room 1 / 2 — Round Room · Running total
+0 · Items: none`, confirming the inventory line renders in the real build,
+not just in a test's DOM assertions. No video — this item added no
+movement or feel, only a static label and an internal hook nothing yet
+calls with a real effect.
+
+No new numbers to report — this item is pure substrate. `applyItemEffects`
+returning the identical `cfg` reference (not just an equal one) with zero
+or more placeholder items is the whole of what item 15 needs verified
+before it can safely assume "no items" and "some inert items" behave
+identically; that guarantee is what the reference-equality assertions in
+`item.test.ts` exist to lock down for whoever writes item 15 next.
