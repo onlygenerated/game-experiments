@@ -344,6 +344,24 @@ describe('scorePlacement', () => {
   });
 });
 
+describe('scorePlacement with a second active counter', () => {
+  it('scores each line under both counters, summed, not just the primary one', () => {
+    // row: 5H JS -> a cribbage fifteen, plus real poker rank chips.
+    const board = place(['5H .. .. .. .. .. ..']);
+    const single = scorePlacement(board, 0, 1, card('JS'), { ...CONFIG, lensId: 'cribbage' });
+    const combo = scorePlacement(board, 0, 1, card('JS'), {
+      ...CONFIG,
+      lensId: 'cribbage',
+      secondLensId: 'poker',
+    });
+
+    // The combo's row line is strictly worth more than cribbage alone — the
+    // poker counter's rank chips are on top of it, not instead of it.
+    expect(combo.rowEval.value).toBeGreaterThan(single.rowEval.value);
+    expect(combo.score).toBeGreaterThan(single.score);
+  });
+});
+
 // --- Category-2 mechanic variants ------------------------------------------
 //
 // Each of these changes the shape of a placement decision rather than the size

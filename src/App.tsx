@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { cellAt, isLineComplete, isOccupied, lineCoords, type PlacementScore } from './board';
 import { hexAt, type HexPlacementScore } from './hex/board';
 import { parseHex } from './hex/coords';
-import { getLens } from './lens';
+import { getScoringLens } from './lens';
 import { useRun, parseGrid } from './useRun';
 import { WIDE_QUERY, useMediaQuery } from './useMediaQuery';
 import { RulesetMenu } from './components/RulesetMenu';
@@ -415,7 +415,7 @@ export default function App() {
             Grid Poker <span className="text-neutral-500">prototype</span>
           </h1>
           <span className="truncate text-[11px] text-neutral-500">
-            {getLens(cfg.lensId).name.toLowerCase()} ·{' '}
+            {getScoringLens(cfg).name.toLowerCase()} ·{' '}
             {cfg.structure === 'hex'
               ? `hex, 3 axes, best ${cfg.hexWindow}`
               : `row + col · ${cfg.lineCap}-card cap`}

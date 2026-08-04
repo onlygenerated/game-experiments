@@ -1,5 +1,5 @@
 import type { Config } from '../config';
-import { getLens, type RuleSection } from '../lens';
+import { getScoringLens, type RuleSection } from '../lens';
 import type { Ruleset } from '../rulesets';
 
 /**
@@ -99,7 +99,7 @@ function structureSections(cfg: Config): RuleSection[] {
 
 export function ScoringPanel({ ruleset, onClose }: { ruleset: Ruleset; onClose: () => void }) {
   const cfg = ruleset.config;
-  const lens = getLens(cfg.lensId);
+  const lens = getScoringLens(cfg);
   const sections = [...lens.rules(cfg), ...structureSections(cfg)];
 
   return (

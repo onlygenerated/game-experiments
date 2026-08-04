@@ -313,6 +313,15 @@ export const RULESETS: Ruleset[] = [
   },
 
   {
+    id: 'combo-cribbage-poker',
+    name: 'Cribbage + Poker',
+    group: 'Counters',
+    blurb:
+      'Two counters active at once. Every line scores under cribbage and poker both, and the placement is worth the sum. Proves the counter-set machinery item 2 introduced; the target below is a placeholder pending item 3, not a claim that the combination is fun.',
+    config: cribbageBase({ secondLensId: 'poker', targetScore: 1571 }),
+  },
+
+  {
     id: 'cribbage-flush3',
     name: 'Cribbage — easy flushes',
     group: 'Cribbage',

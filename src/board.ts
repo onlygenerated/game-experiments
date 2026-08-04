@@ -1,7 +1,7 @@
 import { CONFIG, type Config } from './config';
 import type { Card } from './deck';
 import {
-  getLens,
+  getScoringLens,
   type Lens,
   type LineEval,
   type ScoredLine,
@@ -227,7 +227,7 @@ export function cashCell(
   r: number,
   c: number,
   cfg: Config = CONFIG,
-  lens: Lens = getLens(cfg.lensId),
+  lens: Lens = getScoringLens(cfg),
 ): { board: Board; result: PlacementScore } | null {
   if (!canCash(board, r, c, cfg)) return null;
 
@@ -291,7 +291,7 @@ export function scorePlacement(
   c: number,
   card: Card,
   cfg: Config = CONFIG,
-  lens: Lens = getLens(cfg.lensId),
+  lens: Lens = getScoringLens(cfg),
 ): PlacementScore {
   return scoreCross(withCard(board, r, c, card, cfg), r, c, cfg, lens);
 }
@@ -309,7 +309,7 @@ export function scoreCross(
   r: number,
   c: number,
   cfg: Config = CONFIG,
-  lens: Lens = getLens(cfg.lensId),
+  lens: Lens = getScoringLens(cfg),
   mode: 'place' | 'cash' = 'place',
 ): PlacementScore {
   const next = board;

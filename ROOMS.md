@@ -128,7 +128,7 @@ stand on. Sized for 30 minutes each.
       the log and the existing rulesets' targets to whatever the sum produces
       (they will be wrong; item 3 fixes them properly). Tests updated, not
       deleted.
-- [ ] **2. Multiple counters at once.** An active counter *set* rather than one
+- [x] **2. Multiple counters at once.** An active counter *set* rather than one
       lens. A line's points are the sum across active counters. Ship
       cribbage+poker as a selectable combination and prove in a test that a line
       scoring under both gets both.
@@ -299,6 +299,55 @@ The unused `cascade-flash-mult` CSS rule was deleted. Same collapse in
 `HexBoardView`'s run/window highlighting: the chips-blue/mult-amber `Map`
 became a plain `Set`, one colour.
 
+**Item 2.** Kept `lensId` as the primary counter and added one new field,
+`secondLensId: string` (empty = no second counter), rather than replacing it
+with an array. A pair is what the item actually asks to ship
+("cribbage+poker as a selectable combination"), a fixed field slots straight
+into `setPath`/`getPath`/`normalise`/`matchingPreset` with no new machinery,
+and every one of the 30 existing configs already carries `secondLensId: ''`
+for free through `{...CONFIG, ...over}`. `activeLensIds(cfg)` reads back
+`[lensId]` or `[lensId, secondLensId]`; nothing stops a future item from
+widening it to a real array if a third counter is ever wanted, but nothing
+today asks for one.
+
+The actual combination logic is one new function, `combineLenses(lenses):
+Lens`, in `src/lens/combine.ts`. It returns the input unchanged when there is
+exactly one lens — so `getScoringLens(cfg)` is a strict drop-in replacement
+for every `getLens(cfg.lensId)` call site (`board.ts`, `hex/board.ts`,
+`App.tsx`, `ScoringPanel.tsx`, `SetupPage.tsx`) and no existing ruleset's
+score changes. With more than one lens it sums `.value` across all of them
+for `evaluate`, concatenates `.rules()` sections (each retitled with which
+lens it came from, e.g. "Cribbage — Counting a line"), and prefixes each
+itemised `ScoreItem` label with its lens's name so the preview can still show
+"Cribbage: Fifteen" next to "Poker: High Card" rather than one opaque number.
+This is the whole of the "counter set" the backlog item describes — the grid
+and hex scorers themselves needed zero changes, because they already only
+ever call the lens through one `Lens`-shaped seam.
+
+`normalise` gained one rule: a `secondLensId` equal to `lensId` collapses back
+to `''`, since scoring a line under the same counter twice would just double
+it for no reason and isn't a real combination worth offering. Setup's
+lens-specific fields (`cribbage.*`, `partialHands.*`) now show whenever their
+lens is *either* slot (`usesLens(cfg, id)`), so picking cribbage as a second
+counter surfaces its settings even when poker is primary.
+
+Fixed a leftover bug from item 1 while in the file: `setup.ts` still had a
+`cribbage.multPerPoint` field wired to a Setup-screen slider, but item 1
+deleted `Config.cribbage.multPerPoint` entirely — the slider was moving a
+property that silently vanished into nothing (`setPath` will happily write an
+arbitrary key onto an object; the type system never caught it because `Field.path`
+is just a string). Deleted the dead field rather than leaving a control that
+does nothing.
+
+Shipped the combination as `combo-cribbage-poker` ("Cribbage + Poker") in a
+new "Counters" ruleset group, not just as a reachable-but-unlisted Setup
+combination — the item says "ship... as a selectable combination", and a
+combination nobody can find from the ruleset menu is not really shipped. Its
+`targetScore` (1571) is a placeholder from the same throwaway-greedy-script
+method item 1 used for its 30 recomputed targets (20 seeds, median, script
+run and discarded) — explicitly not a claim about whether the combination is
+well-tuned, exactly like every other number in that table until item 3.
+
 ## Results log
 
 **Item 1.** `npm test` 203/203 (was 208 — 5 tests removed, all for formulas
@@ -353,3 +402,31 @@ These are placeholders, not calibration — item 3 rebuilds the probe
 (reach pressure, spread, clear rate) and recalibrates for real. None of
 this speaks to the room-shape questions the mode is actually being built
 to answer.
+
+**Item 2.** `npm test` 215/215 (203 from item 1 + 12 new: 8 in the new
+`lens.test.ts` for `combineLenses` / `activeLensIds` / `getScoringLens`, 1 in
+`board.test.ts` proving `scorePlacement` under a second counter scores
+strictly more than the primary counter alone, 2 in `setup.test.ts`'s
+`normalise` for the identical-second-counter dedup, 1 in `setup.test.ts`'s
+`visibleFields` for a lens's fields showing up when it's the *second* counter
+rather than the primary). `npx tsc -b --noEmit` clean. `npm run smoke` 19/19
+— extended with a run through the
+combo preset: select "Cribbage + Poker" from the Setup screen's preset
+dropdown, start it, and check the header names both counters, so the smoke
+suite now has an end-to-end path proving the combination reaches a real run
+and not just the setup form.
+
+Drove the combo ruleset in headless Chromium via `tools/browser.mjs`:
+screenshots of the Setup screen with the preset selected, the live board, a
+hover preview mid-placement, the score log after placing, and the Scoring
+panel. The preview screenshot shows the row line itemised as "Cribbage: Cards
+(2)" (6) + "Poker: High Card" (5) + "Poker: Ranks (2)" (8) = 19, and the
+placed-card log confirms the bank matches (19 row + 9 col = 28) — the
+line-level proof that a line scoring under both counters gets both, not
+whichever is larger. The Scoring panel shows both lenses' rule sections back
+to back, each still legible as its own ruleset. No video — this item changed
+what a line is worth, not movement or feel.
+
+Median greedy score for `combo-cribbage-poker` over 20 seeds: 1571 (used as
+its placeholder `targetScore`, same throwaway-script method as item 1's
+table — not a probe measurement).

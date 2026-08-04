@@ -154,9 +154,15 @@ await p.waitForTimeout(400);
 await p.locator('button:has-text("Setup"):visible').first().click();
 await p.waitForTimeout(400);
 ok('setup page opens', (await text()).includes('Game setup'));
+
+// Two counters at once: picking the combo preset should carry both lenses
+// through into the actual run, not just the setup form.
+await p.locator('select').selectOption({ label: 'Cribbage + Poker' });
+await p.waitForTimeout(200);
 await p.locator('button:has-text("Start this game")').click();
 await p.waitForTimeout(600);
 ok('setup starts a run', (await p.locator('[data-cell],[data-hex]').count()) > 0);
+ok('combo preset scores under both counters', (await text()).toLowerCase().includes('cribbage + poker'));
 
 await p.screenshot({ path: `${SP}/smoke-final.png` });
 

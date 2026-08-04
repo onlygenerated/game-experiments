@@ -61,6 +61,16 @@ describe('normalise', () => {
     expect(both.mechanics.payOnCompleteOnly).toBe(false);
   });
 
+  it('drops a second counter identical to the primary one', () => {
+    const same = normalise({ ...CONFIG, lensId: 'cribbage', secondLensId: 'cribbage' });
+    expect(same.secondLensId).toBe('');
+  });
+
+  it('keeps a second counter that actually differs from the primary one', () => {
+    const combo = normalise({ ...CONFIG, lensId: 'cribbage', secondLensId: 'poker' });
+    expect(combo.secondLensId).toBe('poker');
+  });
+
   it('is idempotent', () => {
     for (const rs of RULESETS) {
       const once = normalise(rs.config);
@@ -148,5 +158,11 @@ describe('visibleFields', () => {
 
   it('hides the discard size when there is no hand to discard from', () => {
     expect(paths({ ...CONFIG, handSize: 1 })).not.toContain('maxDiscardSelection');
+  });
+
+  it('shows a lens-specific field when that lens is only the second counter', () => {
+    const comboPaths = paths({ ...CONFIG, lensId: 'poker', secondLensId: 'cribbage' });
+    expect(comboPaths).toContain('cribbage.flushMin');
+    expect(comboPaths).toContain('partialHands.enabled');
   });
 });

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { CONFIG, type Config, type HandName } from '../config';
 import { RANK_LABEL } from '../deck';
-import { getLens } from '../lens';
+import { getScoringLens } from '../lens';
 import { DEFAULT_RULESET, getRuleset, rulesetGroups, type Ruleset } from '../rulesets';
 import { METRICS } from '../metrics.generated';
 import {
@@ -194,7 +194,7 @@ export function SetupPage({
         id: 'custom',
         name: 'Custom setup',
         group: 'Custom',
-        blurb: `A hand-built ruleset: ${getLens(cfg.lensId).name.toLowerCase()} scoring on a ${
+        blurb: `A hand-built ruleset: ${getScoringLens(cfg).name.toLowerCase()} scoring on a ${
           cfg.structure === 'hex' ? 'hex board' : `${cfg.gridSize}×${cfg.gridSize} grid`
         }. The target is hand-picked rather than calibrated.`,
         config: cfg,
@@ -262,7 +262,7 @@ export function SetupPage({
           );
         })}
 
-        {cfg.lensId === 'poker' && (
+        {(cfg.lensId === 'poker' || cfg.secondLensId === 'poker') && (
           <div>
             <button
               onClick={() => setAdvanced((v) => !v)}

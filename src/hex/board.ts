@@ -1,6 +1,6 @@
 import { CONFIG, type Config } from '../config';
 import type { Card } from '../deck';
-import { getLens, type Lens, type LineEval, type ScoredLine, type ScoredPlacement } from '../lens';
+import { getScoringLens, type Lens, type LineEval, type ScoredLine, type ScoredPlacement } from '../lens';
 import {
   hexAdd,
   hexDistance,
@@ -154,7 +154,7 @@ export function scoreHexPlacement(
   h: Hex,
   card: Card,
   cfg: Config = CONFIG,
-  lens: Lens = getLens(cfg.lensId),
+  lens: Lens = getScoringLens(cfg),
 ): HexPlacementScore {
   const next = withHexCard(board, h, card);
 

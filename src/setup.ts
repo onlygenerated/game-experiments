@@ -45,6 +45,8 @@ export interface FieldGroup {
 
 const isGrid = (c: Config) => c.structure === 'grid';
 const isHex = (c: Config) => c.structure === 'hex';
+/** Whether `id` is one of this config's active counters, primary or second. */
+const usesLens = (c: Config, id: string) => c.lensId === id || c.secondLensId === id;
 
 export const GROUPS: FieldGroup[] = [
   {
@@ -115,12 +117,22 @@ export const GROUPS: FieldGroup[] = [
         help: 'The single biggest lever measured. Poker scores one best hand per line; cribbage counts fifteens, pairs, runs and flushes additively.',
       },
       {
+        path: 'secondLensId',
+        label: 'Second counter',
+        kind: 'enum',
+        options: [
+          { value: '', label: 'None' },
+          ...LENSES.map((l) => ({ value: l.id, label: l.name })),
+        ],
+        help: 'Adds a second active counter. A line scoring under both gets both, summed — not multiplied.',
+      },
+      {
         path: 'cribbage.chipsPerPoint',
         label: 'Chips per point',
         kind: 'number',
         min: 1,
         max: 20,
-        applies: (c) => c.lensId === 'cribbage',
+        applies: (c) => usesLens(c, 'cribbage'),
       },
       {
         path: 'cribbage.baseChipsPerCard',
@@ -128,16 +140,8 @@ export const GROUPS: FieldGroup[] = [
         kind: 'number',
         min: 0,
         max: 10,
-        applies: (c) => c.lensId === 'cribbage',
+        applies: (c) => usesLens(c, 'cribbage'),
         help: 'Zero means a line that counts nothing scores nothing, so a placement can be wasted.',
-      },
-      {
-        path: 'cribbage.multPerPoint',
-        label: 'Points per +1 mult',
-        kind: 'number',
-        min: 1,
-        max: 10,
-        applies: (c) => c.lensId === 'cribbage',
       },
       {
         path: 'cribbage.flushMin',
@@ -145,13 +149,13 @@ export const GROUPS: FieldGroup[] = [
         kind: 'number',
         min: 2,
         max: 7,
-        applies: (c) => c.lensId === 'cribbage',
+        applies: (c) => usesLens(c, 'cribbage'),
       },
       {
         path: 'partialHands.enabled',
         label: 'Partial straights and flushes count',
         kind: 'bool',
-        applies: (c) => c.lensId === 'poker',
+        applies: (c) => usesLens(c, 'poker'),
         help: 'The PRD open question. Lets a short straight or flush score at a reduced rate.',
       },
       {
@@ -161,7 +165,7 @@ export const GROUPS: FieldGroup[] = [
         min: 0,
         max: 1,
         step: 0.05,
-        applies: (c) => c.lensId === 'poker' && c.partialHands.enabled,
+        applies: (c) => usesLens(c, 'poker') && c.partialHands.enabled,
       },
       {
         path: 'partialHands.scaleByLength.4',
@@ -170,7 +174,7 @@ export const GROUPS: FieldGroup[] = [
         min: 0,
         max: 1,
         step: 0.05,
-        applies: (c) => c.lensId === 'poker' && c.partialHands.enabled,
+        applies: (c) => usesLens(c, 'poker') && c.partialHands.enabled,
       },
     ],
   },
@@ -285,6 +289,10 @@ export function normalise(cfg: Config): Config {
   // the precedence explicit beats leaving a setting on screen that does
   // nothing because another setting outranks it.
   if (out.mechanics.lockAndCash) out.mechanics.payOnCompleteOnly = false;
+
+  // A second counter identical to the first would just double the score for
+  // no reason — not a real combination, so it is not offered as one.
+  if (out.secondLensId === out.lensId) out.secondLensId = '';
 
   return out;
 }

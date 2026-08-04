@@ -41,8 +41,14 @@ export interface Config {
 
   hands: Record<HandName, HandEntry>;
 
-  /** Which scoring lens converts a line of cards into chips or mult. */
+  /** Which scoring lens converts a line of cards into points. */
   lensId: string;
+  /**
+   * A second active counter, on top of `lensId`. A line's points are the sum
+   * across every active counter — a line that scores under both cribbage and
+   * poker gets both. Empty string means no second counter.
+   */
+  secondLensId: string;
 
   /** Board topology. 'grid' is the square board; 'hex' is the sprawl. */
   structure: 'grid' | 'hex';
@@ -155,6 +161,7 @@ export const CONFIG: Config = {
   maxDiscardSelection: 5,
 
   lensId: 'poker',
+  secondLensId: '',
   startWithAnchor: true,
   mechanics: {
     axisMode: 'split',
