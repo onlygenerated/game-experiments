@@ -4,6 +4,7 @@ import { CONFIG } from '../config';
 import { cardLabel } from '../deck';
 import { hexKey, type Hex } from '../hex/coords';
 import {
+  addItem,
   currentEndState,
   currentRoom,
   leaveRoom,
@@ -11,7 +12,7 @@ import {
   placeInRoom,
   type ExpeditionState,
 } from './expedition';
-import { itemLabel } from './item';
+import { itemLabel, type Item } from './item';
 import { RoomBoardView } from './RoomBoardView';
 import { roomExits } from './room';
 import { ROOM_SHAPES } from './shapes';
@@ -57,6 +58,23 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
     setSelected(null);
   }
 
+  // Item 15's real acquisition path (a pickup found in a room) is not built
+  // yet — nothing in the backlog through item 18 specifies one, and building
+  // it here would be doing a later item's design work early for a mechanic
+  // this item's own text never asks for. This button is the same kind of
+  // stand-in item 4's dev-preview page and item 5/6's click-to-toggle
+  // structure were before the real thing existed: it exists so the effect —
+  // a carried item changing what a placement scores, via item 2's own
+  // counter-combining machinery — is visible and drivable in the running
+  // app, not just provable in a test file.
+  const SECOND_COUNTER: Item = { kind: 'secondCounter', lensId: 'cribbage' };
+  const carryingSecondCounter = state.items.some(
+    (it) => it.kind === 'secondCounter' && it.lensId === SECOND_COUNTER.lensId,
+  );
+  function pickUpSecondCounter() {
+    setState((s) => addItem(s, SECOND_COUNTER));
+  }
+
   return (
     <div className="mx-auto w-full max-w-5xl p-3 min-[1280px]:p-4">
       <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -68,6 +86,14 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
         <span data-expedition-items className="text-[11px] text-neutral-500">
           Items: {state.items.length ? state.items.map(itemLabel).join(', ') : 'none'}
         </span>
+        <button
+          data-pickup-second-counter
+          onClick={pickUpSecondCounter}
+          disabled={!playing || carryingSecondCounter}
+          className="rounded border border-neutral-700 px-3 py-1.5 text-sm font-semibold text-neutral-300 disabled:cursor-not-allowed disabled:opacity-50 active:bg-neutral-800 min-[1280px]:hover:bg-neutral-800"
+        >
+          Dev: pick up cribbage counter
+        </button>
         <button
           onClick={restart}
           className="rounded border border-neutral-700 px-3 py-1.5 text-sm font-semibold text-neutral-300 active:bg-neutral-800 min-[1280px]:hover:bg-neutral-800"

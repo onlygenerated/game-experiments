@@ -23,16 +23,30 @@
  * with their own `Config` fields once they exist, rather than inventing a
  * second hook. No kind does anything yet, so this item's version of the
  * function is the identity transform.
+ *
+ * Item 15: `'secondCounter'` is the first real kind, and it needed no new
+ * machinery beyond `Config.secondLensId` — item 2's own field for "an active
+ * counter set rather than one lens". `applyItemEffects` just writes the
+ * item's `lensId` into `secondLensId`; `getScoringLens` (already called by
+ * every scoring site downstream of `applyItemEffects`) does the actual
+ * combining, exactly as it already does for a ruleset that ships a combo
+ * from the start (`combo-cribbage-poker`). Mirrors `setup.ts`'s own
+ * `normalise` rule — a second counter identical to the primary one would
+ * just double-count a line for no reason — by leaving `cfg` untouched
+ * (same reference) rather than writing a `secondLensId` equal to `lensId`.
  */
+import { getLens, type LensId } from '../lens';
 import type { Config } from '../config';
 
-export type Item = { kind: 'placeholder'; label: string };
+export type Item = { kind: 'placeholder'; label: string } | { kind: 'secondCounter'; lensId: LensId };
 
 /** The short text an item shows in the inventory list. */
 export function itemLabel(item: Item): string {
   switch (item.kind) {
     case 'placeholder':
       return item.label;
+    case 'secondCounter':
+      return `${getLens(item.lensId).name} (2nd counter)`;
   }
 }
 
@@ -49,6 +63,8 @@ export function applyItemEffects(cfg: Config, items: readonly Item[]): Config {
     switch (item.kind) {
       case 'placeholder':
         return acc;
+      case 'secondCounter':
+        return item.lensId === acc.lensId ? acc : { ...acc, secondLensId: item.lensId };
     }
   }, cfg);
 }

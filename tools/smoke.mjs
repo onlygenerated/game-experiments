@@ -351,6 +351,33 @@ ok('placement budget is fresh in the new room', (await text()).includes('placeme
 ok('the new room\'s board has no cards on it', (await p.locator('[data-room="Hourglass"] .card-face').count()) === 0);
 ok('inventory still reads none after a room transition', (await p.locator('[data-expedition-items]').innerText()) === 'Items: none');
 
+// Item 15: the first item with a real effect — a carried second counter,
+// via item 2's own combining machinery. There is no in-room pickup mechanic
+// yet (nothing in the backlog through item 18 asks for one), so a small dev
+// button stands in for it — see RoomRunPage.tsx's own comment on why. Picked
+// up here, in the fresh Hourglass, then landed on its own north exit: worked
+// out offline against `expedition.ts` directly (same throwaway-script
+// convention as items 7-13, run and discarded, not committed) that the same
+// card at the same cell scores 46 under poker alone (reached, but short of
+// the 50 threshold) and 59 once cribbage is carried too (reached AND past
+// the threshold) — the item is the entire difference between a near-miss and
+// a clear here, not just a bigger number.
+ok('cribbage counter pickup is available', await p.locator('[data-pickup-second-counter]').isEnabled());
+await p.locator('[data-pickup-second-counter]').click();
+await p.waitForTimeout(150);
+ok(
+  'inventory shows the carried counter',
+  (await p.locator('[data-expedition-items]').innerText()) === 'Items: Cribbage (2nd counter)',
+);
+ok('the pickup control disables once carried', await p.locator('[data-pickup-second-counter]').isDisabled());
+
+await placeHand0('0,-4'); // the Hourglass's own north exit
+ok('the carried counter boosted the placement to the expected score', (await text()).includes('scored 59'));
+ok(
+  'the boosted placement alone clears the room — 46 alone would not have',
+  (await p.locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'true',
+);
+
 await p.locator('button:has-text("Back to the board")').click();
 await p.waitForTimeout(300);
 

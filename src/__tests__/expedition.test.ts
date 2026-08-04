@@ -417,3 +417,50 @@ describe('inventory (item 14)', () => {
     expect(next.items).toEqual([TEST_ITEM]);
   });
 });
+
+describe('second counter item (item 15)', () => {
+  // Cribbage alone as the room's counter, so a carried poker second-counter
+  // item is the one thing separating the two runs below.
+  const c = cfg({ roomPlacementBudget: 5, lensId: 'cribbage', secondLensId: '' });
+  const SECOND_COUNTER: Item = { kind: 'secondCounter', lensId: 'poker' };
+
+  it("a carried item's counter scores strictly more than the bare primary lens, via item 2's own combining machinery", () => {
+    // Same seed and room on both sides, so hand[0] is the identical card in
+    // both runs — the only difference is whether the item is carried.
+    const bare = placeInRoom(newExpedition('exp-1', [SMALL_ROOM], c), 0, ORIGIN, c);
+    const withItem = placeInRoom(addItem(newExpedition('exp-1', [SMALL_ROOM], c), SECOND_COUNTER), 0, ORIGIN, c);
+
+    expect(withItem.score).toBeGreaterThan(bare.score);
+    expect(withItem.log[0].card).toEqual(bare.log[0].card);
+  });
+
+  it('does nothing once the room is already scoring under that lens as the primary counter', () => {
+    const primaryPoker = cfg({ roomPlacementBudget: 5, lensId: 'poker', secondLensId: '' });
+    const bare = placeInRoom(newExpedition('exp-1', [SMALL_ROOM], primaryPoker), 0, ORIGIN, primaryPoker);
+    const withItem = placeInRoom(
+      addItem(newExpedition('exp-1', [SMALL_ROOM], primaryPoker), { kind: 'secondCounter', lensId: 'poker' }),
+      0,
+      ORIGIN,
+      primaryPoker,
+    );
+    expect(withItem.score).toBe(bare.score);
+  });
+
+  it('persists across a room transition — the boost still applies in the next room', () => {
+    // SMALL_ROOM's threshold is 0, so reaching the exit clears it regardless
+    // of the item, letting both runs reach an identical, deck-and-hand-intact
+    // start of SECOND_ROOM to compare.
+    const bare = leaveRoom(placeInRoom(newExpedition('exp-1', [SMALL_ROOM, SECOND_ROOM], c), 0, EXIT, c), c);
+    const withItem = leaveRoom(
+      placeInRoom(addItem(newExpedition('exp-1', [SMALL_ROOM, SECOND_ROOM], c), SECOND_COUNTER), 0, EXIT, c),
+      c,
+    );
+    expect(bare.roomIndex).toBe(1);
+    expect(withItem.roomIndex).toBe(1);
+    expect(withItem.hand).toEqual(bare.hand);
+
+    const bareNext = placeInRoom(bare, 0, ORIGIN, c);
+    const withItemNext = placeInRoom(withItem, 0, ORIGIN, c);
+    expect(withItemNext.score).toBeGreaterThan(bareNext.score);
+  });
+});

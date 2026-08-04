@@ -230,7 +230,7 @@ a shallow one — it still never walks to the door.
 
 - [x] **14. Inventory and the effect hook.** An items list on the Expedition and
       one place where item effects apply. No items yet — substrate and tests.
-- [ ] **15. Item: a second counter.** Grants a counting method for the rest of
+- [x] **15. Item: a second counter.** Grants a counting method for the rest of
       the run, using item 2's machinery. The clearest expression of "carried
       items may let you switch or combine scoring methods".
 - [ ] **16. Item: sight.** See the next room's shape, or reveal this room's
@@ -1582,7 +1582,84 @@ yet" — a substrate that silently fails to render is exactly the kind of
 regression a later item's own smoke assertions would misattribute to
 itself.
 
-## Results log
+**Item 15.** The mechanism needed almost nothing new: `Item` gained
+`{ kind: 'secondCounter'; lensId: LensId }`, and `applyItemEffects`'s new
+switch arm just writes `item.lensId` into `Config.secondLensId` —
+`getScoringLens` (already called by every scoring site downstream of
+`applyItemEffects` since item 14 wired the hook through `isLegalRoomPlacement`
+and `placeInRoom`) does the actual combining, via `combineLenses`, exactly as
+it already does for a ruleset that ships a combo from the start
+(`combo-cribbage-poker`). Item 14's own closing note said as much: "that
+guarantee [`applyItemEffects` returning the identical `cfg` reference with
+zero or inert items] is what item 15 needs verified before it can safely
+assume 'no items' and 'some inert items' behave identically" — true here,
+confirmed by the full suite passing unchanged before this item's own new
+tests were added.
+
+Mirrored `setup.ts`'s own `normalise` rule (a `secondLensId` equal to
+`lensId` collapses to `''`, since scoring a line under the same counter
+twice would double it for no reason) rather than reinventing it: if the
+granted `lensId` already matches the room's primary counter, the switch arm
+returns `acc` unchanged (same reference), not a `Config` with
+`secondLensId` set to the same value as `lensId`. This matters concretely
+with only two lenses in the game (`poker`, `cribbage`) — a room whose
+primary counter is already the one the item would grant treats the item as
+a genuine no-op rather than silently duplicating a counter that was already
+active. Two `secondCounter` items carried at once collapse to whichever one
+last wrote a real (non-matching-primary) value — `Config` only has room for
+one second lens (item 2's own single-field design), so a third counter
+was never representable and this item doesn't change that; documented and
+tested (`item.test.ts`) rather than left as an unstated limitation, the same
+way item 2's own log flagged its single-field choice as a real constraint,
+not an oversight.
+
+The harder question was acquisition, and the honest answer is that nothing
+in the backlog specifies one. The item's own text ("Item: a second
+counter... using item 2's machinery") describes the *effect*, not how a
+player comes to carry it, and no item from 15 through 18 mentions a pickup
+mechanism — unlike item 13's artifact, there is no "card sitting on the
+board that joins your [inventory] when your structure connects to it"
+equivalent for items anywhere in this file. Designing one here would be
+doing a future item's (or an unwritten item's) design work early for a
+shape likely to be wrong — the same reasoning item 8/14's own headers gave
+for not guessing at unshipped kinds. So `RoomRunPage` grew a small, clearly
+labelled dev affordance instead — a "Dev: pick up cribbage counter" button
+that calls `addItem` directly — documented in the component itself as a
+stand-in for a real pickup, the same role item 4's "(dev preview)" page and
+item 5/6's click-to-toggle stand-in structure played before the real
+mechanics existed. It grants `{ kind: 'secondCounter', lensId: 'cribbage' }`
+specifically (not a room's own primary lens) because `CONFIG.lensId` is
+`'poker'` — granting `'poker'` again would be the identity no-op case above,
+which proves nothing new happened. The button self-disables once that exact
+item is already carried, so it can't be clicked twice to no further effect
+and read as broken.
+
+The strongest available demonstration turned out to require no contrivance:
+worked out offline (a throwaway `vite-node` script against `expedition.ts`
+directly — a new tool for this convention, since the earlier
+throwaway-script items ran under `vitest`/discarded test files, but the
+project has no compiled-JS entry point to run a plain script against
+TypeScript sources through; `vite-node` was already a dependency, so this
+reused existing tooling rather than adding one — run and discarded, not
+committed) that the same card (the ace of spades already in hand entering
+the Hourglass, per item 13's own log) landing on the Hourglass's own north
+exit scores **46** under poker alone — reached, but short of the room's
+50-point threshold — and **59** once cribbage is carried as a second
+counter — reached *and* past the threshold. The item is not just a bigger
+number here; it is the entire difference between a near-miss and a clear on
+the exact same move. Verified live in the browser, not just offline (see
+results log) — the running app produces the identical 46→59 boost and flips
+`cleared` from `false` to `true` on the same click.
+
+Extended the smoke test past the point item 14 left it (right after
+"inventory still reads none after a room transition", still in the fresh
+Hourglass): clicks the dev pickup button, asserts the inventory line reads
+`Items: Cribbage (2nd counter)` and that the button itself disables, then
+places hand[0] on the room's north exit and asserts both the exact boosted
+score (`scored 59`) and that the room reads `cleared` — the offline 46
+number is referenced in a comment for context but not asserted live, same
+convention items 9/10 used for their own offline-computed "without the
+tile" baseline.
 
 **Item 1.** `npm test` 203/203 (was 208 — 5 tests removed, all for formulas
 that no longer exist: cribbage's mult formula, hex's "mult never below 1",
@@ -2318,3 +2395,52 @@ or more placeholder items is the whole of what item 15 needs verified
 before it can safely assume "no items" and "some inert items" behave
 identically; that guarantee is what the reference-equality assertions in
 `item.test.ts` exist to lock down for whoever writes item 15 next.
+
+**Item 15.** `npm test` 350/350 (was 342 — 8 new: 5 in `item.test.ts`
+covering `applyItemEffects`'s new `secondCounter` arm — grants the lens,
+is the identity transform when it matches the primary, a no-op item
+doesn't clear an earlier grant, mixes harmlessly with placeholder items —
+plus `itemLabel`'s naming; 3 in `expedition.test.ts`'s new "second counter
+item (item 15)" block, driven through `placeInRoom` rather than
+`applyItemEffects` directly — strictly higher score with the item carried
+on an identical card/cell/seed, no effect once the granted lens is already
+the room's primary counter, and the boost still applies after a room
+transition). `npx tsc -b --noEmit` clean. `npm run smoke` 70/70 (was 65 —
+5 new: the dev pickup control is enabled, the inventory line updates to
+"Items: Cribbage (2nd counter)" and the control disables once carried, the
+carried counter boosts the next placement to the exact offline-computed
+score, and that boosted placement alone clears the room).
+
+The exact numbers (seed `rooms-1`, default `CONFIG`, worked out with a
+`vite-node` throwaway script against `expedition.ts` directly — run and
+discarded, not committed, same convention as items 7-13 but a different
+runner since there's no compiled-JS entry point to script against
+otherwise): replaying the established seven-move Round Room sequence
+(`(2,0)` → `(1,0)` → `(0,0)` → `(0,-1)` → `(-1,-1)` → `(-1,0)` → `(0,1)`)
+reproduces item 13's own final score, **407**, byte-for-byte — confirming
+this item touched nothing upstream of itself. Entering the Hourglass with
+that same hand (`AS, KD, 6H, QH, 9H, 6D, artifact-AS`, matching item 7's
+own log), the ace of spades landing on the room's north exit `(0,-4)`
+scores **46** under poker alone (`reached: true, score: 46, scoreMet:
+false, cleared: false` — short of the 50 threshold) and **59** once a
+`secondCounter` item granting cribbage is carried (`reached: true, score:
+59, scoreMet: true, cleared: true`). Same card, same cell, same seed —
+the only variable is the item, and it is the entire difference between a
+near-miss and a clear on that one move, not just a bigger number on an
+already-cleared room the way items 9/10's boosts landed in an
+already-cleared Round Room.
+
+Drove `RoomRunPage` in headless Chromium via `tools/browser.mjs` (throwaway
+script, same server-then-screenshot pattern as `smoke.mjs`, fresh port per
+item 7/8's stale-port note, run and discarded, not committed), racing
+through the established seven-move Round Room sequence and into the fresh
+Hourglass:
+
+| screenshot | shows |
+|---|---|
+| fresh Hourglass | `Items: none`, the dev pickup button enabled, "Not reached" / "Score 0 / 50 (short)" / "Not cleared" |
+| after clicking the pickup button | `Items: Cribbage (2nd counter)`, the button now disabled, room state unchanged (nothing has been placed yet) |
+| after placing A♠ on the north exit | "Reached" / "Score 59 / 50 (met)" / "Cleared", "Leave through exit" lit emerald, and the log line "Last placement: A♠ at 0,-4 scored 59" — matching the offline calculation exactly, not the 46 a bare poker placement would have scored on the identical move |
+
+No video — this item is a scoring effect and an inventory-line update, not
+movement or feel.
