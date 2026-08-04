@@ -338,6 +338,20 @@ ok('the log reports the card gained', (await text()).includes('an artifact joine
 const finalScoreWithArtifact = Number((await text()).match(/Score (\d+) \/ 50/)?.[1] ?? -1);
 ok('final score includes the artifact-triggering placement', finalScoreWithArtifact === finalScore + 61);
 
+// Item 18: temporary vs permanent items. Picked up here, right before
+// leaving Round Room 1 — a room-duration item should read distinctly from a
+// permanent one in the inventory line now, and be gone the moment the
+// transition below fires, proving `leaveRoom` actually strips it rather than
+// the post-transition "Items: none" check just meaning nothing was ever
+// carried (true up through item 17, no longer the case once this runs).
+ok('temporary marker pickup is available', await p.locator('[data-pickup-temp-marker]').isEnabled());
+await p.locator('[data-pickup-temp-marker]').click();
+await p.waitForTimeout(150);
+ok(
+  'inventory shows the room-scoped item tagged distinctly from a permanent one',
+  (await p.locator('[data-expedition-items]').innerText()) === 'Items: Temporary marker (this room only)',
+);
+
 await p.locator('[data-room-leave]').click();
 await p.waitForTimeout(300);
 ok('leaving moves to the next room', (await text()).includes('Room 2 / 2'));
@@ -349,7 +363,10 @@ ok(
 );
 ok('placement budget is fresh in the new room', (await text()).includes('placements left 12'));
 ok('the new room\'s board has no cards on it', (await p.locator('[data-room="Hourglass"] .card-face').count()) === 0);
-ok('inventory still reads none after a room transition', (await p.locator('[data-expedition-items]').innerText()) === 'Items: none');
+ok(
+  'the room-duration item was dropped by the transition, not just never carried',
+  (await p.locator('[data-expedition-items]').innerText()) === 'Items: none',
+);
 
 // Item 15: the first item with a real effect — a carried second counter,
 // via item 2's own combining machinery. There is no in-room pickup mechanic

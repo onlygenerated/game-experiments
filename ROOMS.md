@@ -239,7 +239,7 @@ a shallow one — it still never walks to the door.
 - [x] **17. Item: reach.** Something that helps the spatial condition — place
       one card unconnected, or extend from a second origin. Reach and score are
       the two exit conditions; items should be able to address either.
-- [ ] **18. Temporary versus permanent.** Some bonuses last a room, some last
+- [x] **18. Temporary versus permanent.** Some bonuses last a room, some last
       the expedition. Make the distinction visible in the UI before there are
       enough effects for it to get confusing.
 
@@ -2527,6 +2527,44 @@ effect, not movement or feel in the drag/animation sense; the disconnection
 itself is best shown as a static before/after, which the screenshots above
 already do.
 
+**Item 18.** `npm test` 392/392 (was 382 — 10 new: 5 in `item.test.ts` for
+`itemDuration` (defaults to `'expedition'` for every existing kind, reads
+back an explicit `'room'`, reads back an explicit `'expedition'` the same
+as the default) and `itemLabel`'s new duration tag (no tag for the default
+across all four kinds, `"(this room only)"` appended generically for any
+kind carrying `duration: 'room'`); 5 in a new `temporary vs permanent items
+(item 18)` block in `expedition.test.ts` — a room-duration item stays
+carried and usable up to the moment its room ends, `leaveRoom` drops a
+room-duration item but keeps an expedition-duration one in the very same
+transition, an item with no `duration` field survives exactly like an
+explicit `'expedition'` one (the item 14 case, re-proven under the new
+field), a room-duration item is also dropped on the transition that
+completes the expedition (not just an ordinary room-to-room one), and
+`leaveRoom` does not mutate the pre-leave state's item array). `npx tsc -b
+--noEmit` clean. `npm run smoke` 92/92 (was 90 — 2 new: the temporary-marker
+pickup control and the inventory line reading exactly `Items: Temporary
+marker (this room only)` before the existing Round-Room-1 leave; the
+already-existing post-leave `Items: none` check needed no new assertion to
+prove the drop — reworded its description since, for the first time, it now
+proves something was actually stripped rather than that nothing was ever
+carried).
+
+Drove `RoomRunPage` in headless Chromium via `tools/browser.mjs` (throwaway
+script, same server-then-screenshot pattern as `smoke.mjs`, run and
+discarded, not committed), replaying the item 7-13 placement sequence in a
+fresh Round Room to reach the clearable state, then:
+
+| screenshot | shows |
+|---|---|
+| header after picking up the temporary marker, room still Round Room 1/2 | `Items: Temporary marker (this room only)`, the pickup button itself now disabled |
+| header after leaving through the exit | `Room 2 / 2 — Hourglass`, `Items: none`, the temporary-marker pickup button re-enabled — the item is gone, not just hidden |
+
+The two screenshots side by side are the whole point of this item, the same
+way item 6's near-miss-versus-clear pair was: a room-scoped item reads
+distinctly while carried and is verifiably gone the instant its room ends,
+not a cosmetic label sitting on top of unchanged persistence. No video —
+this is an inventory-lifecycle effect, not movement or feel.
+
 **Item 16.** The backlog item's own text offers an "or" — see the next
 room's shape, or reveal this room's hidden tiles — and gives no reason to
 prefer one. Picked the trap-reveal reading: it reuses a real substrate
@@ -2688,3 +2726,71 @@ inventory line's exact text before and after. Verified live in the browser
 own sight check left in place, right before "Back to the board" — reusing an
 existing empty-board session rather than resetting again, since nothing
 about this item needs a clean inventory, only an empty board.
+
+**Item 18.** The first real question was whether "temporary" belongs to an
+item's *kind* or to the individual carried *instance*. Every item shipped
+through item 17 (`secondCounter`, `sight`, `reachAnchor`) already, in
+practice, lasts the whole expedition — nothing strips any of them at a room
+boundary — and item 14's own test explicitly pins that as tested behaviour
+("survives a room transition — ... inventory is not per-room"). A per-kind
+answer (e.g. "`placeholder` is always room-scoped") would have silently
+broken that test the moment it applied to the `TEST_ITEM` placeholder it
+uses, which is a real signal that duration is a property of the *instance*
+carried, not something implied by `kind` alone — two placeholders with
+different flavour text could plausibly want different durations even today.
+So `Item` gained an **optional** `duration?: 'room' | 'expedition'` field on
+every variant (`item.ts`) rather than a required one or a lookup table keyed
+by kind, and a new `itemDuration(item)` reads it back defaulting to
+`'expedition'` — every item literal in this codebase (and every existing
+test) compiles and behaves exactly as before, since none of them ever set
+it. This is also the reason the field is optional rather than mandatory: a
+mandatory field would have forced every one of the ~25 existing `Item`
+literals across `RoomRunPage.tsx` and the test files to specify
+`duration: 'expedition'` for no behavioural gain, pure churn against files
+items 14-17 already finished.
+
+The second question was what should actually demonstrate a `'room'`
+duration existing, since nothing shipped before this item needs one. Considered
+inventing a fifth item kind with a real rule or score effect, but rejected
+it — item 18's own text is about the temporary/permanent *distinction being
+visible*, not a new bonus, and section D's later items (19+) are where new
+real effects belong per the standing "don't do a later item's design work
+early" reasoning items 8 and 14 both used for their own substrate-only
+kinds. Reused `'placeholder'` instead — already the "prove the plumbing, no
+real effect" kind since item 14 — giving it `duration: 'room'` for the
+`RoomRunPage.tsx` dev-pickup demo (`{ kind: 'placeholder', label:
+'Temporary marker', duration: 'room' }`) rather than adding new machinery
+just to have something to point the mechanism at.
+
+The actual enforcement is one line in `expedition.ts`'s `leaveRoom`:
+`state.items.filter((item) => itemDuration(item) !== 'room')`, applied on
+both the ordinary room-to-room transition and the transition that completes
+the expedition (the item's own text doesn't distinguish the two, and there
+is no reason a room-scoped item should outlive the *last* room any less than
+an earlier one — covered directly in `expedition.test.ts` rather than left
+to be assumed). Placed alongside the existing `board`/`revealedTraps`/
+`collectedArtifacts` resets `leaveRoom` already does for other per-room
+facts, so a room-scoped item's lifetime now reads as one more thing that
+resets there rather than a special case bolted on separately.
+
+Made the visibility change generic rather than tied to the one demo item:
+`itemLabel` (`item.ts`) now appends a literal `"(this room only)"` suffix
+whenever `itemDuration(item)` is `'room'`, for *any* kind, computed as a
+final step after the existing kind-specific switch rather than a parallel
+function — so a future room-scoped `secondCounter` or `sight` (nothing
+stops one) would get the same tag with zero UI changes anywhere, the same
+way item 9's marginal-contribution formula was written once against `Lens`
+and works for every counter without special-casing. Deliberately tags only
+the room-scoped case and leaves the permanent case unmarked (no
+`"(permanent)"` suffix) rather than labelling both symmetrically — every
+existing exact-string smoke and unit-test assertion on a permanent item's
+label (`'Cribbage (2nd counter)'`, `'Sight (reveals traps)'`, etc., items
+15-17's own locked-down text) stays correct unchanged, and the *exception*
+being the one that's marked reads naturally: permanent is the default
+you've had all along, temporary is the thing new enough to flag.
+
+No new `Config` field, no change to `applyItemEffects` — duration is purely
+a lifecycle question `leaveRoom` answers, orthogonal to what an item's
+effect on legality/scoring is (or isn't), so item 15's `secondCounter` arm,
+16's `sight` arm and 17's `reachAnchor` arm in `applyItemEffects` needed
+zero changes.

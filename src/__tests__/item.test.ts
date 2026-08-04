@@ -5,6 +5,7 @@ import {
   consumeReachAnchorItem,
   hasReachAnchorItem,
   hasSightItem,
+  itemDuration,
   itemLabel,
   type Item,
 } from '../rooms/item';
@@ -160,5 +161,36 @@ describe('reach anchor item (item 17)', () => {
       consumeReachAnchorItem(items);
       expect(items).toEqual([REACH_ANCHOR]);
     });
+  });
+});
+
+describe('itemDuration (item 18)', () => {
+  it('defaults to expedition for every existing kind, matching their pre-item-18 behaviour', () => {
+    expect(itemDuration({ kind: 'placeholder', label: 'A' })).toBe('expedition');
+    expect(itemDuration({ kind: 'secondCounter', lensId: 'poker' })).toBe('expedition');
+    expect(itemDuration({ kind: 'sight' })).toBe('expedition');
+    expect(itemDuration({ kind: 'reachAnchor' })).toBe('expedition');
+  });
+
+  it('reads back an explicit room duration', () => {
+    expect(itemDuration({ kind: 'placeholder', label: 'A', duration: 'room' })).toBe('room');
+  });
+
+  it('reads back an explicit expedition duration, same as the default', () => {
+    expect(itemDuration({ kind: 'placeholder', label: 'A', duration: 'expedition' })).toBe('expedition');
+  });
+});
+
+describe('itemLabel duration tag (item 18)', () => {
+  it('adds no tag for the default (expedition) duration, for every kind', () => {
+    expect(itemLabel({ kind: 'placeholder', label: 'A' })).toBe('A');
+    expect(itemLabel({ kind: 'secondCounter', lensId: 'cribbage' })).toBe('Cribbage (2nd counter)');
+    expect(itemLabel({ kind: 'sight' })).toBe('Sight (reveals traps)');
+    expect(itemLabel({ kind: 'reachAnchor' })).toBe('Reach anchor (place one card unconnected)');
+  });
+
+  it('appends "(this room only)" for a room-duration item, generically across kinds', () => {
+    expect(itemLabel({ kind: 'placeholder', label: 'A', duration: 'room' })).toBe('A (this room only)');
+    expect(itemLabel({ kind: 'sight', duration: 'room' })).toBe('Sight (reveals traps) (this room only)');
   });
 });

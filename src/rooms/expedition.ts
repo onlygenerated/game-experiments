@@ -86,6 +86,12 @@
  * after this one can grow from either island with no further help, and
  * `structureReachesExit` (`room.ts`) already credits reach from whichever
  * connected piece finds a door.
+ *
+ * Item 18: `leaveRoom` is the one place `item.ts`'s `itemDuration` is read.
+ * Every item shipped through item 17 defaults to `'expedition'` duration —
+ * untouched here, matching item 14's own "inventory is not per-room" test —
+ * so this only ever drops an item explicitly carrying `duration: 'room'`,
+ * which nothing before item 18 could construct.
  */
 import { CONFIG, type Config } from '../config';
 import { draw, shuffledDeck, type Card } from '../deck';
@@ -104,6 +110,7 @@ import {
   consumeReachAnchorItem,
   hasReachAnchorItem,
   hasSightItem,
+  itemDuration,
   type Item,
 } from './item';
 import {
@@ -151,7 +158,8 @@ export interface ExpeditionState {
   revealedTraps: ReadonlySet<string>;
   /** Artifact cells (item 13) already joined to the deck in the current room, by hex key. Resets every room. */
   collectedArtifacts: ReadonlySet<string>;
-  /** Carried items (item 14). Survives room transitions — see the header comment. */
+  /** Carried items (item 14). Survives room transitions by default; an item
+   * with `duration: 'room'` (item 18) is dropped by `leaveRoom` instead. */
   items: Item[];
   log: ExpeditionLogEntry[];
   status: ExpeditionStatus;
@@ -390,9 +398,14 @@ export function leaveRoom(state: ExpeditionState, cfg: Config = CONFIG): Expedit
 
   const runningTotal = state.runningTotal + state.score;
   const nextIndex = state.roomIndex + 1;
+  // Item 18: a room-scoped item's duration ends the moment its room does —
+  // stripped here, alongside the board/score/trap/artifact reset every other
+  // per-room fact already gets. Anything else (the default) passes through
+  // untouched, exactly item 14's existing "inventory is not per-room" test.
+  const items = state.items.filter((item) => itemDuration(item) !== 'room');
 
   if (nextIndex >= state.rooms.length) {
-    return { ...state, runningTotal, status: 'complete' };
+    return { ...state, runningTotal, items, status: 'complete' };
   }
 
   return settleExpedition(
@@ -405,6 +418,7 @@ export function leaveRoom(state: ExpeditionState, cfg: Config = CONFIG): Expedit
       placementsLeft: cfg.roomPlacementBudget,
       revealedTraps: new Set(),
       collectedArtifacts: new Set(),
+      items,
     },
     cfg,
   );

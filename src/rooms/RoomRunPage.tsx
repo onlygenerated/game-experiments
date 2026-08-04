@@ -93,6 +93,22 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
     setState((s) => addItem(s, { kind: 'reachAnchor' }));
   }
 
+  // Item 18: a room-duration item, same dev-button stand-in reasoning as
+  // 15-17 (no in-room pickup mechanic exists through this item either). It
+  // reuses the 'placeholder' kind rather than a fifth real item kind — item
+  // 18 is about the temporary/permanent distinction being visible, not a new
+  // rule or score effect — so `duration: 'room'` is the only thing setting
+  // it apart from `pickUpSecondCounter` et al. `leaveRoom` strips it from
+  // `state.items` the moment this room ends; the label's own "(this room
+  // only)" tag comes from `itemLabel`, generically, not from this button.
+  const TEMP_MARKER: Item = { kind: 'placeholder', label: 'Temporary marker', duration: 'room' };
+  const carryingTempMarker = state.items.some(
+    (it) => it.kind === 'placeholder' && it.duration === 'room' && it.label === TEMP_MARKER.label,
+  );
+  function pickUpTempMarker() {
+    setState((s) => addItem(s, TEMP_MARKER));
+  }
+
   return (
     <div className="mx-auto w-full max-w-5xl p-3 min-[1280px]:p-4">
       <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -127,6 +143,14 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
           className="rounded border border-neutral-700 px-3 py-1.5 text-sm font-semibold text-neutral-300 disabled:cursor-not-allowed disabled:opacity-50 active:bg-neutral-800 min-[1280px]:hover:bg-neutral-800"
         >
           Dev: pick up reach anchor
+        </button>
+        <button
+          data-pickup-temp-marker
+          onClick={pickUpTempMarker}
+          disabled={!playing || carryingTempMarker}
+          className="rounded border border-neutral-700 px-3 py-1.5 text-sm font-semibold text-neutral-300 disabled:cursor-not-allowed disabled:opacity-50 active:bg-neutral-800 min-[1280px]:hover:bg-neutral-800"
+        >
+          Dev: pick up temporary marker
         </button>
         <button
           onClick={restart}

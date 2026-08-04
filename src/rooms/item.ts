@@ -72,28 +72,61 @@
  * instance the moment a placement actually relies on it, matching "place
  * *one* card unconnected" literally rather than granting a standing rule
  * change for as long as it's carried.
+ *
+ * Item 18: every item shipped so far (15-17) turned out to last the whole
+ * expedition — `secondCounter`/`sight` because their own decisions logs say
+ * so explicitly, `reachAnchor` because nothing strips it at a room boundary,
+ * only on use. So there is nothing in this codebase today that actually
+ * *is* room-scoped, and item 14's own test ("survives a room transition —
+ * ... inventory is not per-room") already pins "an item persists by
+ * default" as tested, load-bearing behaviour that this item must not
+ * relitigate. `duration` is therefore an *optional* field, defaulting to
+ * `'expedition'` via `itemDuration` — every existing item literal in this
+ * codebase and its tests compiles and behaves exactly as before, since none
+ * of them set it. A `'room'` duration is new, real machinery (`leaveRoom` in
+ * `expedition.ts` now strips it), not just a label — demonstrated with a
+ * `'placeholder'` item carrying `duration: 'room'`, the same "no real
+ * effect, proves the substrate" role `'placeholder'` has played since item
+ * 14, rather than inventing a fifth kind with an actual rule/score effect
+ * that section D's later items (19+) haven't asked for yet.
  */
 import { getLens, type LensId } from '../lens';
 import type { Config } from '../config';
 
-export type Item =
-  | { kind: 'placeholder'; label: string }
-  | { kind: 'secondCounter'; lensId: LensId }
-  | { kind: 'sight' }
-  | { kind: 'reachAnchor' };
+export type ItemDuration = 'room' | 'expedition';
 
-/** The short text an item shows in the inventory list. */
+export type Item =
+  | { kind: 'placeholder'; label: string; duration?: ItemDuration }
+  | { kind: 'secondCounter'; lensId: LensId; duration?: ItemDuration }
+  | { kind: 'sight'; duration?: ItemDuration }
+  | { kind: 'reachAnchor'; duration?: ItemDuration };
+
+/** How long an item lasts once carried — a whole expedition (the default,
+ * matching every item kind's behaviour before item 18) or just the room it
+ * was picked up in. `expedition.ts`'s `leaveRoom` is the one place this is
+ * read to decide what to strip from the inventory on a room transition. */
+export function itemDuration(item: Item): ItemDuration {
+  return item.duration ?? 'expedition';
+}
+
+/** The short text an item shows in the inventory list — the kind-specific
+ * description, plus a generic "(this room only)" tag for anything with
+ * `duration: 'room'` so the temporary/permanent distinction (item 18) is
+ * visible for any item kind, not just the one demonstrating it today. */
 export function itemLabel(item: Item): string {
-  switch (item.kind) {
-    case 'placeholder':
-      return item.label;
-    case 'secondCounter':
-      return `${getLens(item.lensId).name} (2nd counter)`;
-    case 'sight':
-      return 'Sight (reveals traps)';
-    case 'reachAnchor':
-      return 'Reach anchor (place one card unconnected)';
-  }
+  const base = ((): string => {
+    switch (item.kind) {
+      case 'placeholder':
+        return item.label;
+      case 'secondCounter':
+        return `${getLens(item.lensId).name} (2nd counter)`;
+      case 'sight':
+        return 'Sight (reveals traps)';
+      case 'reachAnchor':
+        return 'Reach anchor (place one card unconnected)';
+    }
+  })();
+  return itemDuration(item) === 'room' ? `${base} (this room only)` : base;
 }
 
 /** True if the inventory carries a sight item (item 16) — the one fact

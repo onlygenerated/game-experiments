@@ -419,6 +419,58 @@ describe('inventory (item 14)', () => {
   });
 });
 
+describe('temporary vs permanent items (item 18)', () => {
+  const ROOM_ONLY: Item = { kind: 'placeholder', label: 'Torch', duration: 'room' };
+  const PERMANENT: Item = { kind: 'placeholder', label: 'Map', duration: 'expedition' };
+  const DEFAULT_DURATION: Item = { kind: 'placeholder', label: 'Compass' };
+
+  it('a room-duration item is carried and usable up to the moment its room ends', () => {
+    const c = cfg({ roomPlacementBudget: 5 });
+    let state = addItem(newExpedition('exp-1', [SMALL_ROOM, SECOND_ROOM], c), ROOM_ONLY);
+    expect(state.items).toEqual([ROOM_ONLY]);
+    state = placeInRoom(state, 0, { q: 0, r: 0 }, c); // not the exit yet — still mid-room
+    expect(state.items).toEqual([ROOM_ONLY]);
+  });
+
+  it('leaveRoom drops a room-duration item but keeps an expedition-duration one, in the same transition', () => {
+    const c = cfg({ roomPlacementBudget: 5 });
+    let state = newExpedition('exp-1', [SMALL_ROOM, SECOND_ROOM], c);
+    state = addItem(state, ROOM_ONLY);
+    state = addItem(state, PERMANENT);
+    state = placeInRoom(state, 0, EXIT, c);
+    const next = leaveRoom(state, c);
+    expect(next.roomIndex).toBe(1);
+    expect(next.items).toEqual([PERMANENT]);
+  });
+
+  it('an item with no duration field survives a room transition exactly like an explicit expedition duration', () => {
+    const c = cfg({ roomPlacementBudget: 5 });
+    let state = addItem(newExpedition('exp-1', [SMALL_ROOM, SECOND_ROOM], c), DEFAULT_DURATION);
+    state = placeInRoom(state, 0, EXIT, c);
+    const next = leaveRoom(state, c);
+    expect(next.items).toEqual([DEFAULT_DURATION]);
+  });
+
+  it('a room-duration item is also dropped on the transition that completes the expedition', () => {
+    const c = cfg({ roomPlacementBudget: 5 });
+    let state = addItem(newExpedition('exp-1', [SMALL_ROOM], c), ROOM_ONLY);
+    state = placeInRoom(state, 0, EXIT, c);
+    const next = leaveRoom(state, c);
+    expect(next.status).toBe('complete');
+    expect(next.items).toEqual([]);
+  });
+
+  it('leaveRoom does not mutate the pre-leave state\'s item array', () => {
+    const c = cfg({ roomPlacementBudget: 5 });
+    let state = newExpedition('exp-1', [SMALL_ROOM, SECOND_ROOM], c);
+    state = addItem(state, ROOM_ONLY);
+    state = placeInRoom(state, 0, EXIT, c);
+    const before = state.items;
+    leaveRoom(state, c);
+    expect(before).toEqual([ROOM_ONLY]);
+  });
+});
+
 describe('second counter item (item 15)', () => {
   // Cribbage alone as the room's counter, so a carried poker second-counter
   // item is the one thing separating the two runs below.
