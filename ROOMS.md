@@ -236,7 +236,7 @@ a shallow one — it still never walks to the door.
 - [x] **16. Item: sight.** See the next room's shape, or reveal this room's
       hidden tiles. Changes decisions without touching score, which is the point
       of keeping items away from multipliers.
-- [ ] **17. Item: reach.** Something that helps the spatial condition — place
+- [x] **17. Item: reach.** Something that helps the spatial condition — place
       one card unconnected, or extend from a second origin. Reach and score are
       the two exit conditions; items should be able to address either.
 - [ ] **18. Temporary versus permanent.** Some bonuses last a room, some last
@@ -2474,6 +2474,59 @@ shows the rose "trap" tint and skull badge, the header reads `Items: Sight
 screenshot. A tight crop on just that cell makes the badge legible at full
 resolution. No video — this item is a static reveal, not movement or feel.
 
+**Item 17.** `npm test` 382/382 (was 365 — 17 new: 10 in `item.test.ts` for
+`itemLabel`, `applyItemEffects`'s identity arm on `'reachAnchor'` (alone and
+mixed with other kinds), `hasReachAnchorItem` across empty/other-only/mixed
+inventories, and `consumeReachAnchorItem` removing exactly one charge,
+leaving a second untouched, being a safe no-op with none carried, and not
+mutating its input; 7 in a new `reach anchor item (item 17)` block in
+`expedition.test.ts` — rejects an unconnected cell with no charge carried,
+accepts it once one is, `placeInRoom` spends the charge only on the
+placement that actually needed it, does not spend a carried charge on a
+placement that was already legal on its own, a placement dropped via the
+charge becomes a real second origin a later placement can grow from with no
+further charge spent, the empty-board opening placement never touches a
+carried charge, and `placeInRoom` stays a no-op on an unconnected cell with
+nothing carried). `npx tsc -b --noEmit`
+clean. `npm run smoke` 90/90 (was 77 — 13 new, in the same fresh Round Room
+item 16's own sight check left in place: the opening placement's budget
+reads correctly (11 left), clicking the unconnected cell with nothing
+carried is rejected and spends no placement, the reach-anchor pickup is
+available and the inventory line shows it alongside the still-carried sight
+item once clicked, the pickup control disables once carried, the
+previously-illegal cell holds a real card once the charge is spent (budget
+10), the inventory line drops back to just sight, the pickup control
+re-enables the instant the one charge it granted is gone, and a follow-up
+placement adjacent only to the new island — not the origin — succeeds
+(budget 9) with the inventory still reading just sight, unchanged, because
+nothing was spent on an already-legal placement).
+
+Drove `RoomRunPage` in headless Chromium via `tools/browser.mjs` (throwaway
+script, same server-then-screenshot pattern as `smoke.mjs`, run and
+discarded, not committed), in a fresh Round Room (`New expedition`, no items
+carried this time — item 16's own sight is orthogonal to this one and
+wasn't picked up in this run):
+
+| screenshot | shows |
+|---|---|
+| after placing the opening card at the origin `(0,0)` | one card on the board, `Items: none`, `placements left 11` |
+| clicking `(2,-1)` (hex-distance 2 from the origin — not a neighbour) with no reach anchor carried | the cell stays empty — no card rendered — and `placements left 11` is unchanged: the click was rejected outright, not merely scored as zero |
+| after clicking "Dev: pick up reach anchor" | header reads `Items: Reach anchor (place one card unconnected)`, the pickup button disables |
+| after placing on `(2,-1)` with the charge carried | a real card now sits at `(2,-1)`, visibly disconnected from the origin card with empty hexes between them, `placements left 10`, header drops back to `Items: none`, and the pickup button re-enables |
+| after placing on `(2,-2)` (a real neighbour of `(2,-1)`, not of the origin) with no charge left | a third card renders there, `placements left 9`, `Items: none` still — nothing was spent because this placement was already legal via the new island |
+
+The last screenshot incidentally shows `reached: false` even with two
+occupied cells sitting one hex-step from an exit — neither `(2,-1)` nor
+`(2,-2)` *is* the exit `(2,0)`, and item 5's "touch" means occupying the
+exit cell itself, not merely standing beside it. Not something this item
+changed or needed to demonstrate, but worth noting as confirmation that nothing
+about the reach-anchor bypass leaks into the reach condition itself — an
+unconnected structure is exactly as unreached as a connected one until it
+actually lands on a door. No video — this is a legality and inventory
+effect, not movement or feel in the drag/animation sense; the disconnection
+itself is best shown as a static before/after, which the screenshots above
+already do.
+
 **Item 16.** The backlog item's own text offers an "or" — see the next
 room's shape, or reveal this room's hidden tiles — and gives no reason to
 prefer one. Picked the trap-reveal reading: it reuses a real substrate
@@ -2551,3 +2604,87 @@ alongside item 21's room graph, where "the next room" becomes a real,
 choosable thing rather than a fixed sequence) wants to build it, rather
 than bolted on here as a second, thinner effect just because the backlog
 text allowed it.
+
+**Item 17.** The backlog item's own "or" — place one card unconnected, or
+extend from a second origin — turned out not to be a real choice between two
+mechanics, unlike item 16's actual either/or. `hasHexNeighbor` (`hex/board.ts`)
+tests adjacency against *any* occupied cell on the whole board, not against
+one connected structure, so a single unconnected placement already *is* a
+second origin the moment it lands — every ordinary placement after it can
+grow from either island with no further help, since adjacency has never
+cared which island a neighbour belongs to. `room.ts`'s own header comment had
+already flagged this in item 5's own words ("a structure need not be one
+contiguous blob (free placement, item 17's alternate origins)") and
+`structureReachesExit` already walks connected components rather than
+assuming one blob — reach was ready for a second island before this item
+existed; nothing about it needed to change.
+
+So `{ kind: 'reachAnchor' }` (`item.ts`) is one thing, not two: a charge that
+lets exactly one placement skip the adjacency check. `applyItemEffects`
+routes it the same way item 16's `'sight'` is routed — the identity
+transform, since (like sight) it changes what a placement is legal *despite*,
+not a `Config` field any scorer or legality check downstream of
+`applyItemEffects` reads. The real effect is a new shared predicate in
+`expedition.ts`, `failsAdjacency(state, h, effectiveCfg)`, factored out of
+what `isLegalRoomPlacement`'s adjacency branch used to compute inline:
+`isLegalRoomPlacement` now falls back to `hasReachAnchorItem(state.items)`
+when a cell fails that check instead of rejecting it outright, and
+`placeInRoom` recomputes the *identical* condition (same function, same
+inputs) after confirming the move is legal, to decide whether this specific
+placement actually needed the charge. Factoring this into one function
+rather than writing the condition twice was a deliberate choice, not just
+tidiness — `isLegalRoomPlacement` approving a placement and `placeInRoom`
+deciding whether to spend a charge on it are two different questions that
+must agree on the same fact (did this cell fail plain adjacency?), and two
+independently-written copies of "board non-empty and no neighbour" drifting
+apart under a future edit is exactly the kind of silent scoring/legality bug
+ROOMS.md's standing rules exist to prevent.
+
+The consumption rule needed one more piece of care: *only* spend the charge
+when the placement actually relied on it. A placement that's already legal —
+the opening move on an empty board (the empty-board branch of
+`failsAdjacency` short-circuits before the neighbour check even runs), or an
+ordinary placement adjacent to existing structure — must not eat into a
+carried charge just because one happens to be sitting in inventory; nothing
+in the item's own text ("place one card unconnected") suggests it should
+apply to a card that wasn't unconnected. `item.test.ts` and
+`expedition.test.ts` both lock this down directly rather than trusting the
+`failsAdjacency` guard to make the point on its own.
+
+`consumeReachAnchorItem` (`item.ts`) removes exactly one `'reachAnchor'`
+instance — the first found, arbitrary since every instance is identical and
+fungible, same as `payTrapCost`'s "top of the deck" not being a meaningful
+choice among identical cards — leaving any others (and every other item
+kind) untouched. Mirrors `addItem`'s pure-append shape in reverse rather than
+inventing a different pattern.
+
+The dev-pickup button (`RoomRunPage.tsx`) needed one behavioural difference
+from items 15/16's: `sight`/`secondCounter` are standing effects, so their
+buttons disable forever once carried (there is only ever "carrying" or "not
+carrying", no in-between). A spendable charge has three states over a run —
+none, one, spent-back-to-none — and the button's `disabled` condition
+(`state.items.some(it => it.kind === 'reachAnchor')`) reads live off current
+inventory rather than a separate "ever picked up" flag, so it *automatically*
+re-enables the instant a placement consumes the one charge it granted,
+letting a player go pick up another. No new state needed for this — it fell
+straight out of reusing the same `carryingX` pattern items 15/16 already
+established, which turned out to already have exactly the right shape for a
+consumable once the underlying inventory is the thing being read.
+
+Demonstrated in a fresh Round Room (via "New expedition", same room used for
+item 16's own demo) with cells worked out on paper against `hex/coords.ts`'s
+own distance formula, not guessed: `(2,-1)` is hex-distance 2 from the
+origin `(0,0)` — not a neighbour of it — so once a card sits at the origin,
+`(2,-1)` is a genuinely unconnected cell; `(2,-2)` is hex-distance 2 from the
+origin (also not a neighbour) but *is* a real hex-neighbour of `(2,-1)`,
+making it a clean "grows from the new island, not the old one" witness. This
+is a legality/inventory effect, not a scoring one, so — unlike items 9/10's
+own tile-bonus demos — there was no offline score arithmetic to work out
+first; the fact under test the whole way through is which cells are
+placeable, proven directly by whether a `.card-face` renders and by the
+inventory line's exact text before and after. Verified live in the browser
+(see results log), then locked the identical scenario into the smoke test
+(`tools/smoke.mjs`), extending the same fresh-Round-Room session item 16's
+own sight check left in place, right before "Back to the board" — reusing an
+existing empty-board session rather than resetting again, since nothing
+about this item needs a clean inventory, only an empty board.

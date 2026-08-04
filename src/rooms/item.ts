@@ -51,6 +51,27 @@
  * touching score" means a sight-revealed trap must still cost a card the
  * first time a placement actually lands on or beside it — sight only ever
  * changes what you can *see*, never what a placement *does*.
+ *
+ * Item 17: `'reachAnchor'` picks "place one card unconnected" out of the
+ * backlog item's own "or" — read as the same mechanic as "extend from a
+ * second origin", not a separate one to also build: `hasHexNeighbor`
+ * (`hex/board.ts`) tests adjacency against *any* occupied cell on the whole
+ * board, not against one connected structure, so a single unconnected
+ * placement is already, mechanically, a second origin the normal adjacency
+ * rule will happily grow from afterward with no further help. `room.ts`'s
+ * own header comment already anticipated this ("a structure need not be one
+ * contiguous blob (free placement, item 17's alternate origins)") and
+ * `structureReachesExit` already walks connected components rather than
+ * assuming one blob, so reach was ready for this before this item existed.
+ * Like sight, this has no `Config` field to write — it changes what a
+ * placement is *allowed to be legal despite*, not a scoring or counting
+ * rule — so `applyItemEffects`'s arm is the identity transform too; the real
+ * effect is the adjacency bypass in `expedition.ts`'s `isLegalRoomPlacement`
+ * plus the one-shot consumption in `placeInRoom`. Unlike `sight` or
+ * `secondCounter`, this item is spent: `consumeReachAnchorItem` removes one
+ * instance the moment a placement actually relies on it, matching "place
+ * *one* card unconnected" literally rather than granting a standing rule
+ * change for as long as it's carried.
  */
 import { getLens, type LensId } from '../lens';
 import type { Config } from '../config';
@@ -58,7 +79,8 @@ import type { Config } from '../config';
 export type Item =
   | { kind: 'placeholder'; label: string }
   | { kind: 'secondCounter'; lensId: LensId }
-  | { kind: 'sight' };
+  | { kind: 'sight' }
+  | { kind: 'reachAnchor' };
 
 /** The short text an item shows in the inventory list. */
 export function itemLabel(item: Item): string {
@@ -69,6 +91,8 @@ export function itemLabel(item: Item): string {
       return `${getLens(item.lensId).name} (2nd counter)`;
     case 'sight':
       return 'Sight (reveals traps)';
+    case 'reachAnchor':
+      return 'Reach anchor (place one card unconnected)';
   }
 }
 
@@ -77,6 +101,26 @@ export function itemLabel(item: Item): string {
  * trap in the current room ahead of it springing. */
 export function hasSightItem(items: readonly Item[]): boolean {
   return items.some((item) => item.kind === 'sight');
+}
+
+/** True if the inventory carries an unspent reach-anchor charge (item 17) —
+ * the one fact `expedition.ts`'s `isLegalRoomPlacement` needs to decide
+ * whether to let a placement skip the adjacency requirement. */
+export function hasReachAnchorItem(items: readonly Item[]): boolean {
+  return items.some((item) => item.kind === 'reachAnchor');
+}
+
+/**
+ * Removes one `'reachAnchor'` charge (the first one found) from an
+ * inventory, spending it. A no-op (returns an equal-but-new array) if none
+ * is carried — callers that need to guard against spending a charge that
+ * isn't there should check `hasReachAnchorItem` first, the same way
+ * `placeInRoom` does before calling this.
+ */
+export function consumeReachAnchorItem(items: readonly Item[]): Item[] {
+  const idx = items.findIndex((item) => item.kind === 'reachAnchor');
+  if (idx === -1) return [...items];
+  return [...items.slice(0, idx), ...items.slice(idx + 1)];
 }
 
 /**
@@ -95,6 +139,8 @@ export function applyItemEffects(cfg: Config, items: readonly Item[]): Config {
       case 'secondCounter':
         return item.lensId === acc.lensId ? acc : { ...acc, secondLensId: item.lensId };
       case 'sight':
+        return acc;
+      case 'reachAnchor':
         return acc;
     }
   }, cfg);

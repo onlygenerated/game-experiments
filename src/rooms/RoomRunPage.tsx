@@ -83,6 +83,16 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
     setState((s) => addItem(s, { kind: 'sight' }));
   }
 
+  // Item 17's real acquisition path is unbuilt for the same reason 15/16's
+  // are. Unlike those, this item is spent on use — `carryingReachAnchor`
+  // reads live off the inventory rather than a separate "already picked up"
+  // flag, so the button re-enables the moment the one charge it granted gets
+  // consumed by a placement, letting a player pick up another.
+  const carryingReachAnchor = state.items.some((it) => it.kind === 'reachAnchor');
+  function pickUpReachAnchor() {
+    setState((s) => addItem(s, { kind: 'reachAnchor' }));
+  }
+
   return (
     <div className="mx-auto w-full max-w-5xl p-3 min-[1280px]:p-4">
       <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -109,6 +119,14 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
           className="rounded border border-neutral-700 px-3 py-1.5 text-sm font-semibold text-neutral-300 disabled:cursor-not-allowed disabled:opacity-50 active:bg-neutral-800 min-[1280px]:hover:bg-neutral-800"
         >
           Dev: pick up sight
+        </button>
+        <button
+          data-pickup-reach-anchor
+          onClick={pickUpReachAnchor}
+          disabled={!playing || carryingReachAnchor}
+          className="rounded border border-neutral-700 px-3 py-1.5 text-sm font-semibold text-neutral-300 disabled:cursor-not-allowed disabled:opacity-50 active:bg-neutral-800 min-[1280px]:hover:bg-neutral-800"
+        >
+          Dev: pick up reach anchor
         </button>
         <button
           onClick={restart}

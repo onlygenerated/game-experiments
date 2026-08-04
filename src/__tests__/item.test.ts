@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
-import { applyItemEffects, hasSightItem, itemLabel, type Item } from '../rooms/item';
+import {
+  applyItemEffects,
+  consumeReachAnchorItem,
+  hasReachAnchorItem,
+  hasSightItem,
+  itemLabel,
+  type Item,
+} from '../rooms/item';
 
 describe('itemLabel', () => {
   it('returns a placeholder item\'s own label', () => {
@@ -94,5 +101,64 @@ describe('hasSightItem', () => {
   it('is true once a sight item is carried, alongside other items', () => {
     const items: Item[] = [{ kind: 'placeholder', label: 'A' }, { kind: 'sight' }];
     expect(hasSightItem(items)).toBe(true);
+  });
+});
+
+describe('reach anchor item (item 17)', () => {
+  const REACH_ANCHOR: Item = { kind: 'reachAnchor' };
+
+  it("itemLabel names what it lets you do", () => {
+    expect(itemLabel(REACH_ANCHOR)).toBe('Reach anchor (place one card unconnected)');
+  });
+
+  it('applyItemEffects is the identity transform — reach anchor has no rules/scoring effect', () => {
+    expect(applyItemEffects(CONFIG, [REACH_ANCHOR])).toBe(CONFIG);
+  });
+
+  it('mixes harmlessly with other items without disturbing their effect', () => {
+    const cfg = { ...CONFIG, lensId: 'cribbage', secondLensId: '' };
+    const items: Item[] = [REACH_ANCHOR, { kind: 'secondCounter', lensId: 'poker' }, { kind: 'sight' }];
+    expect(applyItemEffects(cfg, items).secondLensId).toBe('poker');
+  });
+
+  describe('hasReachAnchorItem', () => {
+    it('is false for an empty inventory', () => {
+      expect(hasReachAnchorItem([])).toBe(false);
+    });
+
+    it('is false when carrying only other kinds of item', () => {
+      const items: Item[] = [{ kind: 'placeholder', label: 'A' }, { kind: 'sight' }];
+      expect(hasReachAnchorItem(items)).toBe(false);
+    });
+
+    it('is true once a reach-anchor charge is carried, alongside other items', () => {
+      const items: Item[] = [{ kind: 'sight' }, REACH_ANCHOR];
+      expect(hasReachAnchorItem(items)).toBe(true);
+    });
+  });
+
+  describe('consumeReachAnchorItem', () => {
+    it('removes the one charge from an inventory that carries exactly one', () => {
+      const items: Item[] = [{ kind: 'sight' }, REACH_ANCHOR];
+      const next = consumeReachAnchorItem(items);
+      expect(next).toEqual([{ kind: 'sight' }]);
+    });
+
+    it('removes only one charge, leaving a second untouched', () => {
+      const items: Item[] = [REACH_ANCHOR, { kind: 'sight' }, REACH_ANCHOR];
+      const next = consumeReachAnchorItem(items);
+      expect(next).toEqual([{ kind: 'sight' }, REACH_ANCHOR]);
+    });
+
+    it('is a no-op (same contents) when no reach-anchor charge is carried', () => {
+      const items: Item[] = [{ kind: 'sight' }, { kind: 'placeholder', label: 'A' }];
+      expect(consumeReachAnchorItem(items)).toEqual(items);
+    });
+
+    it('does not mutate the input array', () => {
+      const items: Item[] = [REACH_ANCHOR];
+      consumeReachAnchorItem(items);
+      expect(items).toEqual([REACH_ANCHOR]);
+    });
   });
 });

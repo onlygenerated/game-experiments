@@ -466,6 +466,83 @@ describe('second counter item (item 15)', () => {
   });
 });
 
+describe('reach anchor item (item 17)', () => {
+  // A radius-2 room, same as the "requires adjacency" legality test above,
+  // so there is enough space for a cell that is neither adjacent to the
+  // origin nor an accident of the room being too small to prove anything.
+  const bigRoom = () => makeRoom('Big', hexesWithinRadius(2), [{ q: 2, r: 0 }], 0);
+  const c = cfg({ roomPlacementBudget: 6, mechanics: { ...CONFIG.mechanics, requireAdjacency: true } });
+  const REACH_ANCHOR: Item = { kind: 'reachAnchor' };
+
+  // (2,-1) is distance 2 from the origin — not a neighbour of it, and not a
+  // neighbour of anything placed at the origin — so it is a genuinely
+  // unconnected cell once the origin is occupied.
+  const FAR_CELL: Hex = { q: 2, r: -1 };
+  // (2,-2) is a real hex neighbour of FAR_CELL but distance 2 from the
+  // origin — legal only via adjacency to whatever gets placed at FAR_CELL,
+  // never via the origin's own structure.
+  const NEXT_TO_FAR_CELL: Hex = { q: 2, r: -2 };
+
+  it('rejects an unconnected cell once the board is non-empty and no reach anchor is carried', () => {
+    let state = newExpedition('exp-1', [bigRoom()], c);
+    state = placeInRoom(state, 0, ORIGIN, c);
+    expect(isLegalRoomPlacement(state, FAR_CELL, c)).toBe(false);
+  });
+
+  it('accepts the same unconnected cell once a reach-anchor charge is carried', () => {
+    let state = addItem(newExpedition('exp-1', [bigRoom()], c), REACH_ANCHOR);
+    state = placeInRoom(state, 0, ORIGIN, c);
+    expect(isLegalRoomPlacement(state, FAR_CELL, c)).toBe(true);
+  });
+
+  it('placeInRoom spends the charge on the placement that actually needed it', () => {
+    let state = addItem(newExpedition('exp-1', [bigRoom()], c), REACH_ANCHOR);
+    state = placeInRoom(state, 0, ORIGIN, c);
+    expect(state.items).toEqual([REACH_ANCHOR]); // the opening placement needed nothing
+
+    const next = placeInRoom(state, 0, FAR_CELL, c);
+    expect(next.board.size).toBe(2);
+    expect(next.items).toEqual([]); // spent
+  });
+
+  it('does not spend a carried charge on a placement that is already legal on its own', () => {
+    let state = addItem(newExpedition('exp-1', [bigRoom()], c), REACH_ANCHOR);
+    state = placeInRoom(state, 0, ORIGIN, c); // opening placement — always legal, empty board
+    expect(state.items).toEqual([REACH_ANCHOR]);
+
+    const next = placeInRoom(state, 0, { q: -1, r: 0 }, c); // neighbours the origin directly
+    expect(next.board.size).toBe(2);
+    expect(next.items).toEqual([REACH_ANCHOR]); // untouched — this move never needed it
+  });
+
+  it('a placement dropped via a reach anchor becomes a real second origin — later placements can grow from it without spending another charge', () => {
+    let state = addItem(newExpedition('exp-1', [bigRoom()], c), REACH_ANCHOR);
+    state = placeInRoom(state, 0, ORIGIN, c);
+    state = placeInRoom(state, 0, FAR_CELL, c); // spends the one charge
+    expect(state.items).toEqual([]);
+
+    // NEXT_TO_FAR_CELL is not adjacent to the origin — only to FAR_CELL —
+    // and no reach anchor is carried anymore, yet it must still be legal.
+    expect(isLegalRoomPlacement(state, NEXT_TO_FAR_CELL, c)).toBe(true);
+    const next = placeInRoom(state, 0, NEXT_TO_FAR_CELL, c);
+    expect(next.board.size).toBe(3);
+    expect(next.items).toEqual([]); // still nothing to spend, and nothing was needed
+  });
+
+  it('does not apply to the opening placement — an empty board never needs the adjacency exception', () => {
+    const state = addItem(newExpedition('exp-1', [bigRoom()], c), REACH_ANCHOR);
+    const next = placeInRoom(state, 0, FAR_CELL, c); // legal anyway: board starts empty
+    expect(next.items).toEqual([REACH_ANCHOR]); // untouched
+  });
+
+  it('without an item, placeInRoom is a no-op on an unconnected cell', () => {
+    let state = newExpedition('exp-1', [bigRoom()], c);
+    state = placeInRoom(state, 0, ORIGIN, c);
+    const next = placeInRoom(state, 0, FAR_CELL, c);
+    expect(next).toBe(state);
+  });
+});
+
 describe('visibleTraps / sight item (item 16)', () => {
   const TRAP_CELL: Hex = { q: 0, r: -1 };
   const trapRoom = (name: string, exits: Hex[] = [{ q: 1, r: 0 }]): Room =>

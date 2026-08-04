@@ -409,6 +409,70 @@ ok(
   (await text()).includes('placements left 12'),
 );
 
+// Item 17: reach anchor — a carried charge that lets exactly one placement
+// skip the adjacency requirement, i.e. "place one card unconnected". This is
+// a pure legality/inventory effect, not a scoring one (unlike items 9/10 it
+// needs no offline-computed score to prove — the fact under test is whether
+// a cell is placeable at all). Same fresh, empty-board expedition the sight
+// check above left in place (still carrying only sight).
+await placeHand0('0,0'); // the opening placement — always legal on an empty board
+ok('placements left after the opening placement', (await text()).includes('placements left 11'));
+
+// (2,-1) is two steps from the origin — not adjacent to the card just
+// placed there, and nothing else is on the board — so without a reach
+// anchor it must be rejected exactly like item 11's blocked-cell case:
+// nothing appears, and no placement is spent.
+await p.locator('[data-hand-index="0"]').click();
+await p.waitForTimeout(120);
+await p.locator('[data-room-cell="2,-1"]').click();
+await p.waitForTimeout(200);
+ok(
+  'an unconnected cell is rejected with no reach anchor carried',
+  (await p.locator('[data-room-cell="2,-1"] .card-face').count()) === 0,
+);
+ok('the failed click spent no placement', (await text()).includes('placements left 11'));
+await p.locator('[data-hand-index="0"]').click(); // deselect
+
+ok('reach anchor pickup is available', await p.locator('[data-pickup-reach-anchor]').isEnabled());
+await p.locator('[data-pickup-reach-anchor]').click();
+await p.waitForTimeout(150);
+ok(
+  'inventory shows the carried reach anchor alongside sight',
+  (await p.locator('[data-expedition-items]').innerText()) ===
+    'Items: Sight (reveals traps), Reach anchor (place one card unconnected)',
+);
+ok('the reach anchor pickup control disables once carried', await p.locator('[data-pickup-reach-anchor]').isDisabled());
+
+await placeHand0('2,-1'); // now legal — the carried charge covers exactly this one unconnected cell
+ok(
+  'the previously-illegal cell now holds a real card',
+  (await p.locator('[data-room-cell="2,-1"] .card-face').count()) === 1,
+);
+ok('placements left after spending the reach anchor', (await text()).includes('placements left 10'));
+ok(
+  'the charge is spent the moment a placement actually relies on it — inventory drops back to just sight',
+  (await p.locator('[data-expedition-items]').innerText()) === 'Items: Sight (reveals traps)',
+);
+ok(
+  'the pickup control re-enables once the one charge it granted is gone',
+  await p.locator('[data-pickup-reach-anchor]').isEnabled(),
+);
+
+// (2,-2) neighbours only the card just dropped at (2,-1), not the origin —
+// legal proof that the unconnected placement became a real second origin
+// the ordinary adjacency rule now grows from on its own, with no charge left
+// to spend.
+await placeHand0('2,-2');
+ok(
+  'growth from the new island needs no further charge',
+  (await p.locator('[data-room-cell="2,-2"] .card-face').count()) === 1,
+);
+ok('placements left after the unassisted follow-up placement', (await text()).includes('placements left 9'));
+ok(
+  'inventory is unchanged — nothing was spent on a placement that was already legal on its own',
+  (await p.locator('[data-expedition-items]').innerText()) === 'Items: Sight (reveals traps)',
+);
+
 await p.locator('button:has-text("Back to the board")').click();
 await p.waitForTimeout(300);
 

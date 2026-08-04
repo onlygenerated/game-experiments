@@ -73,6 +73,19 @@
  * sight. `placeInRoom`'s own trap-cost logic still reads `revealedTraps`
  * directly and is untouched by this item, which is exactly the point:
  * seeing a trap and paying for it stay two different facts.
+ *
+ * Item 17's `'reachAnchor'` kind is a one-shot legality exception rather than
+ * a `Config` change: `isLegalRoomPlacement` now accepts a cell that fails the
+ * adjacency check *if* the inventory carries an unspent charge
+ * (`hasReachAnchorItem`), on top of every check it already ran. `placeInRoom`
+ * recomputes the identical adjacency-failure condition after confirming the
+ * move is legal, and only then — never on a placement that was already legal
+ * on its own — spends the one charge via `consumeReachAnchorItem`. A card
+ * placed this way is a genuine second island: `hasHexNeighbor` checks the
+ * whole board, not one connected structure, so every ordinary placement
+ * after this one can grow from either island with no further help, and
+ * `structureReachesExit` (`room.ts`) already credits reach from whichever
+ * connected piece finds a door.
  */
 import { CONFIG, type Config } from '../config';
 import { draw, shuffledDeck, type Card } from '../deck';
@@ -86,7 +99,13 @@ import {
   type HexPlacementScore,
 } from '../hex/board';
 import { hexKey, type Hex } from '../hex/coords';
-import { applyItemEffects, hasSightItem, type Item } from './item';
+import {
+  applyItemEffects,
+  consumeReachAnchorItem,
+  hasReachAnchorItem,
+  hasSightItem,
+  type Item,
+} from './item';
 import {
   artifactCellsNear,
   isInRoom,
@@ -162,6 +181,23 @@ export function visibleTraps(state: ExpeditionState): ReadonlySet<string> {
   return new Set([...state.revealedTraps, ...roomTraps(currentRoom(state)).map(hexKey)]);
 }
 
+/**
+ * True if `h` would be rejected by the adjacency rule alone — everything
+ * else about it (in the room, unoccupied, not blocked/artifact) is assumed
+ * already checked. Shared between `isLegalRoomPlacement` (does an unspent
+ * reach-anchor charge make this cell legal anyway?) and `placeInRoom` (did
+ * this specific placement actually need that charge, i.e. should one be
+ * spent?) so the two can never disagree about which placements are the
+ * unconnected ones.
+ */
+function failsAdjacency(state: ExpeditionState, h: Hex, effectiveCfg: Config): boolean {
+  return (
+    effectiveCfg.mechanics.requireAdjacency &&
+    !isHexBoardEmpty(state.board) &&
+    !hasHexNeighbor(state.board, h)
+  );
+}
+
 export function isLegalRoomPlacement(state: ExpeditionState, h: Hex, cfg: Config = CONFIG): boolean {
   const room = currentRoom(state);
   if (!isInRoom(room, h)) return false;
@@ -169,12 +205,11 @@ export function isLegalRoomPlacement(state: ExpeditionState, h: Hex, cfg: Config
   const kind = tileAt(room.tiles, h)?.kind;
   if (kind === 'blocked' || kind === 'artifact') return false;
   const effectiveCfg = applyItemEffects(cfg, state.items);
-  if (
-    effectiveCfg.mechanics.requireAdjacency &&
-    !isHexBoardEmpty(state.board) &&
-    !hasHexNeighbor(state.board, h)
-  ) {
-    return false;
+  if (failsAdjacency(state, h, effectiveCfg)) {
+    // Item 17: an unspent reach-anchor charge lets exactly this one
+    // placement through despite failing adjacency — it does not relax the
+    // rule generally, only for a cell that would otherwise be rejected here.
+    return hasReachAnchorItem(state.items);
   }
   return true;
 }
@@ -269,6 +304,13 @@ export function placeInRoom(
   const board = withHexCard(state.board, h, card);
   const score = state.score + result.score;
 
+  // Item 17: this placement only needed a reach-anchor charge if it fails
+  // adjacency on its own — recomputed against the pre-placement board, the
+  // same condition `isLegalRoomPlacement` just approved it under. A
+  // placement that was already legal (adjacent, or the opening move on an
+  // empty board) spends nothing, even carrying one.
+  const items = failsAdjacency(state, h, effectiveCfg) ? consumeReachAnchorItem(state.items) : state.items;
+
   const remainingHand = state.hand.filter((_, i) => i !== handIndex);
 
   // Item 12: any trap at this cell or beside it, not already sprung, fires
@@ -313,6 +355,7 @@ export function placeInRoom(
       deck: deckAfterDraw,
       revealedTraps,
       collectedArtifacts,
+      items,
       placementsLeft: state.placementsLeft - 1,
       log: [
         ...state.log,
