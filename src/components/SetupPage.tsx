@@ -104,8 +104,10 @@ function PokerTables({
             <tr className="text-left text-[10px] uppercase tracking-wider text-neutral-500">
               <th className="pb-1">Hand</th>
               <th className="pb-1 text-right">Needs</th>
-              <th className="pb-1 text-right">Chips</th>
-              <th className="pb-1 text-right">Mult</th>
+              <th className="pb-1 text-right">Points</th>
+              <th className="pb-1 text-right" title="No longer read by the scoring lens — kept for a future item.">
+                Mult (unused)
+              </th>
             </tr>
           </thead>
           <tbody>

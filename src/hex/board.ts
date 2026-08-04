@@ -109,25 +109,19 @@ export interface HexWindow {
  * score the strongest stretch — which keeps long lines valuable without letting
  * one line become the whole game, and keeps the read "what is my best five here".
  */
-export function bestWindow(
-  cards: Card[],
-  coords: Hex[],
-  lens: Lens,
-  role: 'chips' | 'mult',
-  cfg: Config,
-): HexWindow {
+export function bestWindow(cards: Card[], coords: Hex[], lens: Lens, cfg: Config): HexWindow {
   const size = Math.min(cards.length, cfg.hexWindow);
   let best: HexWindow | null = null;
 
   for (let i = 0; i + size <= cards.length; i++) {
     const slice = cards.slice(i, i + size);
-    const result = lens.evaluate(slice, role, cfg);
+    const result = lens.evaluate(slice, cfg);
     if (!best || result.value > best.result.value) {
       best = { cards: slice, coords: coords.slice(i, i + size), result };
     }
   }
 
-  return best ?? { cards: [], coords: [], result: lens.evaluate([], role, cfg) };
+  return best ?? { cards: [], coords: [], result: lens.evaluate([], cfg) };
 }
 
 export interface HexLineScore {
@@ -150,11 +144,10 @@ export interface HexPlacementScore extends ScoredPlacement {
 }
 
 /**
- * Three axes instead of two, so the chips/mult split needs a third slot.
- *
- * Axis 0 feeds chips. Axes 1 and 2 both feed mult and are summed with an
- * offset, so two dead diagonals leave mult at 1 while either one coming alive
- * lifts it — both diagonals stay live rather than one being decorative.
+ * A placement joins up to three hex lines. Each line is counted on its own by
+ * the lens, and the placement scores the sum — no second resource, no product.
+ * The ring bonus is the one multiplier left in the core model, and it applies
+ * to the total rather than to any one line.
  */
 export function scoreHexPlacement(
   board: HexBoard,
@@ -168,24 +161,21 @@ export function scoreHexPlacement(
   const hexLines: HexLineScore[] = ([0, 1, 2] as HexAxis[]).map((axis) => {
     const coords = hexLineCoords(next, h, axis);
     const cards = coords.map((p) => hexAt(next, p) as Card);
-    const role = axis === 0 ? 'chips' : 'mult';
     return {
       axis,
       name: HEX_AXIS_NAMES[axis],
       coords,
-      window: bestWindow(cards, coords, lens, role, cfg),
+      window: bestWindow(cards, coords, lens, cfg),
     };
   });
 
-  const chips = hexLines[0].window.result.value;
-  const mult = Math.max(1, hexLines[1].window.result.value + hexLines[2].window.result.value - 1);
+  const total = hexLines.reduce((sum, l) => sum + l.window.result.value, 0);
 
   const ring = hexDistance(h, ORIGIN);
   const ringBonus = 1 + ring * cfg.hexRingBonus;
 
-  const lines: ScoredLine[] = hexLines.map((l, i) => ({
-    label: `${l.name} → ${i === 0 ? 'chips' : 'mult'}`,
-    role: i === 0 ? ('chips' as const) : ('mult' as const),
+  const lines: ScoredLine[] = hexLines.map((l) => ({
+    label: l.name,
     cards: l.coords.map((p) => hexAt(next, p) as Card),
     cellKeys: l.coords.map(hexKey),
     windowKeys: l.window.coords.map(hexKey),
@@ -199,10 +189,8 @@ export function scoreHexPlacement(
     hexLines,
     lines,
     notes: ring > 0 ? [{ label: `Ring ${ring} bonus`, points: Math.round(ringBonus * 100) / 100 }] : [],
-    chips,
-    mult,
     ring,
     ringBonus,
-    score: Math.round(chips * mult * ringBonus),
+    score: Math.round(total * ringBonus),
   };
 }

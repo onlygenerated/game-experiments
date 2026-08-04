@@ -39,7 +39,7 @@ export function HexBoardView({
   interactive: boolean;
   /** True while a card is being dragged, so the cell under the pointer can lift. */
   dragActive: boolean;
-  /** Cells to light one at a time after the most recent score, chips axis then mult. */
+  /** Cells to light one at a time after the most recent score, line by line. */
   cascade: Cascade | null;
 }) {
   const { badge: nearMiss, trigger: triggerNearMiss } = useNearMissBadge();
@@ -59,11 +59,11 @@ export function HexBoardView({
 
   // Full runs highlight; the scoring window highlights harder.
   const { runKeys, windowKeys } = useMemo(() => {
-    const run = new Map<string, 'chips' | 'mult'>();
-    const win = new Map<string, 'chips' | 'mult'>();
+    const run = new Set<string>();
+    const win = new Set<string>();
     for (const l of preview?.lines ?? []) {
-      for (const k of l.cellKeys) if (!run.has(k)) run.set(k, l.role);
-      for (const k of l.windowKeys) if (!win.has(k)) win.set(k, l.role);
+      for (const k of l.cellKeys) run.add(k);
+      for (const k of l.windowKeys) win.add(k);
     }
     return { runKeys: run, windowKeys: win };
   }, [preview]);
@@ -103,8 +103,8 @@ export function HexBoardView({
         const selectable = interactive && legal.has(k) && selectedCard !== null;
         const isTarget = targetKey === k;
         const isLifted = isTarget && selectable && dragActive;
-        const inWindow = windowKeys.get(k);
-        const inRun = runKeys.get(k);
+        const inWindow = windowKeys.has(k);
+        const inRun = runKeys.has(k);
         const cascadeHit = cascade?.cells.get(k);
         const isNearMiss = nearMiss?.key === k;
 
@@ -114,11 +114,11 @@ export function HexBoardView({
         // A run outside the scoring window is tinted but not ringed, so the
         // stretch that actually counts stays distinguishable from the rest.
         if (inRun && !inWindow) {
-          bg = inRun === 'chips' ? 'rgba(14,165,233,.16)' : 'rgba(245,158,11,.16)';
+          bg = 'rgba(14,165,233,.16)';
         }
         if (inWindow) {
-          bg = inWindow === 'chips' ? 'rgba(14,165,233,.34)' : 'rgba(245,158,11,.34)';
-          ring = inWindow === 'chips' ? 'rgba(56,189,248,.95)' : 'rgba(251,191,36,.95)';
+          bg = 'rgba(14,165,233,.34)';
+          ring = 'rgba(56,189,248,.95)';
         }
         if (isTarget && selectable) {
           bg = 'rgba(52,211,153,.4)';
@@ -206,9 +206,7 @@ export function HexBoardView({
             {cascadeHit && (
               <div
                 key={`${cascade!.id}-${k}`}
-                className={`cascade-flash pointer-events-none absolute inset-0 ${
-                  cascadeHit.role === 'chips' ? 'cascade-flash-chips' : 'cascade-flash-mult'
-                }`}
+                className="cascade-flash cascade-flash-chips pointer-events-none absolute inset-0"
                 style={{ clipPath: POINTY_TOP, animationDelay: `${cascadeHit.delay}ms` }}
               />
             )}

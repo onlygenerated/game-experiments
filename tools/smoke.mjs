@@ -75,7 +75,7 @@ await p.locator('[data-hand-index="0"]').click();
 await p.waitForTimeout(150);
 await p.locator('[data-cell="3,4"]').hover();
 await p.waitForTimeout(250);
-ok('hover opens the side preview', (await text()).includes('ROW → CHIPS'));
+ok('hover opens the side preview', (await text()).includes('ROW'));
 await p.locator('[data-cell="3,4"]').click();
 await p.waitForTimeout(400);
 ok('click places a card', (await p.locator('[data-cell="3,4"] .card-face').count()) > 0);

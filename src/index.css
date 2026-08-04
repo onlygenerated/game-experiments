@@ -271,10 +271,6 @@ button,
   background: rgba(56, 189, 248, 0.55);
 }
 
-.cascade-flash-mult {
-  background: rgba(251, 191, 36, 0.55);
-}
-
 /* A run reaching the cap gets a permanent violet/pink inset border, computed
    fresh every render from board state in BoardGrid — this overlay rides on
    top of that for one pulse so the marker reads as arriving with a snap and

@@ -257,7 +257,7 @@ describe('bestWindow', () => {
   it('takes the whole line when it is shorter than the window', () => {
     const cards = [card('7H'), card('8S')];
     const coords = [ORIGIN, HEX_AXES[0]];
-    const w = bestWindow(cards, coords, cribbageLens, 'chips', cfg);
+    const w = bestWindow(cards, coords, cribbageLens, cfg);
     expect(w.cards).toHaveLength(2);
     expect(w.result.value).toBeGreaterThan(0); // 7+8 is a fifteen
   });
@@ -266,7 +266,7 @@ describe('bestWindow', () => {
     // A dead prefix then a 5-5-5-J cluster: the window must find the cluster.
     const cards = [card('2H'), card('9S'), card('5H'), card('5S'), card('5D'), card('JC')];
     const coords = cards.map((_, i) => ({ q: i, r: 0 }));
-    const w = bestWindow(cards, coords, cribbageLens, 'chips', cfg);
+    const w = bestWindow(cards, coords, cribbageLens, cfg);
     expect(labels(w.cards)).toContain('5H');
     expect(labels(w.cards)).toContain('JC');
     expect(labels(w.cards)).not.toContain('2H');
@@ -275,20 +275,20 @@ describe('bestWindow', () => {
   it('never returns more cards than the configured window', () => {
     const cards = Array.from({ length: 9 }, (_, i) => card(`${(i % 8) + 2}H`));
     const coords = cards.map((_, i) => ({ q: i, r: 0 }));
-    expect(bestWindow(cards, coords, cribbageLens, 'chips', cfg).cards).toHaveLength(cfg.hexWindow);
+    expect(bestWindow(cards, coords, cribbageLens, cfg).cards).toHaveLength(cfg.hexWindow);
   });
 
   it('keeps coords aligned with the cards it chose', () => {
     const cards = [card('2H'), card('9S'), card('7H'), card('8S')];
     const coords = cards.map((_, i) => ({ q: i, r: 0 }));
-    const w = bestWindow(cards, coords, cribbageLens, 'chips', { ...cfg, hexWindow: 2 });
+    const w = bestWindow(cards, coords, cribbageLens, { ...cfg, hexWindow: 2 });
     expect(w.cards).toHaveLength(2);
     expect(w.coords).toHaveLength(2);
     expect(w.coords[0]).toEqual({ q: 2, r: 0 }); // the 7H/8S fifteen
   });
 
   it('handles an empty line', () => {
-    const w = bestWindow([], [], cribbageLens, 'mult', cfg);
+    const w = bestWindow([], [], cribbageLens, cfg);
     expect(w.cards).toEqual([]);
   });
 });
@@ -301,41 +301,29 @@ describe('scoreHexPlacement', () => {
     expect(r.hexLines).toHaveLength(3);
     expect(r.hexLines.map((l) => l.name)).toEqual(['E–W', 'NE–SW', 'NW–SE']);
     // The normalised view the preview renders from carries the same three.
-    expect(r.lines.map((l) => l.label)).toEqual([
-      'E–W → chips',
-      'NE–SW → mult',
-      'NW–SE → mult',
-    ]);
+    expect(r.lines.map((l) => l.label)).toEqual(['E–W', 'NE–SW', 'NW–SE']);
   });
 
-  it('takes chips from axis 0 only', () => {
+  it('scores the placement as the sum of its three lines', () => {
     // A fifteen on the E-W axis; the diagonals are bare.
     const b = withHexCard(emptyHexBoard(), { q: -1, r: 0 }, card('7H'));
     const r = scoreHexPlacement(b, ORIGIN, card('8S'), cfg);
     expect(r.hexLines[0].window.cards).toHaveLength(2);
-    expect(r.chips).toBe(r.hexLines[0].window.result.value);
-    expect(r.mult).toBe(1);
+    expect(r.score).toBe(r.lines.reduce((sum, l) => sum + l.value, 0));
   });
 
-  it('lets either diagonal lift mult, and sums them', () => {
+  it('lets either diagonal add its own points, and sums them', () => {
     const bare = scoreHexPlacement(emptyHexBoard(), ORIGIN, card('8S'), cfg);
-    expect(bare.mult).toBe(1);
 
-    // One diagonal makes a fifteen -> mult above 1.
+    // One diagonal makes a fifteen -> the total rises.
     let b = withHexCard(emptyHexBoard(), { q: -1, r: 1 }, card('7H'));
     const one = scoreHexPlacement(b, ORIGIN, card('8S'), cfg);
-    expect(one.mult).toBeGreaterThan(1);
+    expect(one.score).toBeGreaterThan(bare.score);
 
     // Both diagonals counting must beat either alone.
     b = withHexCard(b, { q: 0, r: -1 }, card('7D'));
     const both = scoreHexPlacement(b, ORIGIN, card('8S'), cfg);
-    expect(both.mult).toBeGreaterThan(one.mult);
-  });
-
-  it('never lets mult fall below 1', () => {
-    const r = scoreHexPlacement(emptyHexBoard(), ORIGIN, card('2H'), cfg);
-    expect(r.mult).toBe(1);
-    expect(r.score).toBe(r.chips);
+    expect(both.score).toBeGreaterThan(one.score);
   });
 
   it('applies the ring bonus by distance from the origin', () => {

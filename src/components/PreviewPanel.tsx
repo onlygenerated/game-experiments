@@ -1,7 +1,7 @@
 import type { ScoredLine, ScoredPlacement } from '../lens';
 import { CardChip } from './CardFace';
 
-const ACCENT = { chips: 'text-sky-400', mult: 'text-amber-400' } as const;
+const ACCENT = 'text-sky-400';
 
 /**
  * Side variant stacks label / cards / breakdown over several rows. Docked
@@ -18,8 +18,8 @@ function LineRow({
   line: ScoredLine;
   compact: boolean;
 }) {
-  const accent = ACCENT[line.role];
-  const value = line.role === 'mult' ? `×${line.value}` : String(line.value);
+  const accent = ACCENT;
+  const value = String(line.value);
   // Uncapped lines can score only part of themselves.
   const clipped = line.windowKeys.length < line.cellKeys.length;
 
@@ -128,9 +128,7 @@ export function PreviewPanel({
             onClick={onPlace}
             className="flex flex-1 items-center justify-center gap-2 rounded bg-gradient-to-b from-emerald-500 to-emerald-700 py-2.5 font-mono text-base font-bold shadow-lg active:from-emerald-400 active:to-emerald-600"
           >
-            <span className="text-sky-200">{preview.chips}</span>
-            <span className="text-emerald-200/70">×</span>
-            <span className="text-amber-200">{preview.mult}</span>
+            <span className="text-sky-200">{preview.lines.map((l) => l.value).join(' + ')}</span>
             <span className="text-emerald-200/70">=</span>
             <span className="text-lg font-black">{preview.score}</span>
             <span className="ml-1 font-sans text-sm">{actionLabel}</span>
@@ -138,9 +136,9 @@ export function PreviewPanel({
         </div>
       ) : (
         <div className="panel-inset flex items-baseline justify-center gap-2 rounded py-2 font-mono">
-          <span className="text-lg font-bold text-sky-400">{preview.chips}</span>
-          <span className="text-neutral-500">×</span>
-          <span className="text-lg font-bold text-amber-400">{preview.mult}</span>
+          <span className="text-lg font-bold text-sky-400">
+            {preview.lines.map((l) => l.value).join(' + ')}
+          </span>
           <span className="text-neutral-500">=</span>
           <span className="text-2xl font-black text-emerald-400">{preview.score}</span>
         </div>

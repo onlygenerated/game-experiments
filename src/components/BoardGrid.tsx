@@ -55,7 +55,7 @@ export function BoardGrid({
   docked: boolean;
   /** True while a card is being dragged, so the cell under the pointer can lift. */
   dragActive: boolean;
-  /** Cells to light one at a time after the most recent score, chips axis then mult. */
+  /** Cells to light one at a time after the most recent score, line by line. */
   cascade: Cascade | null;
   /** Cells of the run that just reached the cap, for a one-shot snap + glow. */
   linePunch: LinePunch | null;
@@ -252,9 +252,7 @@ export function BoardGrid({
               {cascadeHit && (
                 <div
                   key={`${cascade!.id}-${k}`}
-                  className={`cascade-flash pointer-events-none absolute inset-0 rounded-md ${
-                    cascadeHit.role === 'chips' ? 'cascade-flash-chips' : 'cascade-flash-mult'
-                  }`}
+                  className="cascade-flash cascade-flash-chips pointer-events-none absolute inset-0 rounded-md"
                   style={{ animationDelay: `${cascadeHit.delay}ms` }}
                 />
               )}

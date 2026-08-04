@@ -12,16 +12,9 @@ export interface LineEval {
   /** Headline, e.g. "Two Pair" or "8 pts". */
   name: string;
   items: ScoreItem[];
-  /** The number this line contributes in its role — chips or mult. */
+  /** Points this line contributes to the placement's score. */
   value: number;
 }
-
-/**
- * Which resource a line feeds. The spine of the game never changes — place a
- * card, it joins lines, the lines score — so a lens only decides how a line of
- * cards converts into chips or mult.
- */
-export type AxisRole = 'chips' | 'mult';
 
 /** One rule, as the player reads it. */
 export interface RuleLine {
@@ -41,7 +34,7 @@ export interface Lens {
   name: string;
   /** One line, shown in the ruleset menu. */
   blurb: string;
-  evaluate(cards: readonly Card[], role: AxisRole, cfg: Config): LineEval;
+  evaluate(cards: readonly Card[], cfg: Config): LineEval;
   /**
    * How this lens scores, in the player's terms and with this config's actual
    * numbers in it. Lives on the lens so the explanation cannot drift from the
@@ -59,9 +52,8 @@ export interface Lens {
  * highlighting.
  */
 export interface ScoredLine {
-  /** Shown in the preview, e.g. "Row -> chips" or "E-W -> chips". */
+  /** Shown in the preview, e.g. "Row" or "E-W". */
   label: string;
-  role: AxisRole;
   /** The whole contiguous run, for highlighting. */
   cards: Card[];
   cellKeys: string[];
@@ -71,12 +63,10 @@ export interface ScoredLine {
   value: number;
 }
 
-/** What a placement is worth, structure-agnostic. */
+/** What a placement is worth, structure-agnostic: the sum of its lines. */
 export interface ScoredPlacement {
   card: Card;
   lines: ScoredLine[];
-  chips: number;
-  mult: number;
   score: number;
   /** Structure-specific extras shown under the total, e.g. a distance bonus. */
   notes: ScoreItem[];

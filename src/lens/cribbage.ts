@@ -1,6 +1,6 @@
 import type { Config } from '../config';
 import type { Card, Rank } from '../deck';
-import type { AxisRole, Lens, LineEval, ScoreItem } from './types';
+import type { Lens, LineEval, ScoreItem } from './types';
 
 /**
  * Cribbage counts a card two different ways, and mixing them up is the classic
@@ -129,24 +129,15 @@ export const cribbageLens: Lens = {
   name: 'Cribbage',
   blurb: 'Fifteens, pairs, runs and flushes. Additive, so bigger structures pay off faster.',
 
-  evaluate(cards, role: AxisRole, cfg): LineEval {
+  evaluate(cards, cfg): LineEval {
     const { items, total } = cribbageCount(cards, cfg);
     const name = total === 0 ? 'No count' : `${total} pt${total === 1 ? '' : 's'}`;
 
-    if (role === 'chips') {
-      // A flat base per card keeps every placement worth something, so the
-      // count supplies the spikes rather than the entire score.
-      const base = cards.length * cfg.cribbage.baseChipsPerCard;
-      const items2 = base ? [...items, { label: `Cards (${cards.length})`, points: base }] : items;
-      return { name, items: items2, value: total * cfg.cribbage.chipsPerPoint + base };
-    }
-    // Mult rises smoothly with the count instead of sitting at 1 until a hand
-    // happens to form — the whole reason the poker column felt dead.
-    return {
-      name,
-      items,
-      value: 1 + Math.floor(total / cfg.cribbage.multPerPoint),
-    };
+    // A flat base per card keeps every placement worth something, so the
+    // count supplies the spikes rather than the entire score.
+    const base = cards.length * cfg.cribbage.baseChipsPerCard;
+    const items2 = base ? [...items, { label: `Cards (${cards.length})`, points: base }] : items;
+    return { name, items: items2, value: total * cfg.cribbage.chipsPerPoint + base };
   },
 
   rules(cfg) {
@@ -183,17 +174,12 @@ export const cribbageLens: Lens = {
         title: 'Turning the count into a score',
         lines: [
           {
-            label: `Chips = count × ${c.chipsPerPoint}${
+            label: `Points = count × ${c.chipsPerPoint}${
               c.baseChipsPerCard ? ` + ${c.baseChipsPerCard} per card` : ''
             }`,
             detail: c.baseChipsPerCard
-              ? 'The flat amount per card means a line with no count is still worth something, so no placement is completely wasted.'
-              : 'No flat amount per card, so a line that counts nothing scores nothing — a placement really can be wasted.',
-          },
-          {
-            label: `Mult = 1 + count ÷ ${c.multPerPoint}`,
-            detail:
-              'Rounded down. The count is additive, so mult climbs gradually instead of sitting at ×1 until a hand happens to form.',
+              ? 'The flat amount per card means a line with no count is still worth something, so no placement is completely wasted. Every line you join adds its points straight to the score — there is no second resource to multiply it by.'
+              : 'No flat amount per card, so a line that counts nothing scores nothing — a placement really can be wasted. Every line you join adds its points straight to the score.',
           },
         ],
       },

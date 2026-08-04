@@ -216,57 +216,41 @@ describe('cribbageCount — known hands', () => {
 });
 
 describe('cribbageLens', () => {
-  it('converts the count into chips, plus a flat base per card', () => {
+  it('converts the count into points, plus a flat base per card', () => {
     const { chipsPerPoint, baseChipsPerCard } = CONFIG.cribbage;
-    const r = cribbageLens.evaluate(hand('7H 8S'), 'chips', CONFIG);
+    const r = cribbageLens.evaluate(hand('7H 8S'), CONFIG);
     expect(r.value).toBe(2 * chipsPerPoint + 2 * baseChipsPerCard);
     expect(r.name).toBe('2 pts');
     expect(r.items).toContainEqual({ label: 'Cards (2)', points: 2 * baseChipsPerCard });
   });
 
   it('still pays the base when a line has no count — no wasted placements', () => {
-    const r = cribbageLens.evaluate(hand('2H 9S'), 'chips', CONFIG);
+    const r = cribbageLens.evaluate(hand('2H 9S'), CONFIG);
     expect(r.name).toBe('No count');
     expect(r.value).toBe(2 * CONFIG.cribbage.baseChipsPerCard);
   });
 
   it('drops to a pure count when the base is switched off', () => {
     const cfg: Config = { ...CONFIG, cribbage: { ...CONFIG.cribbage, baseChipsPerCard: 0 } };
-    expect(cribbageLens.evaluate(hand('2H 9S'), 'chips', cfg).value).toBe(0);
-    expect(cribbageLens.evaluate(hand('7H 8S'), 'chips', cfg).value).toBe(
-      2 * CONFIG.cribbage.chipsPerPoint,
-    );
+    expect(cribbageLens.evaluate(hand('2H 9S'), cfg).value).toBe(0);
+    expect(cribbageLens.evaluate(hand('7H 8S'), cfg).value).toBe(2 * CONFIG.cribbage.chipsPerPoint);
   });
 
-  it('never lets the base leak into mult — mult is the count alone', () => {
-    expect(cribbageLens.evaluate(hand('2H 9S'), 'mult', CONFIG).value).toBe(1);
-    expect(cribbageLens.evaluate(hand('2H 9S'), 'mult', CONFIG).items).toEqual([]);
-  });
-
-  it('grows mult smoothly with the count instead of stepping at 1', () => {
-    const mult = (spec: string) => cribbageLens.evaluate(hand(spec), 'mult', CONFIG).value;
-    expect(mult('2H 9S')).toBe(1); // no count
-    expect(mult('7H 8S')).toBe(2); // 2 pts
-    expect(mult('4H 5S 5D 6C')).toBe(7); // 12 pts
-  });
-
-  it('reports a lone card as no count, worth only its base chips and ×1', () => {
-    expect(cribbageLens.evaluate(hand('7H'), 'chips', CONFIG)).toMatchObject({
+  it('reports a lone card as no count, worth only its base points', () => {
+    expect(cribbageLens.evaluate(hand('7H'), CONFIG)).toMatchObject({
       name: 'No count',
       value: CONFIG.cribbage.baseChipsPerCard,
     });
-    expect(cribbageLens.evaluate(hand('7H'), 'mult', CONFIG).value).toBe(1);
   });
 
   it('follows a retuned conversion rate', () => {
     const cfg: Config = {
       ...CONFIG,
-      cribbage: { ...CONFIG.cribbage, chipsPerPoint: 10, multPerPoint: 4 },
+      cribbage: { ...CONFIG.cribbage, chipsPerPoint: 10 },
     };
-    expect(cribbageLens.evaluate(hand('4H 5S 5D 6C'), 'chips', cfg).value).toBe(
+    expect(cribbageLens.evaluate(hand('4H 5S 5D 6C'), cfg).value).toBe(
       12 * 10 + 4 * CONFIG.cribbage.baseChipsPerCard,
     );
-    expect(cribbageLens.evaluate(hand('4H 5S 5D 6C'), 'mult', cfg).value).toBe(4);
   });
 });
 
@@ -301,7 +285,7 @@ describe('lens.rules', () => {
     expect(labels(flush3).some((l) => l.includes('from 3'))).toBe(true);
 
     const pure: Config = { ...CONFIG, cribbage: { ...CONFIG.cribbage, baseChipsPerCard: 0 } };
-    const chipsLine = (cfg: Config) => labels(cfg).find((l) => l.startsWith('Chips ='))!;
+    const chipsLine = (cfg: Config) => labels(cfg).find((l) => l.startsWith('Points ='))!;
     expect(chipsLine(CONFIG)).toContain('per card');
     expect(chipsLine(pure)).not.toContain('per card');
   });

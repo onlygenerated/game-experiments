@@ -115,16 +115,14 @@ export interface Config {
    * growing structure runs away with the score.
    */
   cribbage: {
-    /** chips = count x this */
+    /** points = count x this */
     chipsPerPoint: number;
     /**
-     * Flat chips per card in the line, before the count. Without this a line
+     * Flat points per card in the line, before the count. Without this a line
      * with no count scores literally zero, so half of every turn's moves are
      * worth nothing and a placement can be a wasted turn.
      */
     baseChipsPerCard: number;
-    /** mult = 1 + floor(count / this) */
-    multPerPoint: number;
     /** Shortest all-one-suit line that counts as a flush. Cribbage uses 4. */
     flushMin: number;
   };
@@ -148,7 +146,7 @@ export const CONFIG: Config = {
   gridSize: 7,
   lineCap: 5,
 
-  targetScore: 300,
+  targetScore: 870,
   placementsPerRun: 15,
   discardsPerRun: 3,
 
@@ -206,7 +204,6 @@ export const CONFIG: Config = {
   cribbage: {
     chipsPerPoint: 6,
     baseChipsPerCard: 3,
-    multPerPoint: 2,
     flushMin: 4,
   },
 };

@@ -9,10 +9,10 @@ export interface LogRow extends ScoredPlacement {
   atLabel: string;
 }
 
-const ACCENT = { chips: 'text-sky-400', mult: 'text-amber-400' } as const;
+const ACCENT = 'text-sky-400';
 
 function Line({ line }: { line: ScoredLine }) {
-  const accent = ACCENT[line.role];
+  const accent = ACCENT;
   const clipped = line.windowKeys.length < line.cellKeys.length;
   return (
     <div className="flex items-center gap-1.5">
@@ -41,7 +41,7 @@ function Line({ line }: { line: ScoredLine }) {
 
 /**
  * The primary instrument for judging whether the math feels good. One row per
- * placement, newest first, with the full chips × mult breakdown.
+ * placement, newest first, with the full line-by-line breakdown.
  */
 export function ScoreLog({ log }: { log: LogRow[] }) {
   return (
@@ -74,9 +74,9 @@ export function ScoreLog({ log }: { log: LogRow[] }) {
               </div>
 
               <div className="mt-1.5 flex items-baseline gap-1.5 border-t border-white/5 pt-1.5 font-mono text-sm">
-                <span className="font-bold text-sky-400">{e.chips}</span>
-                <span className="text-neutral-500">×</span>
-                <span className="font-bold text-amber-400">{e.mult}</span>
+                <span className="font-bold text-sky-400">
+                  {e.lines.map((l) => l.value).join(' + ')}
+                </span>
                 {e.notes.map((n, i) => (
                   <span key={i} className="text-[10px] text-violet-300">
                     ×{n.points}

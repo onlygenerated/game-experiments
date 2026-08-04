@@ -121,7 +121,7 @@ stand on. Sized for 30 minutes each.
 
 ### A. The scoring change — everything depends on this
 
-- [ ] **1. Collapse chips × mult into one additive score.** `Lens.evaluate`
+- [x] **1. Collapse chips × mult into one additive score.** `Lens.evaluate`
       returns points, not a role-dependent value; `ScoredPlacement` carries
       `score` and drops `chips`/`mult`; `AxisRole` is deleted. Grid and hex both
       keep working — grid sums its two lines, hex its three. Update the preview,
@@ -228,12 +228,126 @@ stand on. Sized for 30 minutes each.
 
 ## Decisions log
 
-Record anything a later firing would otherwise rediscover, and anything that
-turned out wrong once it was running. A note that an idea failed is worth as
-much as one that landed.
+**Item 1.** `Lens.evaluate(cards, cfg)` now returns one `LineEval.value` —
+points, not a role-dependent chips-or-mult number. `ScoredLine` dropped
+`role`; `ScoredPlacement` dropped `chips`/`mult`, keeping only `score`. Grid
+sums `rowLine.value + colLine.value`; hex sums all three axis lines, then
+applies the ring bonus to the total (the one multiplier left in the core
+model — it acts on the sum, not on a line, so it stayed out of scope for the
+retirement). `payOnCompleteOnly`/`lockAndCash` still gate the total with a
+0/1 `payout` multiplier — that's a banking gate, not the axis-resource split
+being retired, so it stayed as-is.
+
+For cribbage, a line's points are the old "chips" formula (`count ×
+chipsPerPoint + baseChipsPerCard × cards.length`); the old "mult" formula
+(`1 + floor(count / multPerPoint)`) is gone, and `cribbage.multPerPoint` was
+deleted from `Config` since nothing reads it anymore. For poker, a line's
+points are the old "chips" formula (`hand.chips + rankTotal`); `hand.mult`
+is simply never read by `pokerLens` now, but `HandEntry.mult` stays in
+`Config`/`hands.ts`/`evaluateHand` — a different, lower-level concept
+(a hand's own reward table) than the retired `AxisRole`, and `hands.test.ts`
+still covers it untouched. The Setup screen's per-hand table still lets a
+player edit that number, so its column is now labelled "Mult (unused)"
+rather than silently doing nothing.
+
+`mechanics.axisMode` ('split' / 'both' / 'suit') existed entirely to route
+lines into the chips/mult roles. With roles gone there is nothing left to
+route — the config field stays (three live rulesets set it, and the type is
+unchanged), but `scoreCross` no longer reads it: every mode now scores
+identically, `Row` + `Col` summed. `mech-both-axes`, `mech-suit-axis`,
+`mech-free` and `poker-mult-amped` are consequently inert re-skins of their
+baselines now; their blurbs say so ("Historical: ...") rather than
+describing behaviour that no longer exists. Left them in the ruleset list
+rather than deleting — item 3's calibration pass is a better moment to
+decide whether they're worth reviving in additive terms (e.g. "both lines
+feed a shared bonus tile" is a real Rooms-shaped idea) or retiring outright.
+
+Every existing ruleset's `targetScore` (and `CONFIG.targetScore`) was
+recomputed, not hand-guessed: a throwaway greedy-agent script (same shape as
+`tools/probe.test.ts`, run and discarded — not committed, not `npm run
+probe`) played 20 seeds per ruleset under the new additive model and took
+the median final score as the new target, which is what the item's own text
+asked for ("update... targets to whatever the sum produces"). This is
+**not** the item-3 probe and carries no claim about reach pressure, spread,
+or clear rate — it only stops the numbers from being nonsensically stale
+(the old products were 3-500x the new sums). One exception: `poker-tight`'s
+config is identical to `poker-baseline` except for `targetScore`, so setting
+both to their shared median collapsed them to the same `Config` object and
+broke `matchingPreset`'s deep-equality lookup (`setup.test.ts`) — gave
+`poker-tight` the 80th-percentile score instead, restoring "same rules,
+harder bar" as a distinct, still-measured number. `mech-lock-cash` kept
+using a 2-ply median rather than greedy, per the existing comment in
+`rulesets.ts` — greedy is not a valid agent for that ruleset (it cashes too
+early), confirmed by `npm run probe` afterwards showing 0% greedy win rate
+there and matching the ruleset's own long-standing note.
+
+Ran `npm run probe` once by hand afterward purely to sanity-check nothing
+crashes post-change (it doesn't — `multActive`/`multPct` just read 0
+everywhere now, harmless dead code in a script item 3 replaces). That run
+regenerated `src/metrics.generated.ts` as a side effect; reverted it with
+`git checkout` before committing, since regenerating that file for real is
+explicitly item 3's job, not this one's — a half-updated Metrics page
+(valid skill/lift numbers next to a permanently-zero `multPct` column) would
+be worse than the currently-stale one.
+
+Cascade cell highlighting (`CascadeCell`) dropped its `role` field along
+with `AxisRole`; every line now flashes the same sky-blue
+(`cascade-flash-chips`, kept its old name to avoid an unnecessary rename).
+The unused `cascade-flash-mult` CSS rule was deleted. Same collapse in
+`HexBoardView`'s run/window highlighting: the chips-blue/mult-amber `Map`
+became a plain `Set`, one colour.
 
 ## Results log
 
-Per item: what shipped, what it measures, and a capture path. For anything with
-a score in it, record the numbers — this mode has no calibrated baseline yet and
-the log is how one accumulates.
+**Item 1.** `npm test` 203/203 (was 208 — 5 tests removed, all for formulas
+that no longer exist: cribbage's mult formula, hex's "mult never below 1",
+and two of five `axisMode` differentiation tests collapsed into one
+"scores identically across modes" test since that's now the actual
+behaviour). `npx tsc -b --noEmit` clean. `npm run smoke` 18/18, extended
+with the new label text. Screenshots taken driving grid and hex placement,
+the score log, and the scoring-rules panel via `tools/browser.mjs` — all
+show plain `N + M = score` in place of `chips × mult = score`, no leftover
+"chips"/"mult" language in the header, legend, or rules panel. No video —
+this item changed the score model, not movement or feel.
+
+New `targetScore` values (greedy-agent median over 20 seeds, additive
+model; old values shown for scale, not comparability — the score model
+changed underneath them):
+
+| ruleset | old target | new target |
+|---|---|---|
+| poker-baseline | 300 | 870 |
+| poker-tight | 540 | 935 (p80, see decisions log) |
+| poker-mult-amped | 620 | 870 |
+| poker-partials | 300 | 895 |
+| poker-short-run | 370 | 550 |
+| poker-partials-generous | 700 | 925 |
+| poker-flat-ranks | 435 | 635 |
+| poker-short-lines | 520 | 870 |
+| poker-long-lines | 660 | 920 |
+| poker-lean-hand | 545 | 805 |
+| poker-small-board | 440 | 670 |
+| draft-cribbage | 345 | 535 |
+| draft-poker | 440 | 725 |
+| draft-hex | 625 | 860 |
+| hex-sprawl | 1200 | 1445 |
+| hex-sprawl-blank | 1120 | 1235 |
+| hex-sprawl-flat | 965 | 1125 |
+| cribbage-blank | 550 | 770 |
+| poker-blank | 570 | 820 |
+| cribbage | 600 | 820 |
+| cribbage-unbound | 1050 | 1315 |
+| cribbage-pure | 450 | 580 |
+| cribbage-lean | 500 | 685 |
+| reference-poker-squares | 405 | 615 |
+| mech-both-axes | 3750 | 820 |
+| mech-suit-axis | 665 | 820 |
+| mech-deferred | 150 | 190 |
+| mech-free | 610 | 820 |
+| mech-lock-cash | 265 | 175 (2-ply median) |
+| cribbage-flush3 | 660 | 845 |
+
+These are placeholders, not calibration — item 3 rebuilds the probe
+(reach pressure, spread, clear rate) and recalibrates for real. None of
+this speaks to the room-shape questions the mode is actually being built
+to answer.

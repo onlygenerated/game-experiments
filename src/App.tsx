@@ -169,11 +169,10 @@ export default function App() {
   useEffect(() => () => void (scoreFlyTimer.current && clearTimeout(scoreFlyTimer.current)), []);
 
   // Line-scoring cascade: light the cells that actually fed the score one at a
-  // time, chips axis then mult axis, instead of the flat colour wash the board
-  // already draws for them. Triggered by the same "logRows grew" signal as the
+  // time, line by line, instead of the flat colour wash the board already
+  // draws for them. Triggered by the same "logRows grew" signal as the
   // score-fly above — every log row, grid or hex, already carries `lines` with
-  // `role` and `windowKeys` (the stretch that actually scored, not just the
-  // full run), so this needed no change to a `main`-owned file either.
+  // `windowKeys` (the stretch that actually scored, not just the full run).
   const [cascade, setCascade] = useState<Cascade | null>(null);
   const prevCascadeLen = useRef(logRows.length);
   const cascadeGenId = useRef(0);
@@ -185,14 +184,10 @@ export default function App() {
     if (logRows.length <= prev) return;
 
     const last = logRows[logRows.length - 1];
-    const ordered = [
-      ...last.lines.filter((l) => l.role === 'chips'),
-      ...last.lines.filter((l) => l.role === 'mult'),
-    ];
     const cells = new Map<string, CascadeCell>();
-    for (const line of ordered) {
+    for (const line of last.lines) {
       for (const key of line.windowKeys) {
-        if (!cells.has(key)) cells.set(key, { role: line.role, delay: cells.size * CASCADE_STAGGER_MS });
+        if (!cells.has(key)) cells.set(key, { delay: cells.size * CASCADE_STAGGER_MS });
       }
     }
 
@@ -423,7 +418,7 @@ export default function App() {
             {getLens(cfg.lensId).name.toLowerCase()} ·{' '}
             {cfg.structure === 'hex'
               ? `hex, 3 axes, best ${cfg.hexWindow}`
-              : `row → chips · col → mult · ${cfg.lineCap}-card cap`}
+              : `row + col · ${cfg.lineCap}-card cap`}
           </span>
           {/* Rules belong in front of the player, not behind a Dev toggle. */}
           <button
@@ -523,8 +518,7 @@ export default function App() {
           {!docked && <div className="w-full">{trayOrEnd}</div>}
 
           <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-[11px] text-neutral-500 min-[1280px]:justify-start">
-            <span className="text-sky-400">chips axis</span>
-            <span className="text-amber-400">mult axis</span>
+            <span className="text-sky-400">scoring line</span>
             {cfg.mechanics.lockAndCash && (
               <span className="text-amber-300">gold cards can be cashed · grey lines are sealed</span>
             )}
@@ -633,9 +627,7 @@ export default function App() {
           }}
         >
           <span className="flex items-baseline gap-1 rounded-full border border-white/10 bg-[#0d1015]/95 px-2.5 py-1 font-mono text-[13px] font-bold shadow-lg backdrop-blur">
-            <span className="text-sky-400">{preview.chips}</span>
-            <span className="text-neutral-600">×</span>
-            <span className="text-amber-400">{preview.mult}</span>
+            <span className="text-sky-400">{preview.lines.map((l) => l.value).join(' + ')}</span>
             <span className="text-neutral-600">=</span>
             <span className="text-base text-emerald-400">{preview.score}</span>
           </span>

@@ -31,13 +31,14 @@ export const RULESETS: Ruleset[] = [
     name: 'Poker — tight target',
     group: 'Poker tuning',
     blurb: 'Raised target. Tests whether the flat skill curve was just a soft bar.',
-    config: base({ targetScore: 540 }),
+    config: base({ targetScore: 935 }),
   },
   {
     id: 'poker-mult-amped',
     name: 'Poker — mult amplified',
     group: 'Poker tuning',
-    blurb: 'Same hands, steeper mult column. Is the mult axis dead because it is rare, or weak?',
+    blurb:
+      'Historical: these hands used to carry a steeper mult column. The lens no longer reads a hand’s mult, so this now scores identically to the baseline — kept as a marker until item 3 decides whether to retire it.',
     config: base({
       hands: {
         ...CONFIG.hands,
@@ -50,7 +51,7 @@ export const RULESETS: Ruleset[] = [
         'Four of a Kind': { minCards: 4, chips: 60, mult: 12 },
         'Straight Flush': { minCards: 5, chips: 100, mult: 16 },
       },
-      targetScore: 620,
+      targetScore: 870,
     }),
   },
   {
@@ -58,7 +59,7 @@ export const RULESETS: Ruleset[] = [
     name: 'Poker — partials on',
     group: 'Poker tuning',
     blurb: '3- and 4-card straights and flushes count at a reduced rate. The PRD open question.',
-    config: base({ partialHands: { ...CONFIG.partialHands, enabled: true } }),
+    config: base({ partialHands: { ...CONFIG.partialHands, enabled: true }, targetScore: 895 }),
   },
 
   {
@@ -66,7 +67,7 @@ export const RULESETS: Ruleset[] = [
     name: 'Poker — short run',
     group: 'Poker tuning',
     blurb: 'Ten placements instead of fifteen. Scarcity of turns rather than a higher bar.',
-    config: base({ placementsPerRun: 10, targetScore: 370 }),
+    config: base({ placementsPerRun: 10, targetScore: 550 }),
   },
   {
     id: 'poker-partials-generous',
@@ -75,7 +76,7 @@ export const RULESETS: Ruleset[] = [
     blurb: 'Partial straights and flushes at 0.75 / 0.9 instead of 0.5 / 0.75.',
     config: base({
       partialHands: { enabled: true, minCards: 3, scaleByLength: { 3: 0.75, 4: 0.9 } },
-      targetScore: 700,
+      targetScore: 925,
     }),
   },
   {
@@ -86,7 +87,7 @@ export const RULESETS: Ruleset[] = [
       'Every rank worth 5. Kills the play-high-cards gradient so hand formation is the only chip source.',
     config: base({
       rankChips: Object.fromEntries([...Array(13)].map((_, i) => [i + 2, 5])),
-      targetScore: 435,
+      targetScore: 635,
     }),
   },
   {
@@ -94,28 +95,28 @@ export const RULESETS: Ruleset[] = [
     name: 'Poker — short lines (cap 4)',
     group: 'Poker tuning',
     blurb: 'Tighter cap. Does it create useful scarcity, or choke the board too early?',
-    config: base({ lineCap: 4, targetScore: 520 }),
+    config: base({ lineCap: 4, targetScore: 870 }),
   },
   {
     id: 'poker-long-lines',
     name: 'Poker — long lines (cap 6)',
     group: 'Poker tuning',
     blurb: 'Looser cap. Do longer lines make straights and flushes common enough to matter?',
-    config: base({ lineCap: 6, targetScore: 660 }),
+    config: base({ lineCap: 6, targetScore: 920 }),
   },
   {
     id: 'poker-lean-hand',
     name: 'Poker — lean hand',
     group: 'Poker tuning',
     blurb: 'Hand of 4, five discards. Is the flatness because 7 cards always contain a good option?',
-    config: base({ handSize: 4, discardsPerRun: 5, targetScore: 545 }),
+    config: base({ handSize: 4, discardsPerRun: 5, targetScore: 805 }),
   },
   {
     id: 'poker-small-board',
     name: 'Poker — small board (5x5)',
     group: 'Poker tuning',
     blurb: 'Crowded grid, 12 placements. Does spatial pressure make position matter?',
-    config: base({ gridSize: 5, placementsPerRun: 12, targetScore: 440 }),
+    config: base({ gridSize: 5, placementsPerRun: 12, targetScore: 670 }),
   },
 
   {
@@ -129,7 +130,7 @@ export const RULESETS: Ruleset[] = [
       minDiscardSelection: 1,
       maxDiscardSelection: 1,
       discardsPerRun: 8,
-      targetScore: 345,
+      targetScore: 535,
     }),
   },
   {
@@ -142,7 +143,7 @@ export const RULESETS: Ruleset[] = [
       minDiscardSelection: 1,
       maxDiscardSelection: 1,
       discardsPerRun: 8,
-      targetScore: 440,
+      targetScore: 725,
     }),
   },
   {
@@ -156,7 +157,7 @@ export const RULESETS: Ruleset[] = [
       minDiscardSelection: 1,
       maxDiscardSelection: 1,
       discardsPerRun: 8,
-      targetScore: 625,
+      targetScore: 860,
     }),
   },
 
@@ -166,21 +167,21 @@ export const RULESETS: Ruleset[] = [
     group: 'Hex',
     blurb:
       'Hex board, three axes per placement, no line cap — only your best five along each line scores. Further from the centre is worth more.',
-    config: cribbageBase({ structure: 'hex', startWithAnchor: true, targetScore: 1200 }),
+    config: cribbageBase({ structure: 'hex', startWithAnchor: true, targetScore: 1445 }),
   },
   {
     id: 'hex-sprawl-blank',
     name: 'Hex Sprawl — blank',
     group: 'Hex',
     blurb: 'Same, but no centre card. Your first placement chooses where the whole structure grows from.',
-    config: cribbageBase({ structure: 'hex', startWithAnchor: false, targetScore: 1120 }),
+    config: cribbageBase({ structure: 'hex', startWithAnchor: false, targetScore: 1235 }),
   },
   {
     id: 'hex-sprawl-flat',
     name: 'Hex Sprawl — no distance bonus',
     group: 'Hex',
     blurb: 'Ring bonus off. Isolates whether building outward is worth it on its own.',
-    config: cribbageBase({ structure: 'hex', hexRingBonus: 0, targetScore: 965 }),
+    config: cribbageBase({ structure: 'hex', hexRingBonus: 0, targetScore: 1125 }),
   },
 
   {
@@ -189,14 +190,14 @@ export const RULESETS: Ruleset[] = [
     group: 'Cribbage',
     blurb:
       'No centre card. Your first placement picks the origin, so where the structure starts is a decision.',
-    config: cribbageBase({ startWithAnchor: false, targetScore: 550 }),
+    config: cribbageBase({ startWithAnchor: false, targetScore: 770 }),
   },
   {
     id: 'poker-blank',
     name: 'Poker — blank board',
     group: 'Poker tuning',
     blurb: 'No centre card, poker scoring. The same origin question against the control lens.',
-    config: base({ startWithAnchor: false, targetScore: 570 }),
+    config: base({ startWithAnchor: false, targetScore: 820 }),
   },
 
   {
@@ -204,8 +205,8 @@ export const RULESETS: Ruleset[] = [
     name: 'Cribbage',
     group: 'Cribbage',
     blurb:
-      'Fifteens, pairs, runs and flushes. Additive scoring, so even a two-card line counts and mult rises smoothly.',
-    config: cribbageBase(),
+      'Fifteens, pairs, runs and flushes. Additive scoring, so even a two-card line counts and every line adds straight to the score.',
+    config: cribbageBase({ targetScore: 820 }),
   },
   {
     id: 'cribbage-unbound',
@@ -213,7 +214,7 @@ export const RULESETS: Ruleset[] = [
     group: 'Cribbage',
     blurb:
       'Line cap raised to 7. Cribbage counts grow faster than length, so this is where building bigger should really pay.',
-    config: cribbageBase({ lineCap: 7, targetScore: 1050 }),
+    config: cribbageBase({ lineCap: 7, targetScore: 1315 }),
   },
   {
     id: 'cribbage-pure',
@@ -222,7 +223,7 @@ export const RULESETS: Ruleset[] = [
     blurb: 'No flat per-card chips. A line with no count scores nothing, so dead placements are real.',
     config: cribbageBase({
       cribbage: { ...CONFIG.cribbage, baseChipsPerCard: 0 },
-      targetScore: 450,
+      targetScore: 580,
     }),
   },
   {
@@ -230,7 +231,7 @@ export const RULESETS: Ruleset[] = [
     name: 'Cribbage — lean hand',
     group: 'Cribbage',
     blurb: 'Hand of 4, five discards. Fewer options per turn, so each placement is a real constraint.',
-    config: cribbageBase({ handSize: 4, discardsPerRun: 5, targetScore: 500 }),
+    config: cribbageBase({ handSize: 4, discardsPerRun: 5, targetScore: 685 }),
   },
   {
     id: 'reference-poker-squares',
@@ -248,7 +249,7 @@ export const RULESETS: Ruleset[] = [
       discardsPerRun: 0,
       startWithAnchor: false,
       mechanics: { ...CONFIG.mechanics, requireAdjacency: false, payOnCompleteOnly: true },
-      targetScore: 405,
+      targetScore: 615,
     }),
   },
 
@@ -257,10 +258,10 @@ export const RULESETS: Ruleset[] = [
     name: 'Both axes score',
     group: 'Mechanics',
     blurb:
-      'Every line you join feeds chips *and* mult. If this plays like the split version, the two-axis rule was decoration.',
+      'Historical: under chips × mult this fed every line into both resources. Additive scoring has no roles left to route, so `axisMode` is now inert — this plays identically to plain Cribbage. Kept as a marker until item 3 decides whether the mechanic is worth reviving in additive terms.',
     config: cribbageBase({
       mechanics: { ...CONFIG.mechanics, axisMode: 'both' },
-      targetScore: 3750,
+      targetScore: 820,
     }),
   },
   {
@@ -268,10 +269,10 @@ export const RULESETS: Ruleset[] = [
     name: 'Suit sets the axis',
     group: 'Mechanics',
     blurb:
-      'Red cards read row as chips, black cards read column as chips. Which card you play matters as much as where.',
+      'Historical: under chips × mult a red card fed the row into chips, a black card the column. Additive scoring has no roles to swap, so this now plays identically to plain Cribbage.',
     config: cribbageBase({
       mechanics: { ...CONFIG.mechanics, axisMode: 'suit' },
-      targetScore: 665,
+      targetScore: 820,
     }),
   },
   {
@@ -282,7 +283,7 @@ export const RULESETS: Ruleset[] = [
       'Nothing banks until a line fills up. Placements that build toward a full line are worth everything; the rest are worth nothing.',
     config: cribbageBase({
       mechanics: { ...CONFIG.mechanics, payOnCompleteOnly: true },
-      targetScore: 150,
+      targetScore: 190,
     }),
   },
   {
@@ -293,7 +294,7 @@ export const RULESETS: Ruleset[] = [
       'Play anywhere; nothing has to touch. The cleanest test of whether adjacency is what makes this a puzzle.',
     config: cribbageBase({
       mechanics: { ...CONFIG.mechanics, requireAdjacency: false },
-      targetScore: 610,
+      targetScore: 820,
     }),
   },
 
@@ -307,7 +308,7 @@ export const RULESETS: Ruleset[] = [
       mechanics: { ...CONFIG.mechanics, lockAndCash: true },
       // Calibrated from the 2-ply median, not the greedy one. Greedy is not a
       // valid agent for this ruleset — see the results log.
-      targetScore: 265,
+      targetScore: 175,
     }),
   },
 
@@ -318,7 +319,7 @@ export const RULESETS: Ruleset[] = [
     blurb: 'Flushes count from three cards. Makes suit a live consideration on short lines.',
     config: cribbageBase({
       cribbage: { ...CONFIG.cribbage, flushMin: 3 },
-      targetScore: 660,
+      targetScore: 845,
     }),
   },
 ];

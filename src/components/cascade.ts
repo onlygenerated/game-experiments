@@ -1,8 +1,5 @@
-import type { AxisRole } from '../lens';
-
-/** One cell's turn in the line-scoring cascade: which axis it belongs to, and when it lights. */
+/** One cell's turn in the line-scoring cascade: when it lights. */
 export interface CascadeCell {
-  role: AxisRole;
   delay: number;
 }
 

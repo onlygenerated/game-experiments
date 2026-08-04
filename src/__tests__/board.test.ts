@@ -257,9 +257,9 @@ describe('withCard', () => {
 });
 
 describe('scorePlacement', () => {
-  it('takes chips from the row and mult from the column', () => {
-    //   col: 9C / 9D  -> Pair, mult 2
-    //   row: 5H 6D 9C -> High Card, chips 5 + (5+6+9) = 25
+  it('sums the row and the column, each counted on its own', () => {
+    //   col: 9C / 9D  -> Pair, 10 + (9+9) = 28
+    //   row: 5H 6D 9C -> High Card, 5 + (5+6+9) = 25
     const board = place([
       '.. .. .. .. .. .. ..',
       '.. 5H 6D .. .. .. ..',
@@ -276,9 +276,9 @@ describe('scorePlacement', () => {
       { label: 'High Card', points: 5 },
       { label: 'Ranks (3)', points: 20 },
     ]);
-    expect(r.chips).toBe(25);
-    expect(r.mult).toBe(2);
-    expect(r.score).toBe(50);
+    expect(r.rowEval.value).toBe(25);
+    expect(r.colEval.value).toBe(28);
+    expect(r.score).toBe(53);
   });
 
   it('gives a lone row-line the rank value only, with no hand bonus', () => {
@@ -290,24 +290,23 @@ describe('scorePlacement', () => {
     const r = scorePlacement(board, 2, 2, card('KS'));
     expect(r.rowLine).toHaveLength(1);
     expect(r.rowEval.items).toEqual([{ label: 'Ranks (1)', points: 10 }]);
-    expect(r.chips).toBe(10); // K = 10, no High Card bonus
+    expect(r.rowEval.value).toBe(10); // K = 10, no High Card bonus
     expect(r.colEval.name).toBe('High Card');
-    expect(r.mult).toBe(1);
-    expect(r.score).toBe(10);
+    expect(r.score).toBe(36); // 10 + (5 High Card + 21 ranks)
   });
 
-  it('gives a lone col-line a mult of 1', () => {
+  it('scores a lone col-line by its rank value plus the row hand', () => {
     const board = place(['9H 9D .. .. .. .. ..']);
     const r = scorePlacement(board, 0, 2, card('9S'));
     expect(r.colLine).toHaveLength(1);
-    // row: 9H 9D 9S -> Three of a Kind, 30 + 27 = 57
-    expect(r.chips).toBe(57);
-    expect(r.mult).toBe(1);
-    expect(r.score).toBe(57);
+    // row: 9H 9D 9S -> Three of a Kind, 30 + 27 = 57; col: lone 9 -> 9
+    expect(r.rowEval.value).toBe(57);
+    expect(r.colEval.value).toBe(9);
+    expect(r.score).toBe(66);
   });
 
-  it('ignores the column hand when computing chips', () => {
-    // A strong column must not leak chips into the row half.
+  it('keeps the column hand from leaking into the row line', () => {
+    // A strong column must not inflate the row half.
     const board = place([
       '.. .. 9H .. .. .. ..',
       '.. .. 9D .. .. .. ..',
@@ -317,14 +316,14 @@ describe('scorePlacement', () => {
     const r = scorePlacement(board, 3, 2, card('9C'));
     expect(r.colEval.name).toBe('Four of a Kind');
     expect(r.rowLine).toHaveLength(1);
-    expect(r.chips).toBe(9); // rank value of the placed 9 only
-    expect(r.mult).toBe(7);
-    expect(r.score).toBe(63);
+    expect(r.rowEval.value).toBe(9); // rank value of the placed 9 only
+    expect(r.colEval.value).toBe(96); // 60 + (9x4=36)
+    expect(r.score).toBe(105);
   });
 
-  it('scores the full both-axes case', () => {
-    // row: 2H 3H 4H 5H 6H -> Straight Flush, chips 100 + 20 = 120
-    // col: 6H 6D 6S       -> Three of a Kind, mult 3
+  it('scores a strong placement as the sum of both lines', () => {
+    // row: 2H 3H 4H 5H 6H -> Straight Flush, 100 + 20 = 120
+    // col: 6H 6D 6S       -> Three of a Kind, 30 + 18 = 48
     const board = place([
       '2H 3H 4H 5H .. .. ..',
       '.. .. .. .. 6D .. ..',
@@ -333,9 +332,9 @@ describe('scorePlacement', () => {
     const r = scorePlacement(board, 0, 4, card('6H'));
     expect(r.rowEval.name).toBe('Straight Flush');
     expect(r.colEval.name).toBe('Three of a Kind');
-    expect(r.chips).toBe(120);
-    expect(r.mult).toBe(3);
-    expect(r.score).toBe(360);
+    expect(r.rowEval.value).toBe(120);
+    expect(r.colEval.value).toBe(48);
+    expect(r.score).toBe(168);
   });
 
   it('does not mutate the board it scores against', () => {
@@ -379,70 +378,43 @@ describe('mechanics.requireAdjacency', () => {
   });
 });
 
+// `axisMode` fed chips and mult onto different axes under the old model.
+// Additive scoring has no roles left to route, so a placement is the sum of
+// its row and column regardless of the mode — these tests pin that collapse
+// rather than deleting the config option outright.
 describe('mechanics.axisMode', () => {
-  // Placing at (0,4) joins a strong row and a weak column, so swapping the
-  // roles has to move both numbers in opposite directions. The placed card is
-  // deliberately off-suit from the row, so a red 6 and a black 6 make the very
-  // same Straight and the *only* difference under test is which role it feeds.
-  //   row: 2H 3H 4H 5H 6x -> Straight
-  //   col: 6x 6C          -> Pair
+  //   row: 2H 3H 4H 5H 6D -> Straight
+  //   col: 6D 6C          -> Pair
   const board = place(['2H 3H 4H 5H .. .. ..', '.. .. .. .. 6C .. ..']);
   const placed = () => card('6D');
 
-  it('splits row into chips and col into mult by default', () => {
+  it('sums row and col by default', () => {
     const r = scorePlacement(board, 0, 4, placed());
-    expect(r.lines.map((l) => l.label)).toEqual(['Row → chips', 'Col → mult']);
-    expect(r.chips).toBe(r.rowEval.value);
-    expect(r.mult).toBe(r.colEval.value);
+    expect(r.lines.map((l) => l.label)).toEqual(['Row', 'Col']);
+    expect(r.score).toBe(r.rowEval.value + r.colEval.value);
   });
 
-  it('feeds both resources from both lines in "both" mode', () => {
+  it('scores identically whichever axisMode is configured', () => {
     const split = scorePlacement(board, 0, 4, placed());
     const both = scorePlacement(board, 0, 4, placed(), mech({ axisMode: 'both' }));
+    const suit = scorePlacement(board, 0, 4, placed(), mech({ axisMode: 'suit' }));
 
-    expect(both.lines.map((l) => l.label)).toEqual([
-      'Row → chips',
-      'Row → mult',
-      'Col → chips',
-      'Col → mult',
-    ]);
-    // The col line now contributes chips too, and the row line mult.
-    expect(both.chips).toBeGreaterThan(split.chips);
-    expect(both.mult).toBeGreaterThan(split.mult);
+    expect(both.score).toBe(split.score);
+    expect(suit.score).toBe(split.score);
   });
 
-  it('never lets "both" mode drop the mult below 1', () => {
-    // A lone card joins two one-card lines, each worth mult 1. Summing them
-    // and subtracting the shared base has to floor at 1, not 1+1-1 going wrong.
-    const lone = scorePlacement(emptyBoard(), 3, 3, card('2C'), mech({ axisMode: 'both' }));
-    expect(lone.mult).toBe(1);
-    expect(lone.score).toBe(lone.chips);
-  });
-
-  it('reverses the axes for a black card in "suit" mode', () => {
+  it('does not swap row and col labels for a black card in "suit" mode', () => {
     const cfg = mech({ axisMode: 'suit' });
     const red = scorePlacement(board, 0, 4, card('6D'), cfg);
     const black = scorePlacement(board, 0, 4, card('6S'), cfg);
 
-    expect(red.lines.map((l) => l.label)).toEqual(['Row → chips', 'Col → mult']);
-    expect(black.lines.map((l) => l.label)).toEqual(['Row → mult', 'Col → chips']);
-    // Same geometry and the same Straight either way; the black card takes
-    // chips off the row and reads the row as mult instead.
-    expect(red.rowEval.name).toBe('Straight');
-    expect(black.rowEval.name).toBe('Straight');
-    expect(black.chips).toBeLessThan(red.chips);
-    expect(black.mult).toBeGreaterThan(red.mult);
-  });
-
-  it('keeps row before col in the preview whichever way the suit points', () => {
-    const cfg = mech({ axisMode: 'suit' });
-    for (const tok of ['6D', '6S']) {
-      const r = scorePlacement(board, 0, 4, card(tok), cfg);
-      expect(r.lines[0].label.startsWith('Row')).toBe(true);
-      expect(r.lines[1].label.startsWith('Col')).toBe(true);
-    }
+    expect(red.lines.map((l) => l.label)).toEqual(['Row', 'Col']);
+    expect(black.lines.map((l) => l.label)).toEqual(['Row', 'Col']);
+    expect(red.score).toBe(black.score);
   });
 });
+
+const sumLines = (r: { lines: { value: number }[] }) => r.lines.reduce((s, l) => s + l.value, 0);
 
 describe('mechanics.payOnCompleteOnly', () => {
   const cfg = mech({ payOnCompleteOnly: true });
@@ -450,16 +422,16 @@ describe('mechanics.payOnCompleteOnly', () => {
   it('banks nothing when the placement completes no line', () => {
     const board = place(['.. 6D 7S']);
     const r = scorePlacement(board, 0, 0, card('5H'), cfg);
-    expect(r.chips).toBeGreaterThan(0);
+    expect(sumLines(r)).toBeGreaterThan(0);
     expect(r.score).toBe(0);
     expect(r.notes).toEqual([{ label: 'No line complete', points: 0 }]);
   });
 
-  it('banks the whole product when a line reaches the cap', () => {
+  it('banks the whole sum when a line reaches the cap', () => {
     const board = place(['2H 3H 4H 5H .. .. ..']);
     const r = scorePlacement(board, 0, 4, card('6H'), cfg);
     expect(r.rowCoords).toHaveLength(CONFIG.lineCap);
-    expect(r.score).toBe(r.chips * r.mult);
+    expect(r.score).toBe(sumLines(r));
     expect(r.notes).toEqual([{ label: 'Line complete — banks', points: 1 }]);
   });
 
@@ -467,13 +439,13 @@ describe('mechanics.payOnCompleteOnly', () => {
     const board = place(['2H .. ..', '3D .. ..', '4S .. ..', '5C .. ..']);
     const r = scorePlacement(board, 4, 0, card('6H'), cfg);
     expect(r.colCoords).toHaveLength(CONFIG.lineCap);
-    expect(r.score).toBe(r.chips * r.mult);
+    expect(r.score).toBe(sumLines(r));
   });
 
   it('leaves the default rules paying on every placement', () => {
     const board = place(['.. 6D 7S']);
     const r = scorePlacement(board, 0, 0, card('5H'));
-    expect(r.score).toBe(r.chips * r.mult);
+    expect(r.score).toBe(sumLines(r));
     expect(r.notes).toEqual([]);
   });
 });
@@ -484,16 +456,16 @@ describe('mechanics.lockAndCash', () => {
   it('shows a placement its value but banks nothing', () => {
     const board = place(['.. 6D 7S']);
     const r = scorePlacement(board, 0, 0, card('5H'), cfg);
-    expect(r.chips).toBeGreaterThan(0);
+    expect(sumLines(r)).toBeGreaterThan(0);
     expect(r.score).toBe(0);
     expect(r.notes).toEqual([{ label: 'Cash this cross to bank', points: 0 }]);
   });
 
-  it('banks the same product when the cross is cashed', () => {
+  it('banks the same sum when the cross is cashed', () => {
     const board = place(['5H 6D 7S']);
     const preview = scoreCross(board, 0, 0, cfg);
     const cashed = cashCell(board, 0, 0, cfg)!;
-    expect(cashed.result.score).toBe(preview.chips * preview.mult);
+    expect(cashed.result.score).toBe(sumLines(preview));
     expect(cashed.result.notes).toEqual([]);
   });
 

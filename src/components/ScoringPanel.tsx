@@ -13,12 +13,6 @@ import type { Ruleset } from '../rulesets';
 function structureSections(cfg: Config): RuleSection[] {
   const m = cfg.mechanics;
 
-  const axis: Record<Config['mechanics']['axisMode'], string> = {
-    split: 'The row your card joins feeds chips. The column feeds mult. The two resources come from different directions, which is what makes where you play matter.',
-    both: 'Every line you join feeds chips and mult at once, so both resources come from the same placement.',
-    suit: 'A red card reads its row as chips and its column as mult. A black card reads them the other way round, so the card in your hand decides which line feeds which.',
-  };
-
   const placement: RuleSection = {
     title: 'The board',
     lines: [
@@ -57,11 +51,15 @@ function structureSections(cfg: Config): RuleSection[] {
   const scoringWhen: RuleSection = {
     title: 'When you score',
     lines: [
-      { label: 'Chips × mult', detail: axis[m.axisMode] },
+      {
+        label: 'Every line adds its points',
+        detail:
+          'A placement joins the row and column running through it. Each is counted on its own, and the placement scores the sum — no second resource, no product.',
+      },
       m.lockAndCash
         ? {
             label: 'Nothing banks until you cash it',
-            detail: `Placing a card scores nothing on its own. Tap a card on the board to cash its cross — chips × mult — which seals both of its lines for good: they can never be extended or cashed again. Cashing costs one action from the same budget as a placement, so every bank is a card you did not play, and anything still uncashed when the actions run out is worth nothing.`,
+            detail: `Placing a card scores nothing on its own. Tap a card on the board to cash its cross — the sum of its two lines — which seals both of its lines for good: they can never be extended or cashed again. Cashing costs one action from the same budget as a placement, so every bank is a card you did not play, and anything still uncashed when the actions run out is worth nothing.`,
           }
         : m.payOnCompleteOnly
           ? {

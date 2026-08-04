@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG, type Config } from '../config';
+import { rankChips } from '../deck';
 import { isBoardEmpty, legalCells } from '../board';
 import { cashCellAt, newGame, placeCard } from '../game';
 
@@ -45,7 +46,8 @@ describe('newGame — anchor', () => {
     expect(s.log).toHaveLength(1);
     expect(s.log[0].card.id).toBe(card.id);
     expect(s.log[0].rowLine).toHaveLength(1);
-    expect(s.log[0].mult).toBe(1);
+    // A lone card on each axis gets its rank value only, no hand bonus.
+    expect(s.log[0].colEval.value).toBe(rankChips(card.rank, blank));
   });
 });
 
