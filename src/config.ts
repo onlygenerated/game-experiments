@@ -64,6 +64,17 @@ export interface Config {
   hexRingBonus: number;
 
   /**
+   * Rooms only: placements available in a single room before it runs out
+   * (item 7's "placement budget is per-room" — resets on every room entry,
+   * unlike `placementsPerRun` which belongs to the old open-board modes and
+   * is untouched by Rooms). A round placeholder, not calibrated — Rooms has
+   * no probe yet (item 3's rebuild measured the old open boards, not a room),
+   * so per the standing "never tune by eye" rule this is labelled exactly
+   * like the hand-authored rooms' threshold placeholders until item 22.
+   */
+  roomPlacementBudget: number;
+
+  /**
    * Whether a card is dealt to the centre before play. With it off the board
    * starts empty and the first placement picks the origin, which is what any
    * open-ended sprawl needs.
@@ -173,6 +184,7 @@ export const CONFIG: Config = {
   hexRadius: 4,
   hexWindow: 5,
   hexRingBonus: 0.1,
+  roomPlacementBudget: 12,
 
   rankChips: {
     2: 2,

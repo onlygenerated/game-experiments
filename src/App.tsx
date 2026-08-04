@@ -18,7 +18,7 @@ import { PreviewPanel } from './components/PreviewPanel';
 import { ScoreLog } from './components/ScoreLog';
 import { StatusBar } from './components/StatusBar';
 import { RunEndPanel } from './components/RunEndPanel';
-import { RoomsPreviewPage } from './rooms/RoomsPreviewPage';
+import { RoomRunPage } from './rooms/RoomRunPage';
 import type { Cascade, CascadeCell } from './components/cascade';
 import type { LinePunch } from './components/linePunch';
 import { gridNearMissReason, hexNearMissReason, NEAR_MISS_LABEL, type NearMissReason } from './components/nearMiss';
@@ -394,7 +394,7 @@ export default function App() {
   const trayOrEnd = playing ? handTray : runEnd;
 
   if (showMetrics) return <MetricsPage onClose={() => setShowMetrics(false)} />;
-  if (showRooms) return <RoomsPreviewPage onClose={() => setShowRooms(false)} />;
+  if (showRooms) return <RoomRunPage onClose={() => setShowRooms(false)} />;
   if (showSetup)
     return (
       <SetupPage

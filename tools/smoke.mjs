@@ -171,65 +171,62 @@ await p.waitForTimeout(600);
 ok('setup starts a run', (await p.locator('[data-cell],[data-hex]').count()) > 0);
 ok('combo preset scores under both counters', (await text()).toLowerCase().includes('cribbage + poker'));
 
-// --- rooms preview (item 4: shape substrate; item 5: exits and reach; item 6: threshold and clearing) ---
+// --- rooms: a real room-to-room run (item 7) --------------------------------
+//
+// The default seed ('rooms-1') and CONFIG are fixed, so this exact sequence —
+// hand[0] onto (2,0), (1,0), (0,0) in the Round Room — is a deterministic
+// path verified offline (a throwaway script against `expedition.ts`, run and
+// discarded, not committed): move 1 lands on the exit (reach true, score 7),
+// move 3 crosses the room's threshold of 50 (score 73), so the room reads
+// cleared after exactly 3 placements with 9 of the 12-placement budget still
+// unspent. That leftover budget is the point being tested next: leaving does
+// not require using every placement, only clearing the room.
 await p.locator('button:has-text("Rooms"):visible').first().click();
 await p.waitForTimeout(400);
-ok('rooms preview opens', (await text()).includes('Rooms (dev preview)'));
+ok('rooms page opens', (await text()).includes('Room 1 / 2'));
 ok('round room renders', (await p.locator('[data-room="Round Room"] [data-room-cell]').count()) > 0);
-ok('hourglass room renders', (await p.locator('[data-room="Hourglass"] [data-room-cell]').count()) > 0);
-ok(
-  'hourglass neck is border, not interior',
-  (await p.locator('[data-room="Hourglass"] [data-room-cell="0,0"]').getAttribute('data-room-border')) ===
-    'true',
-);
 ok(
   'round room exit is marked',
   (await p.locator('[data-room="Round Room"] [data-room-cell="2,0"]').getAttribute('data-room-exit')) ===
     'true',
 );
 
-// Clicking cells builds a stand-in structure; reach should track it live.
-const roundRoom = p.locator('[data-room-panel="Round Room"]');
-ok('round room starts not reached', (await roundRoom.locator('[data-room-reach]').getAttribute('data-room-reach')) === 'false');
-await roundRoom.locator('[data-room-cell="0,2"]').click();
-await p.waitForTimeout(150);
-ok(
-  'touching the border away from the exit does not reach',
-  (await roundRoom.locator('[data-room-reach]').getAttribute('data-room-reach')) === 'false',
-);
-await roundRoom.locator('[data-room-cell="2,0"]').click();
-await p.waitForTimeout(150);
-ok(
-  'clicking the exit cell reaches it',
-  (await roundRoom.locator('[data-room-reach]').getAttribute('data-room-reach')) === 'true',
-);
+const roomPanel = () => p.locator('[data-room-panel="Round Room"]');
+ok('room starts not reached', (await roomPanel().locator('[data-room-reach]').getAttribute('data-room-reach')) === 'false');
+ok('leave is disabled before clearing', await p.locator('[data-room-leave]').isDisabled());
 
-// Item 6: reach alone is not clear — score must meet the threshold too, and
-// the two conditions must read separately (a near-miss, not a flat "lost").
+async function placeHand0(cell) {
+  await p.locator('[data-hand-index="0"]').click();
+  await p.waitForTimeout(120);
+  await p.locator(`[data-room-cell="${cell}"]`).click();
+  await p.waitForTimeout(200);
+}
+
+await placeHand0('2,0'); // lands on the exit — reach, but score (7) is well short of the threshold (50)
+ok('placing on the exit reaches it', (await roomPanel().locator('[data-room-reach]').getAttribute('data-room-reach')) === 'true');
+ok('reached but under threshold does not clear', (await roomPanel().locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'false');
+ok('a real card renders on the placed cell', (await p.locator('[data-room-cell="2,0"] .card-face').count()) > 0);
+
+await placeHand0('1,0'); // still short (score 31)
+ok('still short after the second placement', (await roomPanel().locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'false');
+
+await placeHand0('0,0'); // crosses the threshold (score 73) — reach was already true
+ok('reach + score at the threshold clears the room', (await roomPanel().locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'true');
+ok('leave is enabled once cleared', !(await p.locator('[data-room-leave]').isDisabled()));
+
+const clearedScore = Number((await text()).match(/Score (\d+) \/ 50/)?.[1] ?? -1);
+ok('cleared room scored above its threshold', clearedScore > 50);
+await p.locator('[data-room-leave]').click();
+await p.waitForTimeout(300);
+ok('leaving moves to the next room', (await text()).includes('Room 2 / 2'));
+ok('the next room is the Hourglass', (await p.locator('[data-room="Hourglass"] [data-room-cell]').count()) > 0);
+ok('the new room starts unreached and unscored', (await p.locator('[data-room-reach]').getAttribute('data-room-reach')) === 'false');
 ok(
-  'reached but under threshold does not clear',
-  (await roundRoom.locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'false',
+  "the running total carried the cleared room's score forward",
+  (await text()).includes(`Running total ${clearedScore}`),
 );
-ok(
-  'the score line reads as short, not met',
-  (await roundRoom.locator('[data-room-score-met]').getAttribute('data-room-score-met')) === 'false',
-);
-await roundRoom.locator('input[type="number"]').fill('50');
-await p.waitForTimeout(150);
-ok(
-  'reach + score at the threshold clears the room',
-  (await roundRoom.locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'true',
-);
-await roundRoom.locator('[data-room-cell="2,0"]').click();
-await p.waitForTimeout(150);
-ok(
-  'unclicking the exit cell loses reach again',
-  (await roundRoom.locator('[data-room-reach]').getAttribute('data-room-reach')) === 'false',
-);
-ok(
-  'losing reach loses clear even though score is still met',
-  (await roundRoom.locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'false',
-);
+ok('placement budget is fresh in the new room', (await text()).includes('placements left 12'));
+ok('the new room\'s board has no cards on it', (await p.locator('[data-room="Hourglass"] .card-face').count()) === 0);
 
 await p.locator('button:has-text("Back to the board")').click();
 await p.waitForTimeout(300);

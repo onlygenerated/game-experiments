@@ -151,7 +151,7 @@ stand on. Sized for 30 minutes each.
 - [x] **6. Room threshold and clearing.** Clear = reached an exit **and** score
       ≥ threshold. A room-end state showing both conditions separately, so a
       near-miss reads as "you got there but were short" rather than just "lost".
-- [ ] **7. Two rooms joined.** Leave through an exit, arrive in the next room
+- [x] **7. Two rooms joined.** Leave through an exit, arrive in the next room
       with your deck intact and a fresh placement budget. Running total carries;
       per-room score resets. This is the first moment the mode is the thing the
       brief describes.
@@ -583,6 +583,95 @@ holds. `data-room-cleared` and `data-room-score-met` attributes were added
 alongside the existing `data-room-reach` so the smoke test can assert on
 each condition independently rather than screen-scraping the prose.
 
+**Item 7.** Built as its own module, `src/rooms/expedition.ts`, rather than
+wiring a room into `createEngine` (`engine.ts`). That engine's `settle`
+decides "won" from `state.score >= cfg.targetScore` — a single-run target,
+and ROOMS.md's own "what transfers" section already voids every
+`targetScore` the moment scoring changes shape. A room's win condition is
+`roomEndState` (reach *and* score, both, always), a different quantity
+entirely, so grafting rooms onto the engine's settle logic would mean
+fighting it rather than reusing it. What *did* reuse cleanly: `scoreHexPlacement`,
+`withHexCard`, `hasHexNeighbor`, `isHexBoardEmpty` all operate on a bare
+`HexBoard` map and never cared whether the legal cells around them came from
+a radius or a room shape. The only new logic is legality —
+`isLegalRoomPlacement` checks `isInRoom` instead of `inHexBounds` — plus the
+run orchestration on top: `newExpedition`, `placeInRoom`, `leaveRoom`.
+
+`ExpeditionState` carries `rooms` (the fixed sequence — item 21's room graph
+replaces this later), `roomIndex`, `board`, `deck`, `hand`, this room's
+`score`, the cross-room `runningTotal`, `placementsLeft`, a global `log`
+(every entry tagged with `roomName` — nothing said the log should reset with
+the score, and a full expedition history is strictly more useful than a
+per-room one), and `status` (`'playing' | 'lost' | 'complete'`).
+`leaveRoom` is a no-op unless `currentEndState(state).cleared` is true right
+now — reach and score are read live off the actual board rather than latched,
+mirroring item 6's `roomEndState` itself, even though with real cards
+(never removed once placed) reach in practice can only go false→true, never
+back. Leaving costs nothing on its own: the placements spent clearing the
+room were the cost, matching the item's framing of "arrive... with a fresh
+placement budget" as the whole point, not something a leave fee should eat
+into. Deck and hand are literally the same array references after a leave
+(no draw happens), which is what "deck intact" means taken literally rather
+than "reshuffled but same size" — proven with `toBe`, not `toEqual`, in
+`expedition.test.ts`.
+
+The failure rule ("running out of placements without clearing = run over")
+needed one piece of judgment: what if the *last* placement in the budget is
+the one that clears the room? Reading "no partial credit for a room" as
+being about score, not about timing, `settleExpedition` checks
+`currentEndState(state).cleared` before declaring the room stuck-and-lost —
+a room cleared on placement zero of its remaining budget still reads
+`'playing'`, with `leaveRoom` the very next legal action. Getting this wrong
+either way is a real bug class (a player who clears a room only to have it
+retroactively call that a loss, or the opposite — never actually failing a
+room because "stuck" is checked before "cleared" — so both directions are
+covered in `expedition.test.ts`.
+
+No anchor-card logic — `cfg.startWithAnchor` is not read here. A room's
+first cell is a real choice among the room's own cells (any of them: the
+adjacency requirement only applies once the board is non-empty, same as the
+existing hex sprawl), not a fixed origin the old radius-based board always
+contained; some rooms plausibly won't even contain `{q:0,r:0}` once shapes
+get more varied (item 19+), so hard-coding an origin-anchor here would be
+wrong in general, not just unimplemented.
+
+Added one field to `Config`: `roomPlacementBudget` (12), sitting next to the
+hex fields since Rooms is additive and every other tunable already lives in
+`config.ts`. Labelled a placeholder in its own doc comment, the same as the
+hand-authored rooms' `threshold` — Rooms has no probe yet (item 3's rebuild
+measured the old open boards, item 22 is where rooms get calibrated), so per
+the standing "never tune by eye" rule this number is a round guess, not a
+measurement, until then.
+
+**UI.** Replaced `RoomsPreviewPage.tsx` outright with `RoomRunPage.tsx` — the
+old file's own comment said as much ("expect this page to be replaced
+outright once item 7 lands a real room-to-room run... not meant to be the
+permanent home for room shapes"). The new page is deliberately not routed
+through `useRun`/`useCardDrag`: those exist to drive `createEngine`'s
+target-score run, and `expedition.ts`'s header explains why rooms can't
+reuse that settle logic. A click-to-select-then-click-to-place flow (no
+drag) keeps this item's scope to the run logic it exists to prove rather
+than a second drag implementation — worth revisiting once rooms has feature
+parity pressure to look and feel identical to the sprawl.
+
+`RoomBoardView` gained a `board?: ReadonlyMap<string, Card>` prop, additive
+next to the existing `structure` (bare key set, still used by nothing now
+that the dev preview is gone, but kept since it costs nothing and item 4's
+contract was "shape-only callers keep working unchanged"). When `board` is
+given, an occupied cell renders the real card instead of a plain dot.
+Sized the card with the same inline `width`/`height`/`fontSize` formula
+`HexBoardView` already uses for cards on hex cells (`1.05 * size`,
+`1.35 * size`, `0.42 * size`) rather than `CardFace`'s default `md` geometry
+— that geometry reads off a global `--cell` CSS variable pinned to the grid
+board's width, which has no relationship to a room's own `size` prop and
+first produced a card that visually overflowed its hexagon. Verified in the
+browser this time rather than by eye alone: measured the actual DOM
+`boundingBox()` of a placed card against its tile (46×59 inside a 76×88
+tile, a 60%/67% fit — identical ratio to `HexBoardView`'s own cards) after
+noticing a first screenshot still looked oversized and tracking it down to a
+stale preview-server port left over from an earlier screenshot run, not a
+real bug.
+
 ## Results log
 
 **Item 1.** `npm test` 203/203 (was 208 — 5 tests removed, all for formulas
@@ -822,3 +911,66 @@ screenshots side by side are the whole point of this item — a near-miss
 and a genuine clear are visually and textually distinct, not two shades of
 "you lost". No video — this item is a state readout, not movement or
 feel.
+
+**Item 7.** `npm test` 269/269 (was 253 — 16 new in `expedition.test.ts`:
+opening deal, legality inside/outside the room, adjacency once a room is
+bigger than one ring, placement scoring/budget/log bookkeeping, four no-op
+cases, live reach/clear tracking, deck-and-hand-intact room transitions,
+running-total accumulation across two cleared rooms, expedition completion
+on the last room, and both directions of the stuck-vs-cleared failure
+judgment call). `npx tsc -b --noEmit` clean. `npm run smoke` 39/39 (was 34
+— the 11 dev-preview checks driving click-toggle stand-ins are gone, along
+with the page they drove; 16 new checks drive a real room-to-room run
+instead: opens on Round Room 1/2, places real cards via hand-index clicks,
+shows a rendered card face on the placed cell, tracks reach/short/cleared
+live exactly as item 6 did but off real placements instead of a stand-in
+score field, disables/enables "Leave through exit" on the cleared
+transition, and — the check this item exists to add — leaving carries the
+score into the running total, lands on Hourglass 2/2 with an empty board,
+a placement budget back at 12, and unchanged hand and reach state).
+
+The exact sequence smoke asserts on (seed `rooms-1`, default `CONFIG`) was
+worked out with a throwaway script against `expedition.ts` directly (three
+variants — a greedy best-scoring-cell search, then a hand-in-order-0
+straight-line walk — run and discarded, not committed) rather than guessed:
+hand[0] onto `(2,0)` (the east exit — legal as the opening placement since
+the board starts empty, so reach is true after move 1 at score 7), then
+`(1,0)` (score 31, still short), then `(0,0)` (score 73, crossing the
+threshold of 50 — the room reads cleared with 9 of its 12-placement budget
+unspent, which is itself the point: clearing needs to reach *and* score,
+not spend the whole budget). Picking hand-index 0 on every move rather than
+tracking specific card identities matters because it is exactly how
+`placeInRoom` refills a hand (the removed card's slot collapses and the
+draw appends to the end), so replaying "click hand[0]" in the browser
+reproduces the scripted sequence deterministically without the smoke test
+needing to know or assert on any specific card.
+
+Drove `RoomRunPage` in headless Chromium via `tools/browser.mjs` (throwaway
+script, same server-then-screenshot pattern as `smoke.mjs`, run and
+discarded, not committed) through the full sequence above:
+
+| screenshot | shows |
+|---|---|
+| fresh Round Room | 19-cell disc, two green EXIT tiles, hand of 7, "placements left 12", "Not reached" / "Not cleared" |
+| after placing on the exit | a real card face (2♣) sitting on the east exit tile, "Reached" but "Score 7 / 50 (short)" |
+| room cleared | three placed cards visible on the board (a genuine 3-card line through the centre), "Reached" / "Score 73 / 50 (met)" / "Cleared", the "Leave through exit" button lit emerald |
+| after leaving | header now reads "Room 2 / 2 — Hourglass" and "Running total 73"; the Hourglass renders with an empty board (no cards); the hand strip shows the exact same 7 cards as before leaving, proving "deck intact" visually and not just in the state object |
+
+One real bug surfaced and fixed along the way, not just a placeholder
+number this time: the first attempt sized a placed card's `CardFace` with
+its default `md` geometry, which reads `width`/`height` off a global
+`--cell` CSS variable pinned to the grid board's width — unrelated to a
+room's own `size` prop, and the card visibly overflowed its hex tile in the
+first screenshot. Fixed by giving `RoomBoardView` the same inline
+`width`/`height`/`fontSize` formula `HexBoardView` already uses for its own
+hex-mounted cards (`1.05 * size` etc.) instead of relying on `CardFace`'s
+default sizing. Confirmed with a real measurement rather than a second
+glance at a screenshot: `boundingBox()` on a placed card came back
+46×59 inside a 76×88 tile, a 60%/67% fit — the identical ratio
+`HexBoardView` produces for the sprawl's own cards. (A second screenshot
+still looked oversized after the fix; that one was a leftover preview
+server on the same port from the first screenshot run, not a real
+regression — resolved by moving to a fresh port, not by touching the fix.)
+No video — item 7 is a room-transition state machine, not movement or
+feel; the four-screenshot sequence is the equivalent evidence for a
+transition rather than a motion.
