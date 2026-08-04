@@ -161,7 +161,7 @@ stand on. Sized for 30 minutes each.
 - [x] **8. The tile layer.** `TileMap` parallel to `HexBoard`, a `Tile` union,
       rendering underneath cards so a placed card does not hide what it landed
       on. No effects yet — this item is the substrate and its tests.
-- [ ] **9. Bonus tiles: card multipliers.** Double or triple the placed card's
+- [x] **9. Bonus tiles: card multipliers.** Double or triple the placed card's
       own contribution to every line through it. The Scrabble letter square.
 - [ ] **10. Bonus tiles: line multipliers.** Double the total of one line
       through the tile. The Scrabble word square, and a different decision —
@@ -757,6 +757,90 @@ job), no tile changes a score (items 9-10's), no tile hides itself
 one room proving the substrate is enough; adding a second would be testing
 the same code path twice for no new information.
 
+**Item 9.** The first real question was what "the placed card's own
+contribution to a line" even means. Cribbage's count (fifteens, pairs, runs,
+flush) is combinatorial across the whole line, not a sum of independent
+per-card values — there is no field on a card that says "this is my share"
+the way a Scrabble letter's point value is self-evident, and item 1's own
+decisions log already noted cribbage's formula doesn't decompose per card.
+The generic definition that works for any `Lens` (cribbage, poker, or a
+combination of both per item 2) without special-casing any of them: this
+card's contribution to a scored slice is the slice's value *with* the card,
+minus its value with that one card removed and nothing else changed. That
+marginal-contribution number is exactly the quantity a doubling tile should
+double — the amount this specific card added — and it is what `cardContribution`
+in the new `src/rooms/scoring.ts` computes, purely through `lens.evaluate`,
+so it works unmodified for every counter and combination the game has.
+
+Clamped the contribution at zero rather than letting it go negative. Poker's
+`partialHands.scaleByLength` makes this a real, reachable case, not a
+theoretical one: a 5-card slice that matches nothing (High Card, 0 chips)
+can have a 4-card sub-slice that scores a scaled partial hand worth *more*
+than the full slice, so removing a card can raise the "without" value above
+the "with" value. A bonus tile should never let that arithmetic turn into a
+bigger loss, so `cardContribution` floors at zero and `scoring.test.ts`
+covers it directly with a contrived `Lens` built to trigger exactly that
+shape (a fake `evaluate` that scores a 2-card input lower than a 1-card
+input), independent of poker's real numbers.
+
+The second question was whether to touch `hex/board.ts`'s `scoreHexPlacement`
+directly (add a `tiles` parameter) or wrap it. Wrapped it: that function is
+shared with the untouched sprawl mode (`useRun.ts`, `hex/game.ts`), and
+threading a room-only concept through code the old mode also runs risks
+exactly the kind of merge-time regression the standing rules exist to
+prevent. `scoring.ts`'s `scoreRoomPlacement` calls the plain, unmodified
+`scoreHexPlacement` first, then `applyTileEffects` post-processes the result
+if there's a `cardMultiplier` tile at the placed cell — `hex/board.ts` has
+zero lines changed by this item, confirmed with `git diff --stat`.
+
+A tile's bonus only applies to a line whose *scored window* actually
+contains the placed cell. `bestWindow` (unchanged, `hex/board.ts`) picks
+whichever contiguous stretch of a line scores highest, and on a line longer
+than `cfg.hexWindow` that stretch can fall away from the cell just played —
+the tile only ever boosts the card that earned it, so a line the placement
+didn't end up scoring gets nothing. `scoring.test.ts` covers this directly:
+a strong two-card fifteen at the far end of a line beats the near-end window
+containing the newly tiled cell, under a narrowed `hexWindow: 2`, and that
+line's value is provably untouched.
+
+One implication worth flagging rather than silently accepting: because the
+tile is per-*cell*, not per-*line*, a card placed on a `cardMultiplier` tile
+gets the bonus on *every* one of its (up to three) lines whose window
+includes it, not just one chosen axis — a lone card in an empty
+neighbourhood gets tripled on all three axes from a single ×3 tile, since
+each of its three lines is that same one card. That reads as intended given
+the item's own wording ("every line through it"), and is exactly what
+`scoring.test.ts`'s "doubles a lone card's contribution on every one of its
+three lines" test locks in, but it does mean a card-multiplier tile in an
+empty pocket of the board is worth more than the same tile on a busy line
+with only one axis carrying real cards. Left as-is rather than capping it to
+one line — nothing in the item's text or ROOMS.md's decisions asks for a
+cap, and item 22's calibration pass is the right moment to discover whether
+that's a balance problem, not a guess made here.
+
+`Tile` gained the new `{ kind: 'cardMultiplier'; multiplier: number }`
+member and a `tileBadge(tile)` function, rather than a shared `label` field
+on the union — a marker's badge is arbitrary text it carries, a
+multiplier's badge (`×2`, `×3`) is derived from its number, and forcing both
+kinds through one `label` field would mean either storing a redundant
+string on every multiplier tile or leaving it stale if the multiplier ever
+changed. `RoomBoardView` and the pre-existing `tile.test.ts` assertions on a
+marker's text both switched from `tile.label` to `tileBadge(tile)` — the
+compiler caught every call site that needed the change, since `.label` no
+longer exists on the union as a whole.
+
+`ROUND_ROOM` keeps its item-8 `'marker'` tile at `(1,0)` untouched and adds
+one `cardMultiplier ×2` tile at `(0,-1)`, a different cell, specifically so
+the existing smoke sequence's three hard-coded scores (7, 31, 73 at `(2,0)`,
+`(1,0)`, `(0,0)`) stay exactly what they were — this item extends the
+sequence with a fourth placement rather than risking the first three by
+reusing their cell.
+
+**Not done this item, on purpose.** No line-multiplier tile (item 10's job —
+a different decision, since a letter square rewards a big card and a word
+square rewards a big line). `HOURGLASS_ROOM` got no tile, same reasoning
+item 8 gave for leaving it bare: one room proving the effect is enough.
+
 ## Results log
 
 **Item 1.** `npm test` 203/203 (was 208 — 5 tests removed, all for formulas
@@ -1088,3 +1172,42 @@ entirely outside the clipped path. Fixed by centring the badge horizontally
 in the hex's untouched top sliver instead — confirmed by re-screenshotting
 the same isolated cell and seeing the badge appear, not by reasoning about
 the CSS alone.
+
+**Item 9.** `npm test` 291/291 (was 279 — 9 new in `scoring.test.ts` covering
+`cardContribution` and `applyTileEffects`/`scoreRoomPlacement` (no-tile
+no-op, marker-tile no-op, lone-card tripling/doubling across all three axes,
+marginal-vs-whole-line distinction, the excluded-window case, and
+non-mutation), plus 3 new in `tile.test.ts` for the `cardMultiplier` shape,
+`tileBadge`, and coexistence with a marker tile in the same room). `npx tsc
+-b --noEmit` clean, including catching every `tile.label` call site (two in
+the pre-existing `tile.test.ts`) that needed to switch to `tileBadge` once
+`Tile` became a real union — the compiler did that discovery, not a manual
+audit. `git diff --stat src/hex/board.ts` shows zero lines changed, the
+concrete check behind this item's "wrap, don't touch the shared scorer"
+decision. `npm run smoke` 45/45 (was 42 — 3 new: the `cardMultiplier` tile
+renders before anything is placed on it, placing on it scores the exact
+boosted amount, and the post-boost score carries correctly into the running
+total after leaving).
+
+The exact numbers (seed `rooms-1`, default `CONFIG`, same throwaway-script
+convention as items 7-8 — run directly against `expedition.ts`, discarded,
+not committed): the established three-move sequence onto `(2,0)`, `(1,0)`,
+`(0,0)` is untouched (scores 7, 31, 73, matching item 7's own log exactly,
+confirming the new tile at a different cell didn't perturb it), then a
+fourth placement of hand[0] onto the `×2` tile at `(0,-1)` scores **88** —
+verified against the same card at the same board state with
+`scoreHexPlacement` directly (no tile) scoring **50**, a 38-point boost from
+one card's own marginal contribution across its three lines. Final room
+score 161, carried into `runningTotal` after leaving.
+
+Drove `RoomRunPage` in headless Chromium via `tools/browser.mjs` (throwaway
+script, same server-then-screenshot pattern as `smoke.mjs`, fresh port per
+item 7/8's stale-port note, run and discarded, not committed):
+
+| screenshot | shows |
+|---|---|
+| zoomed on `(0,-1)` before placement | a centred "×2" badge in the hex's top sliver, same placement convention item 8 established for the marker |
+| same cell after K♠ lands there | the "×2" badge still visible above the card, unclipped, the same "underneath" effect as the marker tile |
+| full board after the fourth placement | both tiles visible at once (`T8` marker under `5♣`, `×2` multiplier under `K♠`), header reading "Score 161 / 50 (met)" / "Cleared", and the log line "Last placement: K♠ at 0,-1 scored 88" — the number the offline calculation predicted, not a rounded-off approximation |
+
+No video — this item changes what a placement is worth, not movement or feel.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ORIGIN } from '../hex/coords';
 import { makeRoom } from '../rooms/room';
-import { emptyTileMap, isTiled, tileAt, tileMapFrom, withTile } from '../rooms/tile';
+import { emptyTileMap, isTiled, tileAt, tileBadge, tileMapFrom, withTile } from '../rooms/tile';
 
 describe('emptyTileMap / withTile / tileAt / isTiled', () => {
   it('starts empty', () => {
@@ -31,8 +31,8 @@ describe('emptyTileMap / withTile / tileAt / isTiled', () => {
     const east = { q: 1, r: 0 };
     let tiles = withTile(emptyTileMap(), ORIGIN, { kind: 'marker', label: 'A' });
     tiles = withTile(tiles, east, { kind: 'marker', label: 'B' });
-    expect(tileAt(tiles, ORIGIN)?.label).toBe('A');
-    expect(tileAt(tiles, east)?.label).toBe('B');
+    expect(tileBadge(tileAt(tiles, ORIGIN)!)).toBe('A');
+    expect(tileBadge(tileAt(tiles, east)!)).toBe('B');
     expect(isTiled(tiles, { q: -1, r: 0 })).toBe(false);
   });
 });
@@ -45,8 +45,8 @@ describe('tileMapFrom', () => {
       [east, { kind: 'marker', label: 'B' }],
     ]);
     expect(tiles.size).toBe(2);
-    expect(tileAt(tiles, ORIGIN)?.label).toBe('A');
-    expect(tileAt(tiles, east)?.label).toBe('B');
+    expect(tileBadge(tileAt(tiles, ORIGIN)!)).toBe('A');
+    expect(tileBadge(tileAt(tiles, east)!)).toBe('B');
   });
 
   it('an empty list of entries produces an empty map', () => {
@@ -80,5 +80,27 @@ describe('Room.tiles via makeRoom', () => {
       [{ q: 1, r: 0 }, { kind: 'marker', label: 'A' }],
     ]);
     expect(isTiled(room.tiles, { q: 1, r: 0 })).toBe(true);
+  });
+});
+
+describe('cardMultiplier tiles (item 9)', () => {
+  it('stores and retrieves a cardMultiplier tile like any other kind', () => {
+    const tiles = withTile(emptyTileMap(), ORIGIN, { kind: 'cardMultiplier', multiplier: 2 });
+    expect(tileAt(tiles, ORIGIN)).toEqual({ kind: 'cardMultiplier', multiplier: 2 });
+  });
+
+  it('badges as ×N, derived from the multiplier rather than a stored label', () => {
+    expect(tileBadge({ kind: 'cardMultiplier', multiplier: 2 })).toBe('×2');
+    expect(tileBadge({ kind: 'cardMultiplier', multiplier: 3 })).toBe('×3');
+  });
+
+  it('coexists with a marker tile at a different cell in the same room', () => {
+    const east = { q: 1, r: 0 };
+    const room = makeRoom('Test', [ORIGIN, east], [], 0, [
+      [ORIGIN, { kind: 'marker', label: 'A' }],
+      [east, { kind: 'cardMultiplier', multiplier: 2 }],
+    ]);
+    expect(tileAt(room.tiles, ORIGIN)?.kind).toBe('marker');
+    expect(tileAt(room.tiles, east)?.kind).toBe('cardMultiplier');
   });
 });

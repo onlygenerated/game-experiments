@@ -14,11 +14,12 @@
  * score distribution against (item 7), and thresholds get set from probed
  * medians in item 22, per the standing "never tune a room by eye" rule.
  *
- * The Round Room also carries one `'marker'` tile (item 8) — a placeholder
- * kind that does nothing, kept only to prove in the running app that the
- * tile layer renders and survives a card being placed on top of it. Expect
- * this exact tile to be replaced by a real bonus/blocked/trap/artifact tile
- * as items 9-13 land.
+ * The Round Room carries one `'marker'` tile (item 8) — a placeholder kind
+ * that does nothing, kept to prove the tile layer renders and survives a
+ * card landing on top of it — plus, as of item 9, one real `'cardMultiplier'`
+ * tile: the Scrabble letter square, doubling whatever the card placed on it
+ * contributes to each line it joins. Blocked/trap/artifact tiles (items
+ * 11-13) still have nothing here yet.
  */
 import { hexesWithinRadius, type Hex } from '../hex/coords';
 import { makeRoom, type Room } from './room';
@@ -35,7 +36,10 @@ export const ROUND_ROOM: Room = makeRoom(
     { q: -2, r: 0 },
   ],
   50,
-  [[{ q: 1, r: 0 }, { kind: 'marker', label: 'T8' }]],
+  [
+    [{ q: 1, r: 0 }, { kind: 'marker', label: 'T8' }],
+    [{ q: 0, r: -1 }, { kind: 'cardMultiplier', multiplier: 2 }],
+  ],
 );
 
 /**

@@ -5,18 +5,32 @@
  * working untouched — exactly the "second map, same keys" shape
  * ROOMS.md's architecture section calls for.
  *
- * `Tile` is deliberately a union of one placeholder member right now.
- * Items 9-13 each add a real kind (a card-multiplier bonus, a line-multiplier
- * bonus, a blocked cell, a trap, an artifact card) with whatever fields that
- * kind actually needs — guessing those field shapes here would be doing
- * those items' design work early, for nothing. `'marker'` exists solely to
- * prove the substrate: a tile can be stored, retrieved, and rendered under a
- * placed card without disappearing. No code anywhere reads a tile to change
- * legality or scoring yet — that is what "no effects yet" means.
+ * `Tile` started as a union of one placeholder member. Items 10-13 each add
+ * a further real kind (a line-multiplier bonus, a blocked cell, a trap, an
+ * artifact card) with whatever fields that kind actually needs — guessing
+ * those field shapes here would be doing those items' design work early, for
+ * nothing. `'marker'` exists solely to prove the substrate: a tile can be
+ * stored, retrieved, and rendered under a placed card without disappearing.
+ *
+ * Item 9 adds the first real kind, `'cardMultiplier'` (see `scoring.ts` for
+ * the effect itself — this file only defines the shape and its badge text).
  */
 import { hexKey, type Hex } from '../hex/coords';
 
-export type Tile = { kind: 'marker'; label: string };
+export type Tile = { kind: 'marker'; label: string } | { kind: 'cardMultiplier'; multiplier: number };
+
+/** The short text a tile shows on the board — every kind needs one, but not
+ * every kind stores it under the same field (a marker's is arbitrary text,
+ * a multiplier's is derived from its number), so this is a function rather
+ * than a shared `label` field on the union. */
+export function tileBadge(tile: Tile): string {
+  switch (tile.kind) {
+    case 'marker':
+      return tile.label;
+    case 'cardMultiplier':
+      return `×${tile.multiplier}`;
+  }
+}
 
 export type TileMap = ReadonlyMap<string, Tile>;
 

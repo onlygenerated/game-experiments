@@ -3,7 +3,7 @@ import { CardFace } from '../components/CardFace';
 import type { Card } from '../deck';
 import { hexKey, hexToPixel, type Hex } from '../hex/coords';
 import { isExit, isRoomBorder, roomCells, type Room } from './room';
-import { tileAt } from './tile';
+import { tileAt, tileBadge } from './tile';
 
 /** Pointy-top, same silhouette as the sprawl's hex cells. */
 const POINTY_TOP = 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)';
@@ -109,7 +109,7 @@ export function RoomBoardView({
                 className="absolute rounded bg-black/60 px-0.5 text-[8px] font-bold leading-none text-amber-200"
                 style={{ pointerEvents: 'none', top: 0.22 * size, left: '50%', transform: 'translateX(-50%)' }}
               >
-                {tile.label}
+                {tileBadge(tile)}
               </span>
             )}
             {card ? (

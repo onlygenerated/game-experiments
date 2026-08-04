@@ -233,6 +233,23 @@ ok('leave is enabled once cleared', !(await p.locator('[data-room-leave]').isDis
 
 const clearedScore = Number((await text()).match(/Score (\d+) \/ 50/)?.[1] ?? -1);
 ok('cleared room scored above its threshold', clearedScore > 50);
+
+// The room also carries a real 'cardMultiplier' tile at (0,-1) (item 9) —
+// the room is already cleared, but 9 of the 12-placement budget remain, so
+// there's room to prove the tile before leaving. The exact scores below were
+// worked out offline against `expedition.ts` directly (same throwaway-script
+// convention as items 7-8, run and discarded, not committed): the same card
+// at (0,-1) scores 50 with no tile there and 88 with the ×2 tile — a
+// 38-point boost, not card luck.
+ok(
+  'the cardMultiplier tile renders before anything is placed on it',
+  (await p.locator('[data-room-cell="0,-1"]').getAttribute('data-room-tile')) === 'cardMultiplier',
+);
+await placeHand0('0,-1');
+ok('the tile boosted the placement to the expected score', (await text()).includes('scored 88'));
+const finalScore = Number((await text()).match(/Score (\d+) \/ 50/)?.[1] ?? -1);
+ok('final score reflects the boosted placement', finalScore === clearedScore + 88);
+
 await p.locator('[data-room-leave]').click();
 await p.waitForTimeout(300);
 ok('leaving moves to the next room', (await text()).includes('Room 2 / 2'));
@@ -240,7 +257,7 @@ ok('the next room is the Hourglass', (await p.locator('[data-room="Hourglass"] [
 ok('the new room starts unreached and unscored', (await p.locator('[data-room-reach]').getAttribute('data-room-reach')) === 'false');
 ok(
   "the running total carried the cleared room's score forward",
-  (await text()).includes(`Running total ${clearedScore}`),
+  (await text()).includes(`Running total ${finalScore}`),
 );
 ok('placement budget is fresh in the new room', (await text()).includes('placements left 12'));
 ok('the new room\'s board has no cards on it', (await p.locator('[data-room="Hourglass"] .card-face').count()) === 0);

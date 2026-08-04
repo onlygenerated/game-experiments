@@ -14,7 +14,10 @@
  * `scoreHexPlacement`, `withHexCard`, `hasHexNeighbor` all operate on a bare
  * `HexBoard` map and don't care whether the legal cells around them come from
  * a radius or a room shape, so legality here is the one thing that changes:
- * a coordinate is legal only if it is inside the current room.
+ * a coordinate is legal only if it is inside the current room. Scoring goes
+ * through `scoring.ts`'s `scoreRoomPlacement` rather than `scoreHexPlacement`
+ * directly as of item 9 — a thin wrapper that applies whatever the room's
+ * tile at the placed cell does, without touching the shared scorer itself.
  */
 import { CONFIG, type Config } from '../config';
 import { draw, shuffledDeck, type Card } from '../deck';
@@ -23,13 +26,13 @@ import {
   hasHexNeighbor,
   isHexBoardEmpty,
   isHexOccupied,
-  scoreHexPlacement,
   withHexCard,
   type HexBoard,
   type HexPlacementScore,
 } from '../hex/board';
 import { type Hex } from '../hex/coords';
 import { isInRoom, roomCells, roomEndState, type Room, type RoomEndState } from './room';
+import { scoreRoomPlacement } from './scoring';
 
 export type ExpeditionStatus = 'playing' | 'lost' | 'complete';
 
@@ -135,7 +138,7 @@ export function placeInRoom(
   if (!card) return state;
   if (!isLegalRoomPlacement(state, h, cfg)) return state;
 
-  const result = scoreHexPlacement(state.board, h, card, cfg);
+  const result = scoreRoomPlacement(state.board, h, card, currentRoom(state).tiles, cfg);
   const board = withHexCard(state.board, h, card);
   const score = state.score + result.score;
 
