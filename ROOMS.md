@@ -22,6 +22,13 @@ separation measured (×5.36). Its known flaw is a choice spread of 15.5: most
 hexes are near-dead and a few are enormous, so you farm one rich pocket and
 ignore the rest of the map.
 
+> **These are pre-additive numbers.** The ×5.36, the 15.5 and the lift range
+> below were all measured against chips × mult, which item 1 retired. They are
+> kept because they are why this design exists, not because they are still
+> live. The current figures are in item 3's recalibration table in the results
+> log — hex sprawl now measures a spread of **4.3** and a lookahead lift of
+> **1.12**. Anything comparing a room against a baseline must use those.
+
 The room design is aimed squarely at that flaw. Requiring both **reach** (your
 structure must touch an exit) and **score** (clear the room's threshold) puts
 two orthogonal pressures on placement, so a rich pocket is no longer sufficient
@@ -175,6 +182,50 @@ stand on. Sized for 30 minutes each.
 - [ ] **13. Artifact cards.** A card sitting on the board that joins your deck
       when your structure connects to it. The reason to detour.
 
+### C½. Teaching the probe to play a room
+
+Inserted after item 11 shipped, ahead of section D. Items 4-11 built the room;
+the probe still plays the pre-room game. `tools/probe.test.ts` says so in its
+own header — reach pressure uses the board edge as a stand-in exit and "once
+item 5 lands a real exit condition this should be revisited rather than assumed
+still correct". Item 5 landed and it was not revisited. Every room built since
+has been measured by nothing.
+
+**Item 22 is blocked until all three of these land**, and the order matters:
+13b is a prerequisite, 13c is the one that decides whether the design works,
+13d is a refinement. A deeper score-maximiser has exactly the same blindness as
+a shallow one — it still never walks to the door.
+
+- [ ] **13b. Teach the probe to play a room.** A room façade behind the same
+      agent API the grid and hex paths already use: an agent still sees `Move[]`
+      and returns one, but the moves are room-cell placements and a run is one
+      room over its placement budget. `clear%` becomes the real condition —
+      reached an exit **and** score ≥ threshold — reported as two columns so a
+      near-miss reads as "got there but short" the way item 6's end state does.
+      Leave the existing grid/hex rows byte-identical: this adds rows, it does
+      not change them. The existing edge-based `reach%` keeps its name and
+      meaning for those rows; the room rows get a separate honest column rather
+      than quietly reusing it for a different question.
+- [ ] **13c. An agent that wants to leave.** Every agent today picks by score
+      alone (`greedy` takes `m[0]`, `lookahead` maximises `v + follow`), so a
+      room is cleared only by accident and `clear%` measures the bot's blindness
+      rather than the design. Add a goal-seeking agent that values score *and*
+      progress toward an exit — simplest form, `v + w ×` (reduction in distance
+      from the structure to the nearest exit) — sweep `w` over a few values and
+      record the one chosen and why. Then report clear rate for greedy and for
+      goal-seeking side by side. **The gap between those two is itself the
+      finding**: it is how much a room punishes pure score-chasing, which is the
+      thing the whole reach-and-score dual condition was built to create. A gap
+      near zero means the exit condition is not biting.
+- [ ] **13d. Deeper search.** Beam search at depth 3-4 (keep the top-N beam;
+      full width will not fit). Report it as a **new** column beside the
+      existing 2-ply lift rather than replacing it, so the historical column
+      keeps its meaning and the two are comparable. Expect roughly 25× the
+      lookahead agent's cost — if `npm run probe` runs past its timeout, cut the
+      seed count **for the deep agent only** and say in the results log that it
+      is a smaller sample. Never silently truncate: a quietly shortened sample
+      is how a measurement bug ships looking like a result.
+
 ### D. What you carry
 
 - [ ] **14. Inventory and the effect hook.** An items list on the Expedition and
@@ -201,10 +252,21 @@ stand on. Sized for 30 minutes each.
       the hand-authored rooms kept as fixtures so failures stay reproducible.
 - [ ] **21. Room graph and route choice.** More than one exit, leading to
       different next rooms, with something known about each before you commit.
-- [ ] **22. Calibration pass.** Probe every archetype, set thresholds from
-      measured medians, and record the numbers. Explicitly check whether the
-      choice spread has come down from the hex sprawl's 15.5 — that is the
-      question this whole design was built to answer.
+- [ ] **22. Calibration pass.** Requires 13b, 13c and 13d — until the probe can
+      play a room there is nothing here to calibrate against. Probe every
+      archetype, set thresholds from measured medians, and record the numbers.
+      Then answer the two questions this design was built to answer, each with
+      an explicit pass or fail rather than a paragraph:
+
+      - **Choice spread**, against `hex-sprawl`'s **4.3**. Pass = lower.
+      - **Lookahead lift**, against `hex-sprawl`'s **1.12** on 2-ply and
+        whatever 13d's deep column reports for it. Pass = higher on both.
+
+      Both baselines are the *post-additive* figures from item 3's recalibration
+      table in the results log. The 15.5 spread and the 1.26–1.43 lift quoted at
+      the top of this file are pre-additive and are void — they measured a score
+      model that no longer exists, and comparing a room against them would
+      manufacture a pass out of the units changing.
 - [ ] **23. Metrics for rooms.** Rebuild the Metrics page around clear rate,
       reach pressure and spread, with the old hex sprawl as the reference line
       the way Poker Squares was before.
@@ -965,6 +1027,41 @@ narrows the *approach* to a single exit inside one room, without another exit
 to fall back on, is the shape that would actually demonstrate the pathology —
 that is a room-authoring question for item 19/20, not something to force into
 today's two placeholder-threshold rooms.
+
+**Backlog change, after item 11 (added in conversation, not by a firing).**
+Inserted section C½ — items 13b, 13c and 13d — and rewrote item 22. Reason:
+items 4-11 built rooms and nothing has measured one. The probe plays configs
+on grid and hex boards; it has no room path, and all three of its agents pick
+by score alone, so no agent has any reason to walk toward an exit. A room's
+reach condition would be satisfied by accident or not at all, which means
+`clear%` today would measure the agents' blindness rather than the design.
+
+The order inside C½ is deliberate and is the reverse of the obvious one.
+Deeper search looks like the upgrade, but a depth-6 score maximiser has
+exactly the same problem as the depth-2 one — it still never walks to the
+door. So: 13b is the prerequisite, 13c is the item that actually decides
+whether the reach-and-score dual condition does anything, and 13d is a
+refinement worth having but not worth waiting on. They sit after item 13 so
+the room feature set (tiles, blocked, traps, artifacts) is complete when the
+probe learns to see it, and before section D so no carried-item effect is
+designed against numbers nobody has.
+
+Two stale baselines fixed at the same time, both dangerous in the same way.
+Item 22 asked whether choice spread had "come down from the hex sprawl's
+15.5", and the top of this file quotes a lookahead lift of 1.26–1.43. Both
+are pre-additive — measured against chips × mult, which item 1 retired. Item
+3's recalibration puts hex sprawl at a spread of **4.3** and a lift of
+**1.12**. Left alone, item 22 would have compared a room against a figure
+from a scoring model that no longer exists and reported a pass it had not
+earned, purely because the units changed underneath it. This project has had
+to void published numbers twice already over measurement bugs; this would
+have been the third and the least excusable, because it was written down in
+advance.
+
+Deliberately not done: nothing was unticked, no shipped item was reopened,
+and the existing grid/hex probe rows are explicitly required to stay
+byte-identical. C½ adds measurement; it does not revisit anything items 1-11
+concluded.
 
 ## Results log
 
