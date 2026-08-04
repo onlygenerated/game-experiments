@@ -163,7 +163,7 @@ stand on. Sized for 30 minutes each.
       on. No effects yet — this item is the substrate and its tests.
 - [x] **9. Bonus tiles: card multipliers.** Double or triple the placed card's
       own contribution to every line through it. The Scrabble letter square.
-- [ ] **10. Bonus tiles: line multipliers.** Double the total of one line
+- [x] **10. Bonus tiles: line multipliers.** Double the total of one line
       through the tile. The Scrabble word square, and a different decision —
       letter squares reward a big card, word squares reward a big line.
 - [ ] **11. Blocked tiles.** Rubble that cannot be placed on, so a room's shape
@@ -841,6 +841,70 @@ a different decision, since a letter square rewards a big card and a word
 square rewards a big line). `HOURGLASS_ROOM` got no tile, same reasoning
 item 8 gave for leaving it bare: one room proving the effect is enough.
 
+**Item 10.** The real design question the item's own text raises but doesn't
+settle: item 9's card square applies to *every* line through the tile (up to
+three axes), and the item's phrase "double the total of **one** line" reads,
+on its own, like it might mean something narrower — pick the single
+best-scoring axis and multiply only that one. Rejected that reading. The
+item's very next sentence resolves what the "different decision" actually
+is: "letter squares reward a big card, word squares reward a big line" — a
+statement about which *quantity* gets doubled (a card's own marginal share
+versus the line's whole total), not about how many axes qualify. Nothing in
+ROOMS.md's decision table or item 9's own precedent suggests a card-square
+and a line-square should behave differently on axis count, and doing so
+would need its own justification this item's text doesn't supply. So
+`lineMultiplier` reuses item 9's exact per-axis mechanic (every line whose
+*scored window* contains the placed cell gets the bonus) and only the bonus
+formula itself changes: `line.window.result.value * (multiplier - 1)`
+instead of `cardContribution(...) * (multiplier - 1)`. Said explicitly in
+`scoring.ts`'s header that the "pick only the best line" reading was
+considered and set aside for item 22's calibration pass to revisit if the
+uncapped-axis-count design (already flagged as a possible balance question
+in item 9's own log) turns out to need it — not resolved by a guess here.
+
+Implementation reused item 9's substrate rather than duplicating it:
+`applyTileEffects` no longer special-cases `cardMultiplier` — it now calls a
+new `tileLineBonus(tile, line, cardIndex, lens, cfg)` for whichever tile
+kind sits at the placed cell, which returns the line's bonus-and-label pair
+for `cardMultiplier`, `lineMultiplier`, or `null` for `marker`/anything
+else. The window-mutation code below it (append a `ScoreItem`, bump
+`.value`, recompute the placement total) is untouched from item 9 and now
+shared by both kinds — there was nothing kind-specific left in it once the
+bonus computation itself moved into `tileLineBonus`.
+
+The other real decision was the badge. `cardMultiplier` already badges as a
+bare `×N` (locked in by item 9's own tests), and a `lineMultiplier` tile
+carrying the same number would render an identical badge with no way to
+tell which kind is which by looking at the board — a real ambiguity, not a
+cosmetic nitpick, since the two kinds now genuinely behave differently on
+the same board. `lineMultiplier` badges as `L×N` (Scrabble's own
+convention of prefixing "DL"/"DW"-style letters was the model) rather than
+touching `cardMultiplier`'s established format, which item 9 already
+shipped and tested.
+
+`ROUND_ROOM` gained one `lineMultiplier ×2` tile at `(-1,-1)` — adjacent to
+the existing `cardMultiplier` tile's cell `(0,-1)` so the established
+four-move smoke sequence (`(2,0)` → `(1,0)` → `(0,0)` → `(0,-1)`) still
+satisfies adjacency for a fifth move onto it, and inside the radius-2 disc
+(`hexDistance((-1,-1), origin) = 2`). `HOURGLASS_ROOM` stays bare, same
+reasoning items 8-9 already gave: one room proving each new tile kind is
+enough, adding a second tests nothing new. Verified with a throwaway script
+against `expedition.ts` directly (run and discarded, not committed, same
+convention as items 7-9) rather than guessed: the same fifth card at
+`(-1,-1)` scores 58 with no tile there and 115 with the `L×2` tile there —
+a 57-point boost, exactly `2 × 58 - 58`, confirming the whole line doubled
+rather than some fractional card-share of it.
+
+Considered whether a cell could ever carry both a `cardMultiplier` and a
+`lineMultiplier` at once (stacking a letter and a word square, as real
+Scrabble boards do). `tileAt` returns at most one `Tile` per cell by
+construction — `TileMap` is `ReadonlyMap<string, Tile>`, one value per key —
+so a stacked cell isn't representable without a further type change. Left
+alone rather than widened: nothing in the item's text or ROOMS.md's
+decisions asks for stacking, and speculatively supporting it now would be
+doing item 22's (or a future item's) design work early for a combination
+nobody has asked to ship.
+
 ## Results log
 
 **Item 1.** `npm test` 203/203 (was 208 — 5 tests removed, all for formulas
@@ -1209,5 +1273,43 @@ item 7/8's stale-port note, run and discarded, not committed):
 | zoomed on `(0,-1)` before placement | a centred "×2" badge in the hex's top sliver, same placement convention item 8 established for the marker |
 | same cell after K♠ lands there | the "×2" badge still visible above the card, unclipped, the same "underneath" effect as the marker tile |
 | full board after the fourth placement | both tiles visible at once (`T8` marker under `5♣`, `×2` multiplier under `K♠`), header reading "Score 161 / 50 (met)" / "Cleared", and the log line "Last placement: K♠ at 0,-1 scored 88" — the number the offline calculation predicted, not a rounded-off approximation |
+
+No video — this item changes what a placement is worth, not movement or feel.
+
+**Item 10.** `npm test` 299/299 (was 291 — 8 new: 3 in `tile.test.ts` for the
+`lineMultiplier` shape, its `L×N` badge including that it's distinct from a
+`cardMultiplier` badge carrying the same number, and coexistence with a
+`cardMultiplier` tile in the same room; 5 in `scoring.test.ts` covering
+whole-line doubling versus the card's own contribution (the direct contrast
+with item 9's equivalent test), the lone-card three-axis case, ×3, the
+excluded-window case, and non-mutation). `npx tsc -b --noEmit` clean —
+including catching that `tileLineBonus` needed the `Tile` type imported into
+`scoring.ts`, which the compiler flagged immediately. `npm run smoke` 47/47
+(was 45 — 3 new: the `lineMultiplier` tile renders before anything is placed
+on it, placing on it scores the exact boosted amount, and the post-boost
+score carries correctly through the existing "leaving carries the score"
+check, which needed no changes itself since it already read off a `finalScore`
+variable rather than a hard-coded number).
+
+The exact numbers (seed `rooms-1`, default `CONFIG`, same throwaway-script
+convention as items 7-9 — run directly against `expedition.ts`, discarded,
+not committed): the established four-move sequence onto `(2,0)`, `(1,0)`,
+`(0,0)`, `(0,-1)` is untouched (scores 7, 31, 73, 161, matching item 9's own
+log exactly — the new tile at a different cell didn't perturb it), then a
+fifth placement of hand[0] onto the `L×2` tile at `(-1,-1)` scores **115** —
+verified against the same card at the same board state with
+`scoreHexPlacement` directly (no tile) scoring **58**, exactly double,
+confirming the *whole* line doubled rather than a card-share of it. Final
+room score 276, carried into `runningTotal` after leaving.
+
+Drove `RoomRunPage` in headless Chromium via `tools/browser.mjs` (throwaway
+script, same server-then-screenshot pattern as `smoke.mjs`, fresh port per
+item 7/8's stale-port note, run and discarded, not committed):
+
+| screenshot | shows |
+|---|---|
+| zoomed on `(-1,-1)` before placement | a centred "L×2" badge in the hex's top sliver, same placement convention items 8-9 established, visually distinct from a plain "×2" |
+| same cell after A♣ lands there | the "L×2" badge still visible above the card, unclipped |
+| full board after the fifth placement | all three tile kinds visible at once (`T8` marker under `5♣`, `×2` card multiplier under `K♠`, `L×2` line multiplier under `A♣`), header reading "Score 276 / 50 (met)" / "Cleared", and the log line "Last placement: A♣ at -1,-1 scored 115" — matching the offline calculation exactly |
 
 No video — this item changes what a placement is worth, not movement or feel.

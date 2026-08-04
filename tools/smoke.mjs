@@ -247,8 +247,22 @@ ok(
 );
 await placeHand0('0,-1');
 ok('the tile boosted the placement to the expected score', (await text()).includes('scored 88'));
+const afterCardTile = Number((await text()).match(/Score (\d+) \/ 50/)?.[1] ?? -1);
+ok('score after the cardMultiplier placement reflects the boosted placement', afterCardTile === clearedScore + 88);
+
+// The room also carries a real 'lineMultiplier' tile at (-1,-1) (item 10) —
+// same offline-verified convention as item 9: the same card at (-1,-1)
+// scores 58 with no tile there and 115 with the L×2 tile, since a word
+// square doubles the *whole* E-W line's value rather than just the placed
+// card's own contribution to it (the distinction item 10 exists to draw).
+ok(
+  'the lineMultiplier tile renders before anything is placed on it',
+  (await p.locator('[data-room-cell="-1,-1"]').getAttribute('data-room-tile')) === 'lineMultiplier',
+);
+await placeHand0('-1,-1');
+ok('the line tile boosted the placement to the expected score', (await text()).includes('scored 115'));
 const finalScore = Number((await text()).match(/Score (\d+) \/ 50/)?.[1] ?? -1);
-ok('final score reflects the boosted placement', finalScore === clearedScore + 88);
+ok('final score reflects the line-boosted placement', finalScore === afterCardTile + 115);
 
 await p.locator('[data-room-leave]').click();
 await p.waitForTimeout(300);

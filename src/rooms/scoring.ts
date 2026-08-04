@@ -19,6 +19,19 @@
  * line is the line's value *with* it, minus the line's value with it
  * removed and nothing else changed. That is exactly the quantity a doubling
  * tile should double — the amount this specific card added.
+ *
+ * Item 10 adds the word-square counterpart: `'lineMultiplier'` doubles a
+ * line's *whole* window value at the placed cell, not just this card's own
+ * slice of it — "letter squares reward a big card, word squares reward a
+ * big line" (ROOMS.md). Both kinds apply per-axis, to every line whose
+ * scored window includes the placed cell, exactly like item 9 already does
+ * for `cardMultiplier` — the "different decision" the backlog item calls
+ * for is which *quantity* gets multiplied, not how many axes qualify. A
+ * reading where a line square picks only the single best-scoring axis was
+ * considered and rejected: nothing in the item's text singles out "best",
+ * and it would make the two tile kinds inconsistent for no stated reason —
+ * this is a candidate for item 22's calibration pass to revisit if it turns
+ * out unbalanced, not a guess settled here.
  */
 import type { Card } from '../deck';
 import {
@@ -31,7 +44,7 @@ import {
 import { hexKey, type Hex } from '../hex/coords';
 import { getScoringLens, type Lens } from '../lens';
 import { CONFIG, type Config } from '../config';
-import { tileAt, type TileMap } from './tile';
+import { tileAt, type Tile, type TileMap } from './tile';
 
 /**
  * A card's marginal contribution to a scored slice of a line: the slice's
@@ -48,12 +61,39 @@ export function cardContribution(cards: readonly Card[], cardIndex: number, lens
 }
 
 /**
- * Applies a `cardMultiplier` tile at `h`, if there is one, to every one of
- * the placement's (up to three) lines whose *scored window* actually
- * includes `h`. A long line's best window can fall away from the cell just
- * played (`bestWindow` in `hex/board.ts`), and a tile only boosts the card
- * that earned it — if this placement isn't part of what scored on a given
- * axis, that axis gets no bonus.
+ * The bonus a single tile contributes to a single line, if any — `null` when
+ * the tile's cell isn't part of that line's scored window, or when the
+ * quantity it would double is already zero. Shared by both multiplier kinds
+ * so `applyTileEffects` doesn't have to know the difference between them.
+ */
+function tileLineBonus(
+  tile: Tile,
+  line: HexLineScore,
+  cardIndex: number,
+  lens: Lens,
+  cfg: Config,
+): { bonus: number; label: string } | null {
+  switch (tile.kind) {
+    case 'cardMultiplier': {
+      const bonus = cardContribution(line.window.cards, cardIndex, lens, cfg) * (tile.multiplier - 1);
+      return bonus > 0 ? { bonus, label: `Card ×${tile.multiplier} tile` } : null;
+    }
+    case 'lineMultiplier': {
+      const bonus = line.window.result.value * (tile.multiplier - 1);
+      return bonus > 0 ? { bonus, label: `Line ×${tile.multiplier} tile` } : null;
+    }
+    case 'marker':
+      return null;
+  }
+}
+
+/**
+ * Applies whatever multiplier tile sits at `h` to every one of the
+ * placement's (up to three) lines whose *scored window* actually includes
+ * `h`. A long line's best window can fall away from the cell just played
+ * (`bestWindow` in `hex/board.ts`), and a tile only boosts what this
+ * placement actually scored — if this placement isn't part of what scored on
+ * a given axis, that axis gets no bonus.
  */
 export function applyTileEffects(
   base: HexPlacementScore,
@@ -63,7 +103,7 @@ export function applyTileEffects(
   cfg: Config,
 ): HexPlacementScore {
   const tile = tileAt(tiles, h);
-  if (!tile || tile.kind !== 'cardMultiplier') return base;
+  if (!tile) return base;
 
   const hKey = hexKey(h);
   let changed = false;
@@ -72,16 +112,16 @@ export function applyTileEffects(
     const idx = line.window.coords.findIndex((c) => hexKey(c) === hKey);
     if (idx < 0) return line;
 
-    const bonus = cardContribution(line.window.cards, idx, lens, cfg) * (tile.multiplier - 1);
-    if (bonus <= 0) return line;
+    const effect = tileLineBonus(tile, line, idx, lens, cfg);
+    if (!effect) return line;
 
     changed = true;
     const window: HexWindow = {
       ...line.window,
       result: {
         ...line.window.result,
-        items: [...line.window.result.items, { label: `Card ×${tile.multiplier} tile`, points: bonus }],
-        value: line.window.result.value + bonus,
+        items: [...line.window.result.items, { label: effect.label, points: effect.bonus }],
+        value: line.window.result.value + effect.bonus,
       },
     };
     return { ...line, window };

@@ -104,3 +104,28 @@ describe('cardMultiplier tiles (item 9)', () => {
     expect(tileAt(room.tiles, east)?.kind).toBe('cardMultiplier');
   });
 });
+
+describe('lineMultiplier tiles (item 10)', () => {
+  it('stores and retrieves a lineMultiplier tile like any other kind', () => {
+    const tiles = withTile(emptyTileMap(), ORIGIN, { kind: 'lineMultiplier', multiplier: 2 });
+    expect(tileAt(tiles, ORIGIN)).toEqual({ kind: 'lineMultiplier', multiplier: 2 });
+  });
+
+  it('badges as L×N, distinct from a cardMultiplier tile carrying the same number', () => {
+    expect(tileBadge({ kind: 'lineMultiplier', multiplier: 2 })).toBe('L×2');
+    expect(tileBadge({ kind: 'lineMultiplier', multiplier: 3 })).toBe('L×3');
+    expect(tileBadge({ kind: 'lineMultiplier', multiplier: 2 })).not.toBe(
+      tileBadge({ kind: 'cardMultiplier', multiplier: 2 }),
+    );
+  });
+
+  it('coexists with a cardMultiplier tile at a different cell in the same room', () => {
+    const east = { q: 1, r: 0 };
+    const room = makeRoom('Test', [ORIGIN, east], [], 0, [
+      [ORIGIN, { kind: 'cardMultiplier', multiplier: 2 }],
+      [east, { kind: 'lineMultiplier', multiplier: 2 }],
+    ]);
+    expect(tileAt(room.tiles, ORIGIN)?.kind).toBe('cardMultiplier');
+    expect(tileAt(room.tiles, east)?.kind).toBe('lineMultiplier');
+  });
+});

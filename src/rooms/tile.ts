@@ -12,23 +12,34 @@
  * nothing. `'marker'` exists solely to prove the substrate: a tile can be
  * stored, retrieved, and rendered under a placed card without disappearing.
  *
- * Item 9 adds the first real kind, `'cardMultiplier'` (see `scoring.ts` for
- * the effect itself — this file only defines the shape and its badge text).
+ * Item 9 adds `'cardMultiplier'` (the Scrabble letter square — doubles the
+ * placed card's own marginal contribution to every line through it) and
+ * item 10 adds `'lineMultiplier'` (the word square — doubles a line's whole
+ * total instead of just this card's share of it; see `scoring.ts` for both
+ * effects — this file only defines the shapes and their badge text).
  */
 import { hexKey, type Hex } from '../hex/coords';
 
-export type Tile = { kind: 'marker'; label: string } | { kind: 'cardMultiplier'; multiplier: number };
+export type Tile =
+  | { kind: 'marker'; label: string }
+  | { kind: 'cardMultiplier'; multiplier: number }
+  | { kind: 'lineMultiplier'; multiplier: number };
 
 /** The short text a tile shows on the board — every kind needs one, but not
  * every kind stores it under the same field (a marker's is arbitrary text,
  * a multiplier's is derived from its number), so this is a function rather
- * than a shared `label` field on the union. */
+ * than a shared `label` field on the union. `lineMultiplier` gets an `L`
+ * prefix so the two multiplier kinds read as visually distinct on the board
+ * — without it, a card square and a word square carrying the same number
+ * would render an identical badge. */
 export function tileBadge(tile: Tile): string {
   switch (tile.kind) {
     case 'marker':
       return tile.label;
     case 'cardMultiplier':
       return `×${tile.multiplier}`;
+    case 'lineMultiplier':
+      return `L×${tile.multiplier}`;
   }
 }
 

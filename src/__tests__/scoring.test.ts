@@ -147,3 +147,71 @@ describe('applyTileEffects / scoreRoomPlacement', () => {
     expect(tiles.size).toBe(1);
   });
 });
+
+describe('lineMultiplier tiles (item 10)', () => {
+  it('doubles a whole line\'s value, not just the placed card\'s own contribution', () => {
+    // 7H already on the board; 8S lands next to it and makes a fifteen (7+8).
+    // A word square at 8S's cell must double the *entire* E-W line's value —
+    // 7H's own base chips included, not only what 8S itself contributed —
+    // the opposite of what item 9's cardMultiplier does at the same spot.
+    const neighbour = hexAdd(ORIGIN, HEX_AXES[0]);
+    const board = withHexCard(emptyHexBoard(), ORIGIN, card('7H'));
+    const eight = card('8S');
+    const tiles = tileMapFrom([[neighbour, { kind: 'lineMultiplier', multiplier: 2 }]]);
+
+    const base = scoreHexPlacement(board, neighbour, eight, cfg);
+    const boosted = scoreRoomPlacement(board, neighbour, eight, tiles, cfg);
+
+    const lineValueWith = base.hexLines[0].window.result.value; // 7H + 8S: fifteen + base chips
+    expect(boosted.hexLines[0].window.result.value).toBe(2 * lineValueWith);
+
+    // The card's own marginal contribution (the cardMultiplier reading) is
+    // strictly smaller than the whole line — confirm the boost isn't that.
+    const contribution = cardContribution([card('7H'), eight], 1, cribbageLens, cfg);
+    expect(lineValueWith + contribution).not.toBe(2 * lineValueWith);
+  });
+
+  it('doubles a lone card\'s line on every one of its (three, empty-neighbourhood) axes', () => {
+    const tiles = tileMapFrom([[ORIGIN, { kind: 'lineMultiplier', multiplier: 2 }]]);
+    const base = scoreHexPlacement(emptyHexBoard(), ORIGIN, card('5H'), cfg);
+    const boosted = scoreRoomPlacement(emptyHexBoard(), ORIGIN, card('5H'), tiles, cfg);
+
+    expect(boosted.hexLines).toHaveLength(3);
+    for (let i = 0; i < 3; i++) {
+      expect(boosted.hexLines[i].window.result.value).toBe(2 * base.hexLines[i].window.result.value);
+    }
+    expect(boosted.score).toBe(2 * base.score);
+  });
+
+  it('triples instead of doubles when the tile says ×3', () => {
+    const tiles = tileMapFrom([[ORIGIN, { kind: 'lineMultiplier', multiplier: 3 }]]);
+    const base = scoreHexPlacement(emptyHexBoard(), ORIGIN, card('5H'), cfg);
+    const boosted = scoreRoomPlacement(emptyHexBoard(), ORIGIN, card('5H'), tiles, cfg);
+    expect(boosted.score).toBe(3 * base.score);
+  });
+
+  it('does not boost a line whose scored window falls away from the placed cell', () => {
+    const narrow: Config = { ...cfg, hexWindow: 2 };
+    const west = { q: -1, r: 0 };
+    const centre = ORIGIN;
+    const east = { q: 1, r: 0 }; // the placed cell
+
+    let board = withHexCard(emptyHexBoard(), west, card('5H'));
+    board = withHexCard(board, centre, card('TH')); // 5H + TH = fifteen
+
+    const tiles = tileMapFrom([[east, { kind: 'lineMultiplier', multiplier: 2 }]]);
+    const base = scoreHexPlacement(board, east, card('2S'), narrow);
+    const boosted = scoreRoomPlacement(board, east, card('2S'), tiles, narrow);
+
+    expect(boosted.hexLines[0].window.coords.map((c) => `${c.q},${c.r}`)).not.toContain('1,0');
+    expect(boosted.hexLines[0].window.result.value).toBe(base.hexLines[0].window.result.value);
+  });
+
+  it('does not mutate the board or tiles it scores against', () => {
+    const board = emptyHexBoard();
+    const tiles = tileMapFrom([[ORIGIN, { kind: 'lineMultiplier', multiplier: 2 }]]);
+    scoreRoomPlacement(board, ORIGIN, card('5H'), tiles, cfg);
+    expect(board.size).toBe(0);
+    expect(tiles.size).toBe(1);
+  });
+});
