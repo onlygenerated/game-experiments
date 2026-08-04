@@ -141,7 +141,7 @@ stand on. Sized for 30 minutes each.
 
 ### B. The room shell
 
-- [ ] **4. Room as a bounded region.** A `Room` is a set of legal hex
+- [x] **4. Room as a bounded region.** A `Room` is a set of legal hex
       coordinates plus a border, replacing "everything within radius N". Two
       hand-authored shapes to start. Rendering follows the shape.
 - [ ] **5. Exit tiles and the reach condition.** Mark border hexes as exits;
@@ -436,6 +436,59 @@ different reason (no boundary cell ever reachable, not "random play scored
 zero") and the old hardcoded string would have been actively wrong on that
 row.
 
+**Item 4.** `src/rooms/room.ts` defines `Room` as `{ name, cells: ReadonlySet<string> }`
+— a frozen set of hex keys, nothing else. `isRoomBorder(room, h)` is "in the
+room and at least one neighbour is not"; `roomBorder`/`roomInterior` partition
+`roomCells(room)` by that predicate. No radius appears anywhere in the type or
+its functions — the old `inHexBounds`/`hexesWithinRadius` gate in
+`hex/board.ts` is untouched (existing sprawl mode still uses it) and nothing
+in `rooms/` imports `Config` or touches the engine, `Structure`, or any
+scorer, so there was nothing here that could regress the existing game.
+
+`src/rooms/shapes.ts` hand-authors two rooms, per the item's "data, not
+procedural" framing (that's item 20's job): `ROUND_ROOM` freezes
+`hexesWithinRadius(2)` into a literal cell set — reusing the existing radius
+helper to *build* the list is not the same as the `Room` type depending on a
+radius, and typing 19 pairs by hand would have added nothing but risk of a
+transcription error. `HOURGLASS_ROOM` is 17 literal `{q,r}` pairs: two
+radius-1 discs (a centre plus its six neighbours, 7 cells each) joined by a
+3-cell, one-hex-wide neck. This shape exists specifically to falsify "the
+border is always the outermost ring" — the neck cells sit at the shape's
+geometric middle along its long axis, yet every one of them touches the
+outside, so they're border. Verified this in `room.test.ts` directly
+(`isRoomBorder` true for all three neck cells, `roomInterior` returning
+exactly the two chamber centres) rather than trusting the render to make the
+point on its own.
+
+Designed the hourglass's exact coordinates with a throwaway node script (not
+committed) that builds two `hexesWithinRadius(1)` discs at `(0,-3)` and
+`(0,3)` plus an explicit 3-cell neck, dedupes, and reports border/interior
+counts — needed because a first attempt (two bare 7-cell rows with a 1-cell
+neck, no radius-1 discs) came back with *zero* interior cells, i.e. every
+cell was border and the shape didn't actually demonstrate anything a disc
+couldn't. Widening the chambers to full radius-1 discs is what gives each
+one a genuine interior cell (its centre) to contrast against the neck.
+
+`RoomBoardView.tsx` reuses `hexToPixel` (unmodified, from `hex/coords.ts`)
+for layout — the same pixel math `HexBoardView` uses — but iterates
+`roomCells(room)` instead of `hexesWithinRadius(cfg.hexRadius)`, which is
+the whole of "rendering follows the shape": no card layer, no interactivity,
+no engine, just cells tinted by `isRoomBorder`. Kept as a new file rather
+than a parameter added to `HexBoardView` — that component already carries
+drag/preview/cascade wiring that a shape-only view has no use for, and the
+standing rule is to leave the existing game's rendering untouched.
+
+There is no room-mode run yet — no engine wiring, no exits (item 5), no
+threshold (item 6) — so there was nothing to reach a room through from
+inside a normal game session. Added a plain dev-preview page instead
+(`RoomsPreviewPage.tsx`, reachable via a new "Rooms" header button next to
+Metrics/Setup) purely so the shape and its border are actually visible and
+screenshot-able in the running app this firing, rather than only provable
+in a test file. Labelled it "(dev preview)" and its subtitle spells out what
+is not wired up yet, so it reads as scaffolding rather than the mode. Expect
+this page to be replaced outright once item 7 lands a real room-to-room run
+— it is not meant to be the permanent home for room shapes.
+
 ## Results log
 
 **Item 1.** `npm test` 203/203 (was 208 — 5 tests removed, all for formulas
@@ -590,3 +643,27 @@ Setup page (showing "clear rate ×50%" in the calibration blurb) via a
 throwaway Playwright script (same pattern as `tools/smoke.mjs`'s server
 setup, run and discarded, not committed) in headless Chromium. No video —
 this item changed measurement, not movement or feel.
+
+**Item 4.** `npm test` 228/228 (was 215 — 13 new in `room.test.ts`, nothing
+existing touched). `npx tsc -b --noEmit` clean. `npm run smoke` 26/26 —
+extended with 4 checks: the new "Rooms" header button opens the dev preview,
+both hand-authored shapes render at least one cell each, and — the one that
+actually guards the point of this item — the hourglass's neck cell `0,0`
+reports `data-room-border="true"` rather than being read as interior.
+
+Room shape counts (`room.cells.size` / `roomBorder` / `roomInterior`, all
+asserted in tests and matching what the preview page prints):
+
+| room | cells | border | interior |
+|---|---|---|---|
+| Round Room (radius-2 disc) | 19 | 12 | 7 |
+| Hourglass | 17 | 15 | 2 |
+
+Drove `RoomsPreviewPage` in headless Chromium via `tools/browser.mjs`
+(throwaway script, same server-then-screenshot pattern as `smoke.mjs`, run
+and discarded, not committed): screenshot shows the round room as a single
+pink outer ring around a blue 7-cell interior, and the hourglass as two
+small chambers (one interior cell each) joined by a pink neck with no blue
+cells in it at all — border cells running straight through the shape's
+middle, the thing a radius-based room could never draw. No video — this
+item is static geometry, not movement or feel.

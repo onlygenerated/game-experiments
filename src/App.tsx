@@ -18,6 +18,7 @@ import { PreviewPanel } from './components/PreviewPanel';
 import { ScoreLog } from './components/ScoreLog';
 import { StatusBar } from './components/StatusBar';
 import { RunEndPanel } from './components/RunEndPanel';
+import { RoomsPreviewPage } from './rooms/RoomsPreviewPage';
 import type { Cascade, CascadeCell } from './components/cascade';
 import type { LinePunch } from './components/linePunch';
 import { gridNearMissReason, hexNearMissReason, NEAR_MISS_LABEL, type NearMissReason } from './components/nearMiss';
@@ -95,6 +96,7 @@ export default function App() {
   const [showMetrics, setShowMetrics] = useState(false);
   const [showScoring, setShowScoring] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
+  const [showRooms, setShowRooms] = useState(false);
 
   const wide = useMediaQuery(WIDE_QUERY);
   const docked = !wide;
@@ -392,6 +394,7 @@ export default function App() {
   const trayOrEnd = playing ? handTray : runEnd;
 
   if (showMetrics) return <MetricsPage onClose={() => setShowMetrics(false)} />;
+  if (showRooms) return <RoomsPreviewPage onClose={() => setShowRooms(false)} />;
   if (showSetup)
     return (
       <SetupPage
@@ -456,6 +459,12 @@ export default function App() {
             className="shrink-0 rounded border border-neutral-700 px-3 py-2 text-sm font-semibold text-neutral-300 active:bg-neutral-800 min-[1280px]:py-1 min-[1280px]:hover:bg-neutral-800"
           >
             Metrics
+          </button>
+          <button
+            onClick={() => setShowRooms(true)}
+            className="shrink-0 rounded border border-neutral-700 px-3 py-2 text-sm font-semibold text-neutral-300 active:bg-neutral-800 min-[1280px]:py-1 min-[1280px]:hover:bg-neutral-800"
+          >
+            Rooms
           </button>
           <DevControls
             seed={state.seed}

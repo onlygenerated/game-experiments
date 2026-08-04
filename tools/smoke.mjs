@@ -171,6 +171,20 @@ await p.waitForTimeout(600);
 ok('setup starts a run', (await p.locator('[data-cell],[data-hex]').count()) > 0);
 ok('combo preset scores under both counters', (await text()).toLowerCase().includes('cribbage + poker'));
 
+// --- rooms preview (item 4: shape substrate, no run yet) --------------------
+await p.locator('button:has-text("Rooms"):visible').first().click();
+await p.waitForTimeout(400);
+ok('rooms preview opens', (await text()).includes('Rooms (dev preview)'));
+ok('round room renders', (await p.locator('[data-room="Round Room"] [data-room-cell]').count()) > 0);
+ok('hourglass room renders', (await p.locator('[data-room="Hourglass"] [data-room-cell]').count()) > 0);
+ok(
+  'hourglass neck is border, not interior',
+  (await p.locator('[data-room="Hourglass"] [data-room-cell="0,0"]').getAttribute('data-room-border')) ===
+    'true',
+);
+await p.locator('button:has-text("Back to the board")').click();
+await p.waitForTimeout(300);
+
 await p.screenshot({ path: `${SP}/smoke-final.png` });
 
 // A 404 for the favicon is expected in the preview server and is not a fault.
