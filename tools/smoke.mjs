@@ -148,6 +148,13 @@ await p.waitForTimeout(300);
 await p.locator('button:has-text("Metrics"):visible').first().click();
 await p.waitForTimeout(400);
 ok('metrics page opens', (await text()).includes('Lookahead lift'));
+// Item 3 retired the mult axis metric for reach pressure and clear rate —
+// guard the rename so a silent partial revert doesn't ship the old column
+// back next to stale "mult" language.
+const metricsText = await text();
+ok('reach pressure column shown', metricsText.includes('Reach pressure'));
+ok('clear rate column shown', metricsText.includes('Clear rate'));
+ok('no leftover mult-axis language', !metricsText.toLowerCase().includes('mult live'));
 await p.locator('button:has-text("Back to the board")').click();
 await p.waitForTimeout(400);
 

@@ -132,7 +132,7 @@ stand on. Sized for 30 minutes each.
       lens. A line's points are the sum across active counters. Ship
       cribbage+poker as a selectable combination and prove in a test that a line
       scoring under both gets both.
-- [ ] **3. Rebuild the probe for the new model.** Greedy / random / two-ply
+- [x] **3. Rebuild the probe for the new model.** Greedy / random / two-ply
       still apply, but mult participation is meaningless now. Replace it with:
       **reach pressure** (how often the best-scoring move is away from the
       exit), **spread** (kept — it is the metric the room design is trying to
@@ -348,6 +348,94 @@ method item 1 used for its 30 recomputed targets (20 seeds, median, script
 run and discarded) — explicitly not a claim about whether the combination is
 well-tuned, exactly like every other number in that table until item 3.
 
+**Item 3.** There is no exit tile yet — that's items 4-5, still ahead. So
+"reach pressure (how often the best-scoring move is away from the exit)" as
+written can't be measured literally. Every board here is already a bounded
+region though: a grid has hard edges (`inBounds`), a hex sprawl has
+`hexRadius`. That boundary is exactly the shape a room border will have, so
+it stands in as a proxy exit: `tools/probe.test.ts`'s `api()` façade gained
+one method, `edgeDist(key)` (0 on the boundary, counting inward), and `play()`
+now tracks, on every turn after turn 5 (same gate `minCells` already used —
+consistency, and the opening placements are noise either way), whether a
+boundary cell was legally reachable at all (`reachEligible`) and, if so,
+whether the best-scoring move (`m[0]`, already sorted) went there or chased
+the interior instead (`reachAway`). `reachPct = 100 * Σaway / Σeligible`
+across all 20 greedy seeds — null, not 0%, when a boundary cell was never
+reachable, matching how `skill` already handles "the ratio measures nothing"
+rather than printing a fake floor. This measures precisely the
+farm-one-rich-pocket-ignore-the-map pathology the room design exists to fix,
+without needing a real exit to exist first. It should be revisited once item
+5 lands a real exit condition rather than assumed to still be measuring the
+same thing — the file header says so explicitly.
+
+`multPct` and the whole `multActive` counter are gone — `.mult` hasn't
+existed on `ScoredPlacement` since item 1, so the old code was reading
+`undefined > 1` (always false) the entire time; item 1's own decisions log
+already flagged this as "harmless dead code in a script item 3 replaces."
+
+`winPct` is renamed `clearPct` everywhere (probe output, `RulesetMetrics`,
+`MetricsPage`, `SetupPage`) — same computation, `score reached target`,
+nothing added. The header comment and the field's own doc comment both say
+plainly that this is *not* gated on reach and will need item 6 to actually
+mean "cleared a room." Renaming now rather than later means the vocabulary
+the room UI will use ("clear") is established before there's a UI to be
+inconsistent with.
+
+`spread` is untouched, per the item's "kept" — no code changed there beyond
+moving it one column over in the printed table.
+
+Recalibration piggybacks on the real probe rather than a throwaway script
+this time, since `play()`'s greedy score has always been target-independent
+(it runs with `targetScore: Infinity` internally and only compares against
+the real target afterward) — so running `npm run probe` once with the *old*
+targets already produces the correct new medians in its `greedy` column.
+Ran it, copied every ruleset's measured greedy median into its
+`targetScore` in `rulesets.ts` (and `CONFIG.targetScore` for poker-baseline,
+which uses `CONFIG` directly rather than `base({...})`), then ran the probe
+a second time so `metrics.generated.ts` reflects the final calibrated
+targets — `clearPct` now reads ~50% almost everywhere, exactly what
+"target = measured median" should produce, rather than the leftover
+placeholder-target skew the table had before this item.
+
+Two exceptions, both carried forward from existing, already-documented
+decisions rather than new ones:
+- `mech-lock-cash` keeps using its 2-ply median (192, was 175) — the
+  ruleset's own long-standing comment says greedy is not a valid agent
+  there, and this probe run confirms it again (greedy median 18, *below*
+  careless's 30 — greedy has no gradient to follow when nothing banks until
+  cashed, so it wanders).
+- `poker-tight` needed a value distinct from `poker-baseline` — same
+  `Config` in every field except `targetScore`, so its own greedy median is
+  necessarily identical (881) and can't set a harder bar. Computed its p80
+  over the same 20 seeds with a throwaway script (`sorted scores: [811..981],
+  p80: 916`, run and discarded, not committed) — the same fix item 1 used
+  for the same reason.
+
+`poker-mult-amped` and the inert `axisMode` rulesets (`mech-both-axes`,
+`mech-suit-axis`) measured identically to their baselines again, confirming
+item 1's note that they're re-skins now. Their blurbs said "kept as a marker
+until item 3 decides whether to retire it" — item 3 is a probe-rebuild item,
+not a scoring-mechanics item, so per the standing rule ("if an item seems to
+require changing how the current modes score, it is the wrong item")
+deciding their fate is out of scope here too. Reworded the blurbs so they no
+longer point at "item 3" as the resolution moment (that would now be stale)
+and instead point at "whichever later item" — items 19 and 22 (archetypes,
+calibration pass) are the more natural home for that call, not this one.
+
+`combo-cribbage-poker`'s target (1571) needed no change — the freshly
+measured greedy median came back exactly 1571, same as item 2's throwaway
+placeholder. Reworded its blurb since "placeholder pending item 3" is no
+longer true; it's now exactly as probe-calibrated as everything else.
+
+`MetricsPage.tsx` swapped the `multPct` column for `reachPct` and added a
+`clearPct` column (previously computed but not displayed at all — `winPct`
+existed in the data since the file was first generated but nothing in the
+UI read it). Added a `nullTitle` field to `Column` rather than hardcoding
+skill's null-tooltip text, since `reachPct` can now also be null for a
+different reason (no boundary cell ever reachable, not "random play scored
+zero") and the old hardcoded string would have been actively wrong on that
+row.
+
 ## Results log
 
 **Item 1.** `npm test` 203/203 (was 208 — 5 tests removed, all for formulas
@@ -430,3 +518,75 @@ what a line is worth, not movement or feel.
 Median greedy score for `combo-cribbage-poker` over 20 seeds: 1571 (used as
 its placeholder `targetScore`, same throwaway-script method as item 1's
 table — not a probe measurement).
+
+**Item 3.** `npm test` 215/215, unchanged — this item touched the probe
+(explicitly excluded from `npm test`) and the ruleset/metrics data, not the
+scorers. `npx tsc -b --noEmit` clean. `npm run smoke` 22/22 — added 3 checks
+that the Metrics page shows "Reach pressure" and "Clear rate" and no longer
+shows "mult live" anywhere, guarding the rename against a silent partial
+revert.
+
+Full recalibrated probe output (20 seeds each; `reach%` and `clear%` are the
+new columns, `mult%`/`win%` are gone):
+
+| ruleset | target | greedy | careless | skill | 2ply | lift | reach% | spread | minCells | clear% |
+|---|---|---|---|---|---|---|---|---|---|---|
+| poker-baseline | 881 | 881 | 600 | 1.47 | 910 | 1.03 | 71% | 1.7 | 10 | 55% |
+| poker-tight | 916 | 881 | 600 | 1.47 | 910 | 1.03 | 71% | 1.7 | 10 | 20% |
+| poker-mult-amped | 881 | 881 | 600 | 1.47 | 910 | 1.03 | 71% | 1.7 | 10 | 55% |
+| poker-partials | 915 | 915 | 612 | 1.50 | 989 | 1.08 | 66% | 1.8 | 10 | 50% |
+| poker-short-run | 545 | 545 | 366 | 1.49 | 557 | 1.02 | 81% | 1.7 | 10 | 50% |
+| poker-partials-generous | 946 | 946 | 614 | 1.54 | 1021 | 1.08 | 65% | 1.8 | 9 | 50% |
+| poker-flat-ranks | 615 | 615 | 440 | 1.40 | 650 | 1.06 | 75% | 1.7 | 10 | 50% |
+| poker-short-lines | 890 | 890 | 577 | 1.54 | 911 | 1.02 | 46% | 1.6 | 2 | 50% |
+| poker-long-lines | 920 | 920 | 611 | 1.51 | 945 | 1.03 | 80% | 1.9 | 12 | 50% |
+| poker-lean-hand | 830 | 830 | 619 | 1.34 | 855 | 1.03 | 72% | 1.7 | 10 | 50% |
+| poker-small-board | 676 | 676 | 463 | 1.46 | 709 | 1.05 | 39% | 1.7 | 8 | 50% |
+| draft-cribbage | 534 | 534 | 372 | 1.44 | 570 | 1.07 | 62% | 2.7 | 9 | 50% |
+| draft-poker | 714 | 714 | 593 | 1.20 | 744 | 1.04 | 66% | 1.5 | 9 | 50% |
+| draft-hex | 858 | 858 | 478 | 1.79 | 912 | 1.06 | 59% | 2.6 | 13 | 50% |
+| hex-sprawl | 1342 | 1342 | 480 | 2.80 | 1505 | 1.12 | 55% | 4.3 | 13 | 50% |
+| hex-sprawl-blank | 1146 | 1146 | 468 | 2.45 | 1256 | 1.10 | 81% | 3.0 | 6 | 50% |
+| hex-sprawl-flat | 1089 | 1089 | 390 | 2.79 | 1164 | 1.07 | 62% | 4.4 | 13 | 50% |
+| cribbage-blank | 687 | 687 | 309 | 2.22 | 723 | 1.05 | 86% | 3.5 | 5 | 50% |
+| poker-blank | 841 | 841 | 556 | 1.51 | 862 | 1.02 | 75% | 1.7 | 5 | 50% |
+| cribbage | 747 | 747 | 315 | 2.37 | 816 | 1.09 | 58% | 4.3 | 9 | 50% |
+| cribbage-unbound | 1170 | 1170 | 327 | 3.58 | 1251 | 1.07 | 36% | 6.0 | 13 | 55% |
+| cribbage-pure | 528 | 528 | 120 | 4.40 | 612 | 1.16 | 49% | 36.0 | 10 | 55% |
+| cribbage-lean | 690 | 690 | 312 | 2.21 | 726 | 1.05 | 61% | 4.0 | 10 | 50% |
+| reference-poker-squares | 647 | 647 | 571 | 1.13 | 702 | 1.09 | 45% | 0.0 | 1 | 50% |
+| mech-both-axes | 747 | 747 | 315 | 2.37 | 816 | 1.09 | 58% | 4.3 | 9 | 50% |
+| mech-suit-axis | 747 | 747 | 315 | 2.37 | 816 | 1.09 | 58% | 4.3 | 9 | 50% |
+| mech-deferred | 201 | 201 | 69 | 2.91 | 321 | 1.60 | 50% | 0.0 | 8 | 50% |
+| mech-free | 747 | 747 | 141 | 5.30 | 816 | 1.09 | 58% | 8.0 | 31 | 50% |
+| mech-lock-cash | 192 | 18 | 30 | 0.60 | 192 | 10.67 | -- | 9.0 | 0 | 0% |
+| combo-cribbage-poker | 1571 | 1571 | 907 | 1.73 | 1619 | 1.03 | 65% | 2.2 | 9 | 50% |
+| cribbage-flush3 | 759 | 759 | 330 | 2.30 | 837 | 1.10 | 58% | 4.3 | 9 | 50% |
+
+`clearPct` landing on ~50% almost everywhere is by construction (target =
+measured median), not a finding — it's the signal the recalibration worked,
+same as it was after item 1's throwaway pass. `mech-lock-cash` stays at 0%
+because its target comes from the 2-ply median, not greedy, per its
+existing documented exception.
+
+`reachPct` is the first real finding of this item, and it already shows the
+texture the room design predicts: `cribbage-unbound` (long lines, high
+skill gap ×3.58) sits lowest at 36% — building a long line keeps pulling the
+best move back toward where the line already is, away from the edge.
+`cribbage-blank` sits highest at 86% and `hex-sprawl-blank` at 81% — both
+start with no anchor, so the very first placements *are* near an edge by
+definition and greedy has nowhere richer to go yet. `hex-sprawl` itself (the
+ruleset item 1's motivation section singles out for its 15.5 choice spread)
+sits at 55% — the interior-farming pull is real but not overwhelming on its
+own, which is exactly the gap the room's reach-and-score dual condition is
+meant to close once it exists. None of this is a room measurement — it's a
+baseline on the *current* open boards, useful chiefly as the "before"
+number item 22's calibration pass can compare a real room's reach pressure
+against.
+
+Screenshots taken driving the Metrics page (sorted by reach pressure,
+showing the new column and the "Clear rate" column with its own bar) and the
+Setup page (showing "clear rate ×50%" in the calibration blurb) via a
+throwaway Playwright script (same pattern as `tools/smoke.mjs`'s server
+setup, run and discarded, not committed) in headless Chromium. No video —
+this item changed measurement, not movement or feel.

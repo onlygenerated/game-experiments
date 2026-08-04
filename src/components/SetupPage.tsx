@@ -280,7 +280,7 @@ export function SetupPage({
           <p className="mb-2 text-[11px] leading-snug text-neutral-400">
             This is exactly <span className="font-semibold text-emerald-300">{preset!.name}</span>,
             so its target is probe-calibrated and it has measured numbers on the Metrics page —
-            lookahead lift ×{measured.lift.toFixed(2)}, mult live {measured.multPct}%.
+            lookahead lift ×{measured.lift.toFixed(2)}, clear rate {measured.clearPct}%.
           </p>
         ) : (
           <p className="mb-2 text-[11px] leading-snug text-amber-300/90">

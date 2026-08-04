@@ -152,7 +152,7 @@ export const CONFIG: Config = {
   gridSize: 7,
   lineCap: 5,
 
-  targetScore: 870,
+  targetScore: 881,
   placementsPerRun: 15,
   discardsPerRun: 3,
 

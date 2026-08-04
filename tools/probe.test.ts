@@ -15,6 +15,19 @@
  * Coordinates travel as opaque string keys so grid and hex rulesets go through
  * one path. Measuring a hex ruleset with grid functions would silently produce
  * plausible, wrong numbers.
+ *
+ * There is no exit tile yet — that is items 4-5. Every board here is already a
+ * bounded region though (a grid's edges, a hex sprawl's `hexRadius` ring), and
+ * that boundary is exactly the shape a room border will have. **Reach
+ * pressure** treats it as a stand-in exit: on any turn where a border cell is
+ * legally reachable, does the best-scoring move actually go there, or does it
+ * chase the interior instead? That is the choose-a-rich-pocket-and-ignore-the-
+ * map pathology the room design exists to fix, measurable now without a real
+ * exit. Once item 5 lands a real exit condition this should be revisited
+ * rather than assumed still correct. **Clear rate** is named for what a room
+ * clear will mean, but until item 6 adds the reach condition it is exactly
+ * "final score reached target", nothing more — do not read a reach component
+ * into it yet.
  */
 import { writeFileSync } from 'node:fs';
 import { it } from 'vitest';
@@ -23,7 +36,7 @@ import { canCash, legalCells, scoreCross, scorePlacement } from '../src/board';
 import { cashCellAt, newGame, placeCard, type GameState } from '../src/game';
 import { legalHexCells, scoreHexPlacement } from '../src/hex/board';
 import { newHexGame, placeHexCard, type HexGameState } from '../src/hex/game';
-import { hexKey, parseHex } from '../src/hex/coords';
+import { hexDistance, hexKey, ORIGIN, parseHex } from '../src/hex/coords';
 import { hashSeed, mulberry32 } from '../src/deck';
 import { RULESETS } from '../src/rulesets';
 
@@ -72,6 +85,16 @@ function api(cfg: Config) {
       const [r, c] = key.split(',').map(Number);
       return placeCard(s as GameState, i, r, c, cfg);
     },
+    /**
+     * Steps in from the board's outer boundary — 0 on the boundary itself.
+     * There is no exit tile yet, so this boundary stands in for one; see the
+     * file header.
+     */
+    edgeDist: (key: string): number => {
+      if (hex) return cfg.hexRadius - hexDistance(parseHex(key), ORIGIN);
+      const [r, c] = key.split(',').map(Number);
+      return Math.min(r, c, cfg.gridSize - 1 - r, cfg.gridSize - 1 - c);
+    },
   };
 }
 
@@ -96,11 +119,14 @@ function moves(s: AnyRun, a: ReturnType<typeof api>): Move[] {
 
 interface RunStats {
   score: number;
-  multActive: number;
   placements: number;
   spreads: number[];
   minLegal: number;
   wonAt: number | null;
+  /** Turns where a border cell was legally available at all. */
+  reachEligible: number;
+  /** Of those, turns where the best-scoring move went elsewhere. */
+  reachAway: number;
 }
 
 /**
@@ -116,10 +142,11 @@ function play(cfg: Config, seed: string, pick: (s: AnyRun, m: Move[]) => Move): 
   const uncapped: Config = { ...cfg, targetScore: Number.POSITIVE_INFINITY };
   const a = api(uncapped);
   let s = a.start(seed);
-  let multActive = 0;
   let minLegal = Infinity;
   let wonAt: number | null = null;
   const spreads: number[] = [];
+  let reachEligible = 0;
+  let reachAway = 0;
   let turn = 0;
 
   while (s.status === 'playing') {
@@ -127,19 +154,26 @@ function play(cfg: Config, seed: string, pick: (s: AnyRun, m: Move[]) => Move): 
     if (!m.length) break;
     turn++;
     // Every board opens with a lone anchor and a handful of legal cells, so
-    // only measure crowding once there is a structure to be crowded by.
-    if (turn > 5) minLegal = Math.min(minLegal, a.cells(s).length);
+    // only measure crowding — and reach — once there is a structure to be
+    // crowded by, matching minLegal's gate below.
+    if (turn > 5) {
+      minLegal = Math.min(minLegal, a.cells(s).length);
+      if (m.some((mv) => a.edgeDist(mv.key) === 0)) {
+        reachEligible++;
+        if (a.edgeDist(m[0].key) !== 0) reachAway++;
+      }
+    }
     const median = m[Math.floor(m.length / 2)].v || 1;
     spreads.push(m[0].v / median);
 
     const chosen = pick(s, m);
-    if (a.score(s, chosen.key, chosen.i).mult > 1) multActive++;
     s = a.play(s, chosen.i, chosen.key);
     if (wonAt === null && s.score >= cfg.targetScore) wonAt = turn;
   }
   return {
     score: s.score,
-    multActive,
+    reachEligible,
+    reachAway,
     placements: s.log.length,
     spreads,
     minLegal: Number.isFinite(minLegal) ? minLegal : 0,
@@ -193,7 +227,7 @@ const SEEDS = 20;
 it('ruleset comparison', () => {
   const seeds = Array.from({ length: SEEDS }, (_, i) => `probe-${i}`);
   const rows = [
-    ['ruleset', 'target', 'greedy', 'careless', 'skill', '2ply', 'lift', 'mult%', 'spread', 'minCells', 'win%'].join('\t'),
+    ['ruleset', 'target', 'greedy', 'careless', 'skill', '2ply', 'lift', 'reach%', 'spread', 'minCells', 'clear%'].join('\t'),
   ];
   const measured: Record<string, number | string | null>[] = [];
 
@@ -208,6 +242,12 @@ it('ruleset comparison', () => {
     const lm = median(l.map((x) => x.score));
     const wins = g.filter((x) => x.wonAt !== null);
 
+    const eligible = g.reduce((a, x) => a + x.reachEligible, 0);
+    const away = g.reduce((a, x) => a + x.reachAway, 0);
+    // Null, not 0%, when a border cell was never legally reachable: on such a
+    // ruleset the question "does play chase the interior" has no answer.
+    const reachPct = eligible > 0 ? Math.round((100 * away) / eligible) : null;
+
     measured.push({
       id: rs.id,
       target: cfg.targetScore,
@@ -218,12 +258,10 @@ it('ruleset comparison', () => {
       skill: cm > 0 ? Number((gm / cm).toFixed(2)) : null,
       twoPly: lm,
       lift: Number((lm / Math.max(gm, 1)).toFixed(2)),
-      multPct: Math.round(
-        (100 * g.reduce((a, x) => a + x.multActive, 0)) / g.reduce((a, x) => a + x.placements, 0),
-      ),
+      reachPct,
       spread: Number(median(g.flatMap((x) => x.spreads)).toFixed(1)),
       minCells: median(g.map((x) => x.minLegal)),
-      winPct: Math.round((100 * wins.length) / g.length),
+      clearPct: Math.round((100 * wins.length) / g.length),
     });
 
     rows.push(
@@ -235,9 +273,7 @@ it('ruleset comparison', () => {
         cm > 0 ? (gm / cm).toFixed(2) : '--',
         lm,
         (lm / Math.max(gm, 1)).toFixed(2),
-        Math.round(
-          (100 * g.reduce((a, x) => a + x.multActive, 0)) / g.reduce((a, x) => a + x.placements, 0),
-        ) + '%',
+        reachPct === null ? '--' : reachPct + '%',
         median(g.flatMap((x) => x.spreads)).toFixed(1),
         median(g.map((x) => x.minLegal)),
         Math.round((100 * wins.length) / g.length) + '%',
@@ -281,13 +317,20 @@ export interface RulesetMetrics {
   twoPly: number;
   /** twoPly / greedy — how much planning one move ahead is worth. */
   lift: number;
-  /** Share of placements where the mult axis contributed more than x1. */
-  multPct: number;
+  /**
+   * Of the turns (after turn 5) where a boundary cell was legally reachable,
+   * the share where the best-scoring move went elsewhere instead. There is no
+   * exit tile yet, so the board's own edge stands in for one — see the file
+   * header. Null when a boundary cell was never reachable.
+   */
+  reachPct: number | null;
   /** Best move / median move on a turn. High means one move screams at you. */
   spread: number;
   /** Fewest legal cells seen after turn 5. */
   minCells: number;
-  winPct: number;
+  /** Share of runs whose final score reached the target. Not yet gated on
+   * reach — item 6 folds that in once an exit condition exists. */
+  clearPct: number;
 }
 
 export const METRICS_SEEDS = ${SEEDS};

@@ -17,47 +17,55 @@ export interface RulesetMetrics {
   twoPly: number;
   /** twoPly / greedy — how much planning one move ahead is worth. */
   lift: number;
-  /** Share of placements where the mult axis contributed more than x1. */
-  multPct: number;
+  /**
+   * Of the turns (after turn 5) where a boundary cell was legally reachable,
+   * the share where the best-scoring move went elsewhere instead. There is no
+   * exit tile yet, so the board's own edge stands in for one — see the file
+   * header. Null when a boundary cell was never reachable.
+   */
+  reachPct: number | null;
   /** Best move / median move on a turn. High means one move screams at you. */
   spread: number;
   /** Fewest legal cells seen after turn 5. */
   minCells: number;
-  winPct: number;
+  /** Share of runs whose final score reached the target. Not yet gated on
+   * reach — item 6 folds that in once an exit condition exists. */
+  clearPct: number;
 }
 
 export const METRICS_SEEDS = 20;
-export const METRICS_GENERATED = '2026-08-02';
+export const METRICS_GENERATED = '2026-08-04';
 
 export const METRICS: RulesetMetrics[] = [
-  {id: "poker-baseline", target: 300, greedy: 599, careless: 323, skill: 1.85, twoPly: 650, lift: 1.09, multPct: 29, spread: 5.3, minCells: 10, winPct: 100},
-  {id: "poker-tight", target: 540, greedy: 599, careless: 323, skill: 1.85, twoPly: 650, lift: 1.09, multPct: 29, spread: 5.3, minCells: 10, winPct: 85},
-  {id: "poker-mult-amped", target: 620, greedy: 786, careless: 367, skill: 2.14, twoPly: 869, lift: 1.11, multPct: 50, spread: 4, minCells: 10, winPct: 85},
-  {id: "poker-partials", target: 300, greedy: 656, careless: 330, skill: 1.99, twoPly: 779, lift: 1.19, multPct: 35, spread: 5.6, minCells: 10, winPct: 100},
-  {id: "poker-short-run", target: 370, greedy: 377, careless: 196, skill: 1.92, twoPly: 398, lift: 1.06, multPct: 20, spread: 5, minCells: 10, winPct: 65},
-  {id: "poker-partials-generous", target: 700, greedy: 706, careless: 337, skill: 2.09, twoPly: 930, lift: 1.32, multPct: 37, spread: 5.7, minCells: 10, winPct: 50},
-  {id: "poker-flat-ranks", target: 435, greedy: 440, careless: 240, skill: 1.83, twoPly: 465, lift: 1.06, multPct: 34, spread: 4, minCells: 10, winPct: 50},
-  {id: "poker-short-lines", target: 520, greedy: 523, careless: 293, skill: 1.78, twoPly: 618, lift: 1.18, multPct: 30, spread: 4.8, minCells: 2, winPct: 55},
-  {id: "poker-long-lines", target: 660, greedy: 667, careless: 332, skill: 2.01, twoPly: 717, lift: 1.07, multPct: 24, spread: 6.4, minCells: 12, winPct: 55},
-  {id: "poker-lean-hand", target: 545, greedy: 549, careless: 312, skill: 1.76, twoPly: 624, lift: 1.14, multPct: 27, spread: 5.4, minCells: 10, winPct: 50},
-  {id: "poker-small-board", target: 440, greedy: 445, careless: 258, skill: 1.72, twoPly: 498, lift: 1.12, multPct: 18, spread: 5, minCells: 8, winPct: 55},
-  {id: "draft-cribbage", target: 345, greedy: 345, careless: 210, skill: 1.64, twoPly: 489, lift: 1.42, multPct: 37, spread: 4, minCells: 10, winPct: 60},
-  {id: "draft-poker", target: 440, greedy: 439, careless: 330, skill: 1.33, twoPly: 540, lift: 1.23, multPct: 20, spread: 3.7, minCells: 10, winPct: 45},
-  {id: "draft-hex", target: 625, greedy: 624, careless: 226, skill: 2.76, twoPly: 773, lift: 1.24, multPct: 23, spread: 7.7, minCells: 13, winPct: 45},
-  {id: "hex-sprawl", target: 1200, greedy: 1201, careless: 224, skill: 5.36, twoPly: 1514, lift: 1.26, multPct: 29, spread: 15.5, minCells: 13, winPct: 50},
-  {id: "hex-sprawl-blank", target: 1120, greedy: 1118, careless: 210, skill: 5.32, twoPly: 1151, lift: 1.03, multPct: 26, spread: 13.3, minCells: 11, winPct: 45},
-  {id: "hex-sprawl-flat", target: 965, greedy: 966, careless: 171, skill: 5.65, twoPly: 1188, lift: 1.23, multPct: 30, spread: 16, minCells: 13, winPct: 50},
-  {id: "cribbage-blank", target: 550, greedy: 555, careless: 186, skill: 2.98, twoPly: 786, lift: 1.42, multPct: 35, spread: 5, minCells: 5, winPct: 55},
-  {id: "poker-blank", target: 570, greedy: 573, careless: 312, skill: 1.84, twoPly: 662, lift: 1.16, multPct: 17, spread: 5, minCells: 5, winPct: 50},
-  {id: "cribbage", target: 600, greedy: 621, careless: 189, skill: 3.29, twoPly: 780, lift: 1.26, multPct: 44, spread: 7, minCells: 10, winPct: 55},
-  {id: "cribbage-unbound", target: 1050, greedy: 1032, careless: 195, skill: 5.29, twoPly: 1218, lift: 1.18, multPct: 30, spread: 15, minCells: 13, winPct: 45},
-  {id: "cribbage-pure", target: 450, greedy: 504, careless: 54, skill: 9.33, twoPly: 720, lift: 1.43, multPct: 17, spread: 24, minCells: 10, winPct: 60},
-  {id: "cribbage-lean", target: 500, greedy: 522, careless: 183, skill: 2.85, twoPly: 642, lift: 1.23, multPct: 42, spread: 6, minCells: 10, winPct: 60},
-  {id: "reference-poker-squares", target: 405, greedy: 406, careless: 379, skill: 1.07, twoPly: 551, lift: 1.36, multPct: 19, spread: 0, minCells: 1, winPct: 55},
-  {id: "mech-both-axes", target: 3750, greedy: 3750, careless: 717, skill: 5.23, twoPly: 4653, lift: 1.24, multPct: 94, spread: 13, minCells: 9, winPct: 50},
-  {id: "mech-suit-axis", target: 665, greedy: 663, careless: 198, skill: 3.35, twoPly: 780, lift: 1.18, multPct: 12, spread: 6, minCells: 10, winPct: 45},
-  {id: "mech-deferred", target: 150, greedy: 147, careless: 39, skill: 3.77, twoPly: 246, lift: 1.67, multPct: 26, spread: 0, minCells: 8, winPct: 45},
-  {id: "mech-free", target: 610, greedy: 612, careless: 72, skill: 8.5, twoPly: 759, lift: 1.24, multPct: 40, spread: 11, minCells: 31, winPct: 50},
-  {id: "mech-lock-cash", target: 265, greedy: 9, careless: 12, skill: 0.75, twoPly: 264, lift: 29.33, multPct: 3, spread: 3, minCells: 0, winPct: 0},
-  {id: "cribbage-flush3", target: 660, greedy: 666, careless: 180, skill: 3.7, twoPly: 807, lift: 1.21, multPct: 45, spread: 7, minCells: 10, winPct: 55},
+  {id: "poker-baseline", target: 881, greedy: 881, careless: 600, skill: 1.47, twoPly: 910, lift: 1.03, reachPct: 71, spread: 1.7, minCells: 10, clearPct: 55},
+  {id: "poker-tight", target: 916, greedy: 881, careless: 600, skill: 1.47, twoPly: 910, lift: 1.03, reachPct: 71, spread: 1.7, minCells: 10, clearPct: 20},
+  {id: "poker-mult-amped", target: 881, greedy: 881, careless: 600, skill: 1.47, twoPly: 910, lift: 1.03, reachPct: 71, spread: 1.7, minCells: 10, clearPct: 55},
+  {id: "poker-partials", target: 915, greedy: 915, careless: 612, skill: 1.5, twoPly: 989, lift: 1.08, reachPct: 66, spread: 1.8, minCells: 10, clearPct: 50},
+  {id: "poker-short-run", target: 545, greedy: 545, careless: 366, skill: 1.49, twoPly: 557, lift: 1.02, reachPct: 81, spread: 1.7, minCells: 10, clearPct: 50},
+  {id: "poker-partials-generous", target: 946, greedy: 946, careless: 614, skill: 1.54, twoPly: 1021, lift: 1.08, reachPct: 65, spread: 1.8, minCells: 9, clearPct: 50},
+  {id: "poker-flat-ranks", target: 615, greedy: 615, careless: 440, skill: 1.4, twoPly: 650, lift: 1.06, reachPct: 75, spread: 1.7, minCells: 10, clearPct: 50},
+  {id: "poker-short-lines", target: 890, greedy: 890, careless: 577, skill: 1.54, twoPly: 911, lift: 1.02, reachPct: 46, spread: 1.6, minCells: 2, clearPct: 50},
+  {id: "poker-long-lines", target: 920, greedy: 920, careless: 611, skill: 1.51, twoPly: 945, lift: 1.03, reachPct: 80, spread: 1.9, minCells: 12, clearPct: 50},
+  {id: "poker-lean-hand", target: 830, greedy: 830, careless: 619, skill: 1.34, twoPly: 855, lift: 1.03, reachPct: 72, spread: 1.7, minCells: 10, clearPct: 50},
+  {id: "poker-small-board", target: 676, greedy: 676, careless: 463, skill: 1.46, twoPly: 709, lift: 1.05, reachPct: 39, spread: 1.7, minCells: 8, clearPct: 50},
+  {id: "draft-cribbage", target: 534, greedy: 534, careless: 372, skill: 1.44, twoPly: 570, lift: 1.07, reachPct: 62, spread: 2.7, minCells: 9, clearPct: 50},
+  {id: "draft-poker", target: 714, greedy: 714, careless: 593, skill: 1.2, twoPly: 744, lift: 1.04, reachPct: 66, spread: 1.5, minCells: 9, clearPct: 50},
+  {id: "draft-hex", target: 858, greedy: 858, careless: 478, skill: 1.79, twoPly: 912, lift: 1.06, reachPct: 59, spread: 2.6, minCells: 13, clearPct: 50},
+  {id: "hex-sprawl", target: 1342, greedy: 1342, careless: 480, skill: 2.8, twoPly: 1505, lift: 1.12, reachPct: 55, spread: 4.3, minCells: 13, clearPct: 50},
+  {id: "hex-sprawl-blank", target: 1146, greedy: 1146, careless: 468, skill: 2.45, twoPly: 1256, lift: 1.1, reachPct: 81, spread: 3, minCells: 6, clearPct: 50},
+  {id: "hex-sprawl-flat", target: 1089, greedy: 1089, careless: 390, skill: 2.79, twoPly: 1164, lift: 1.07, reachPct: 62, spread: 4.4, minCells: 13, clearPct: 50},
+  {id: "cribbage-blank", target: 687, greedy: 687, careless: 309, skill: 2.22, twoPly: 723, lift: 1.05, reachPct: 86, spread: 3.5, minCells: 5, clearPct: 50},
+  {id: "poker-blank", target: 841, greedy: 841, careless: 556, skill: 1.51, twoPly: 862, lift: 1.02, reachPct: 75, spread: 1.7, minCells: 5, clearPct: 50},
+  {id: "cribbage", target: 747, greedy: 747, careless: 315, skill: 2.37, twoPly: 816, lift: 1.09, reachPct: 58, spread: 4.3, minCells: 9, clearPct: 50},
+  {id: "cribbage-unbound", target: 1170, greedy: 1170, careless: 327, skill: 3.58, twoPly: 1251, lift: 1.07, reachPct: 36, spread: 6, minCells: 13, clearPct: 55},
+  {id: "cribbage-pure", target: 528, greedy: 528, careless: 120, skill: 4.4, twoPly: 612, lift: 1.16, reachPct: 49, spread: 36, minCells: 10, clearPct: 55},
+  {id: "cribbage-lean", target: 690, greedy: 690, careless: 312, skill: 2.21, twoPly: 726, lift: 1.05, reachPct: 61, spread: 4, minCells: 10, clearPct: 50},
+  {id: "reference-poker-squares", target: 647, greedy: 647, careless: 571, skill: 1.13, twoPly: 702, lift: 1.09, reachPct: 45, spread: 0, minCells: 1, clearPct: 50},
+  {id: "mech-both-axes", target: 747, greedy: 747, careless: 315, skill: 2.37, twoPly: 816, lift: 1.09, reachPct: 58, spread: 4.3, minCells: 9, clearPct: 50},
+  {id: "mech-suit-axis", target: 747, greedy: 747, careless: 315, skill: 2.37, twoPly: 816, lift: 1.09, reachPct: 58, spread: 4.3, minCells: 9, clearPct: 50},
+  {id: "mech-deferred", target: 201, greedy: 201, careless: 69, skill: 2.91, twoPly: 321, lift: 1.6, reachPct: 50, spread: 0, minCells: 8, clearPct: 50},
+  {id: "mech-free", target: 747, greedy: 747, careless: 141, skill: 5.3, twoPly: 816, lift: 1.09, reachPct: 58, spread: 8, minCells: 31, clearPct: 50},
+  {id: "mech-lock-cash", target: 192, greedy: 18, careless: 30, skill: 0.6, twoPly: 192, lift: 10.67, reachPct: null, spread: 9, minCells: 0, clearPct: 0},
+  {id: "combo-cribbage-poker", target: 1571, greedy: 1571, careless: 907, skill: 1.73, twoPly: 1619, lift: 1.03, reachPct: 65, spread: 2.2, minCells: 9, clearPct: 50},
+  {id: "cribbage-flush3", target: 759, greedy: 759, careless: 330, skill: 2.3, twoPly: 837, lift: 1.1, reachPct: 58, spread: 4.3, minCells: 9, clearPct: 50},
 ];

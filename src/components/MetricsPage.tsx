@@ -4,7 +4,7 @@ import { METRICS, METRICS_GENERATED, METRICS_SEEDS, type RulesetMetrics } from '
 
 const REFERENCE = 'reference-poker-squares';
 
-type Key = 'skill' | 'lift' | 'multPct' | 'spread' | 'minCells' | 'greedy';
+type Key = 'skill' | 'lift' | 'reachPct' | 'spread' | 'minCells' | 'clearPct' | 'greedy';
 
 interface Column {
   key: Key;
@@ -20,6 +20,8 @@ interface Column {
    * 1.43 spread into a row of nearly identical full bars.
    */
   base: number;
+  /** Shown when this column is null for a row. Only skill and reach can be. */
+  nullTitle?: string;
 }
 
 const COLUMNS: Column[] = [
@@ -38,14 +40,16 @@ const COLUMNS: Column[] = [
     meaning: 'Greedy score ÷ random-legal-play score. How much playing well is worth. Only comparable between rulesets whose legal move sets are a similar size and shape — read it next to min cells.',
     format: (v) => `×${v.toFixed(2)}`,
     bar: true,
+    nullTitle: 'Random play scored zero, so the ratio measures nothing.',
   },
   {
-    key: 'multPct',
+    key: 'reachPct',
     base: 0,
-    label: 'Mult live',
-    meaning: 'Share of placements where the mult axis contributed more than ×1. The PRD asked whether splitting chips and mult across the axes creates tension; a low number means the mult axis is decoration.',
+    label: 'Reach pressure',
+    meaning: 'Of the turns where a board-edge cell was legally open, the share where the best-scoring move went elsewhere instead. There is no exit tile yet, so the edge stands in for one — a high number is the farm-one-pocket, ignore-the-map pathology the room design exists to fix.',
     format: (v) => `${v}%`,
     bar: true,
+    nullTitle: 'A board-edge cell was never legally reachable, so the question has no answer here.',
   },
   {
     key: 'spread',
@@ -62,6 +66,14 @@ const COLUMNS: Column[] = [
     meaning: 'Fewest legal cells available after turn 5. Very low means the board chokes; very high means placement is barely constrained at all.',
     format: (v) => String(v),
     bar: false,
+  },
+  {
+    key: 'clearPct',
+    base: 0,
+    label: 'Clear rate',
+    meaning: 'Share of runs whose final score reached the target, best-move-now play. Named for what a room clear will mean, but until reach and threshold are both required this is exactly a win rate.',
+    format: (v) => `${v}%`,
+    bar: true,
   },
   {
     key: 'greedy',
@@ -250,7 +262,7 @@ export function MetricsPage({ onClose }: { onClose: () => void }) {
                     return (
                       <td key={c.key} className="px-2 py-1.5 text-right align-middle">
                         {v === null ? (
-                          <span className="text-neutral-600" title="Random play scored zero, so the ratio measures nothing.">
+                          <span className="text-neutral-600" title={c.nullTitle}>
                             —
                           </span>
                         ) : (
