@@ -171,7 +171,7 @@ await p.waitForTimeout(600);
 ok('setup starts a run', (await p.locator('[data-cell],[data-hex]').count()) > 0);
 ok('combo preset scores under both counters', (await text()).toLowerCase().includes('cribbage + poker'));
 
-// --- rooms preview (item 4: shape substrate, no run yet) --------------------
+// --- rooms preview (item 4: shape substrate; item 5: exits and reach) ------
 await p.locator('button:has-text("Rooms"):visible').first().click();
 await p.waitForTimeout(400);
 ok('rooms preview opens', (await text()).includes('Rooms (dev preview)'));
@@ -182,6 +182,34 @@ ok(
   (await p.locator('[data-room="Hourglass"] [data-room-cell="0,0"]').getAttribute('data-room-border')) ===
     'true',
 );
+ok(
+  'round room exit is marked',
+  (await p.locator('[data-room="Round Room"] [data-room-cell="2,0"]').getAttribute('data-room-exit')) ===
+    'true',
+);
+
+// Clicking cells builds a stand-in structure; reach should track it live.
+const roundRoom = p.locator('[data-room-panel="Round Room"]');
+ok('round room starts not reached', (await roundRoom.locator('[data-room-reach]').getAttribute('data-room-reach')) === 'false');
+await roundRoom.locator('[data-room-cell="0,2"]').click();
+await p.waitForTimeout(150);
+ok(
+  'touching the border away from the exit does not reach',
+  (await roundRoom.locator('[data-room-reach]').getAttribute('data-room-reach')) === 'false',
+);
+await roundRoom.locator('[data-room-cell="2,0"]').click();
+await p.waitForTimeout(150);
+ok(
+  'clicking the exit cell reaches it',
+  (await roundRoom.locator('[data-room-reach]').getAttribute('data-room-reach')) === 'true',
+);
+await roundRoom.locator('[data-room-cell="2,0"]').click();
+await p.waitForTimeout(150);
+ok(
+  'unclicking the exit cell loses reach again',
+  (await roundRoom.locator('[data-room-reach]').getAttribute('data-room-reach')) === 'false',
+);
+
 await p.locator('button:has-text("Back to the board")').click();
 await p.waitForTimeout(300);
 

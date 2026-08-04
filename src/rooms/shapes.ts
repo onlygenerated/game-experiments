@@ -4,14 +4,22 @@
  * except the round room, which freezes `hexesWithinRadius(2)` into a fixed
  * list rather than typing 19 pairs by hand; either way a `Room` only ever
  * sees a concrete cell set, never a radius.
+ *
+ * Each room also hand-picks its exits (item 5) — opposite doorways rather
+ * than one, so reaching "an" exit is a real choice of direction and not a
+ * single forced target.
  */
 import { hexesWithinRadius, type Hex } from '../hex/coords';
 import { makeRoom, type Room } from './room';
 
 /** The disc the old "everything within radius N" sprawl used — the baseline
  * an irregular shape (below) is judged against: one outer ring, no interior
- * cell ever touches the outside. */
-export const ROUND_ROOM: Room = makeRoom('Round Room', hexesWithinRadius(2));
+ * cell ever touches the outside. Exits sit at due east and due west on that
+ * ring — opposite doorways across the disc. */
+export const ROUND_ROOM: Room = makeRoom('Round Room', hexesWithinRadius(2), [
+  { q: 2, r: 0 },
+  { q: -2, r: 0 },
+]);
 
 /**
  * Two seven-hex chambers (a centre plus its six neighbours) joined by a
@@ -32,6 +40,12 @@ const HOURGLASS_COORDS: Hex[] = [
   { q: -1, r: 4 }, { q: 0, r: 4 },
 ];
 
-export const HOURGLASS_ROOM: Room = makeRoom('Hourglass', HOURGLASS_COORDS);
+/** The two tips, straight through the neck from each other — the far end of
+ * each chamber, opposite the doorway a structure would have to cross the
+ * neck to reach from the other side. */
+export const HOURGLASS_ROOM: Room = makeRoom('Hourglass', HOURGLASS_COORDS, [
+  { q: 0, r: -4 },
+  { q: 0, r: 4 },
+]);
 
 export const ROOM_SHAPES: readonly Room[] = [ROUND_ROOM, HOURGLASS_ROOM];

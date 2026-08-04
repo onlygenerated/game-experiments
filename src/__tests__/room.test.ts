@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { hexesWithinRadius, hexKey, hexNeighbors, ORIGIN } from '../hex/coords';
-import { isInRoom, isRoomBorder, makeRoom, roomBorder, roomCells, roomInterior } from '../rooms/room';
+import {
+  isExit,
+  isInRoom,
+  isRoomBorder,
+  makeRoom,
+  roomBorder,
+  roomCells,
+  roomExits,
+  roomInterior,
+  structureReachesExit,
+} from '../rooms/room';
 import { HOURGLASS_ROOM, ROOM_SHAPES, ROUND_ROOM } from '../rooms/shapes';
 
 describe('makeRoom / roomCells / isInRoom', () => {
@@ -112,5 +122,138 @@ describe('HOURGLASS_ROOM', () => {
     const border = new Set(roomBorder(HOURGLASS_ROOM).map(hexKey));
     expect(border.has('0,0')).toBe(true); // neck midpoint: border
     expect(border.has('0,-3')).toBe(false); // top chamber centre: interior
+  });
+});
+
+describe('makeRoom exit validation', () => {
+  it('accepts an exit that is a border cell', () => {
+    const room = makeRoom('Test', hexesWithinRadius(1), [{ q: 1, r: 0 }]);
+    expect(isExit(room, { q: 1, r: 0 })).toBe(true);
+  });
+
+  it('rejects an exit outside the room entirely', () => {
+    expect(() => makeRoom('Test', [ORIGIN], [{ q: 9, r: 9 }])).toThrow(/not one of its cells/);
+  });
+
+  it('rejects an exit that is an interior cell', () => {
+    const disc = hexesWithinRadius(2);
+    expect(() => makeRoom('Test', disc, [ORIGIN])).toThrow(/not a border cell/);
+  });
+});
+
+describe('isExit / roomExits', () => {
+  it('is false for a plain border cell that was never marked an exit', () => {
+    const room = makeRoom('Test', hexesWithinRadius(1), [{ q: 1, r: 0 }]);
+    expect(isExit(room, { q: -1, r: 0 })).toBe(false);
+    expect(isExit(room, { q: 1, r: 0 })).toBe(true);
+  });
+
+  it('is false for a coordinate outside the room', () => {
+    const room = makeRoom('Test', hexesWithinRadius(1), [{ q: 1, r: 0 }]);
+    expect(isExit(room, { q: 9, r: 9 })).toBe(false);
+  });
+
+  it('roomExits round-trips exactly the coordinates given to makeRoom', () => {
+    const exits = [{ q: 1, r: 0 }, { q: -1, r: 0 }];
+    const room = makeRoom('Test', hexesWithinRadius(1), exits);
+    expect(new Set(roomExits(room).map(hexKey))).toEqual(new Set(exits.map(hexKey)));
+  });
+
+  it('a room with no exits has an empty exit list', () => {
+    const room = makeRoom('Test', hexesWithinRadius(1));
+    expect(roomExits(room)).toHaveLength(0);
+  });
+});
+
+describe('structureReachesExit', () => {
+  const room = makeRoom('Test', hexesWithinRadius(1), [{ q: 1, r: 0 }]);
+
+  it('is false for an empty structure', () => {
+    expect(structureReachesExit(room, new Set())).toBe(false);
+  });
+
+  it('is false when the structure touches the border but not at an exit', () => {
+    // { q: -1, r: 0 } is a border cell of this room, same as the exit, but
+    // it is not the one marked as an exit.
+    const structure = new Set([hexKey(ORIGIN), hexKey({ q: -1, r: 0 })]);
+    expect(structureReachesExit(room, structure)).toBe(false);
+  });
+
+  it('is true once the structure occupies the exit cell', () => {
+    const structure = new Set([hexKey(ORIGIN), hexKey({ q: 1, r: 0 })]);
+    expect(structureReachesExit(room, structure)).toBe(true);
+  });
+
+  it('is true for a lone placement directly on an exit, with nothing connected to it', () => {
+    const structure = new Set([hexKey({ q: 1, r: 0 })]);
+    expect(structureReachesExit(room, structure)).toBe(true);
+  });
+
+  it('does not credit an exit through a disconnected piece of the structure', () => {
+    // Two separate one-cell blobs on a bigger room: one sits on the exit, the
+    // other doesn't touch it. The disconnected non-exit blob must not affect
+    // the answer either way, but the check must still be per-component, not
+    // "is the exit anywhere in the structure" by coincidence of a shared set.
+    const bigRoom = makeRoom('Big', hexesWithinRadius(3), [{ q: 3, r: 0 }]);
+    const farFromExit = { q: -3, r: 0 };
+    const onExit = { q: 3, r: 0 };
+    const structure = new Set([hexKey(farFromExit), hexKey(onExit)]);
+    expect(structureReachesExit(bigRoom, structure)).toBe(true);
+
+    const onlyFarBlob = new Set([hexKey(farFromExit)]);
+    expect(structureReachesExit(bigRoom, onlyFarBlob)).toBe(false);
+  });
+
+  it('credits reach through a connected chain leading up to the exit', () => {
+    const bigRoom = makeRoom('Big', hexesWithinRadius(3), [{ q: 3, r: 0 }]);
+    // A contiguous chain of hexes along the E axis from the origin to the exit.
+    const chain = [ORIGIN, { q: 1, r: 0 }, { q: 2, r: 0 }, { q: 3, r: 0 }];
+    expect(structureReachesExit(bigRoom, new Set(chain.map(hexKey)))).toBe(true);
+    // Drop the last link before the exit: no longer connected to it.
+    expect(structureReachesExit(bigRoom, new Set(chain.slice(0, 3).map(hexKey)))).toBe(false);
+  });
+
+  it('is false for a room with no exits regardless of what is occupied', () => {
+    const noExitRoom = makeRoom('NoExits', hexesWithinRadius(1));
+    const structure = new Set(hexesWithinRadius(1).map(hexKey));
+    expect(structureReachesExit(noExitRoom, structure)).toBe(false);
+  });
+});
+
+describe('ROUND_ROOM and HOURGLASS_ROOM exits', () => {
+  it('ROUND_ROOM has two opposite exits on its outer ring', () => {
+    expect(roomExits(ROUND_ROOM).map(hexKey).sort()).toEqual(['-2,0', '2,0']);
+    for (const h of roomExits(ROUND_ROOM)) expect(isRoomBorder(ROUND_ROOM, h)).toBe(true);
+  });
+
+  it('HOURGLASS_ROOM has exits at the two chamber tips, not the neck', () => {
+    expect(roomExits(HOURGLASS_ROOM).map(hexKey).sort()).toEqual(['0,-4', '0,4']);
+  });
+
+  it('a chain across the hourglass neck reaches the far exit', () => {
+    const chain = [
+      { q: 0, r: -4 },
+      { q: 0, r: -3 },
+      { q: 0, r: -2 },
+      { q: 0, r: -1 },
+      { q: 0, r: 0 },
+      { q: 0, r: 1 },
+      { q: 0, r: 2 },
+      { q: 0, r: 3 },
+      { q: 0, r: 4 },
+    ];
+    expect(structureReachesExit(HOURGLASS_ROOM, new Set(chain.map(hexKey)))).toBe(true);
+  });
+
+  it('a structure confined to one chamber does not reach the far exit', () => {
+    const topChamberOnly = new Set(
+      [{ q: 0, r: -4 }, { q: 1, r: -4 }, { q: -1, r: -3 }, { q: 0, r: -3 }].map(hexKey),
+    );
+    // Reaches its own chamber's exit (0,-4)...
+    expect(structureReachesExit(HOURGLASS_ROOM, topChamberOnly)).toBe(true);
+    // ...but not the far one, since only one exit is in this component either way —
+    // check specifically that removing the near exit from the structure loses reach.
+    const withoutNearExit = new Set([hexKey({ q: -1, r: -3 }), hexKey({ q: 0, r: -3 })]);
+    expect(structureReachesExit(HOURGLASS_ROOM, withoutNearExit)).toBe(false);
   });
 });

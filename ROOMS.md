@@ -144,7 +144,7 @@ stand on. Sized for 30 minutes each.
 - [x] **4. Room as a bounded region.** A `Room` is a set of legal hex
       coordinates plus a border, replacing "everything within radius N". Two
       hand-authored shapes to start. Rendering follows the shape.
-- [ ] **5. Exit tiles and the reach condition.** Mark border hexes as exits;
+- [x] **5. Exit tiles and the reach condition.** Mark border hexes as exits;
       compute whether the placed structure connects to one. Show reached/not
       reached. This is pure geometry — it wants a proper test, including a
       structure that touches the border but not at an exit.
@@ -489,6 +489,58 @@ is not wired up yet, so it reads as scaffolding rather than the mode. Expect
 this page to be replaced outright once item 7 lands a real room-to-room run
 — it is not meant to be the permanent home for room shapes.
 
+**Item 5.** The main judgment call: what does "touch" mean? An exit is an
+ordinary room cell (still placeable — there is no tile layer restricting
+placement yet, that's item 8), so "touch" is occupancy: placing a card on
+an exit hex is what reaching it means, the same way any other hex is
+claimed by being played on. `makeRoom(name, coords, exits = [])` gained a
+third, optional parameter and validates at construction time (throws) that
+every exit is both one of the room's own cells and a border cell — an
+"exit" that isn't reachable from outside the room isn't a coherent doorway,
+and failing loud at room-definition time is cheaper than a silent bad
+config later. `isExit`/`roomExits` mirror the existing `isRoomBorder`/
+`roomBorder` shape.
+
+`structureReachesExit(room, structure: ReadonlySet<string>)` takes the
+structure as a bare set of hex keys — the same shape `HexBoard`'s keys
+already use — rather than a `HexBoard`/`Card` map, keeping it decoupled
+from the engine exactly like `Room` itself (no room has an engine wired to
+it until item 7). It does real connectivity work rather than a bare
+`exits.has(k)` membership test: it computes connected components of the
+structure under hex adjacency and asks whether any component contains an
+exit. Documented why this matters even though every test today could be
+satisfied by plain membership — a structure need not be one contiguous
+blob (free-placement rulesets already exist, and item 17 talks about a
+second origin), and a stray disconnected placement elsewhere on the board
+must not falsely credit reach through an unrelated piece. Tested this
+directly: two single-cell blobs, one on the exit and one far from it,
+still reach (the exit's own component is enough); the same far blob with
+the exit removed from the structure does not. A full BFS is one component
+class of bug cheaper to get wrong than it looks, so it's covered by its
+own describe block rather than folded into the exit-membership tests.
+
+Both hand-authored rooms got two opposite exits rather than one, so
+"reach an exit" is a real directional choice: `ROUND_ROOM` at due east/west
+on its ring (`{q:2,r:0}`/`{q:-2,r:0}`), `HOURGLASS_ROOM` at the two chamber
+tips (`{q:0,r:-4}`/`{q:0,r:4}`) rather than anywhere in the neck — the neck
+already carries enough narrative weight as the pinch point without also
+being a doorway.
+
+Extended `RoomBoardView` with two new optional props, `structure` and
+`onCellClick`, rather than a new component — the shape-only callers (none
+yet outside the dev preview, but item 4's contract) keep working unchanged
+since both are optional. Exit cells render a third tint (green, labelled
+"EXIT") layered over the border/interior distinction; occupied cells get a
+yellow inset ring plus a dot glyph, chosen over changing the fill colour so
+occupied-and-exit and occupied-and-border remain visually distinguishable
+at once. `RoomsPreviewPage` added a click-to-toggle stand-in structure per
+room (there is still no card or engine wiring, so a plain hex click is the
+only available substitute) and a live "Reached"/"Not reached" label driven
+straight off `structureReachesExit`, satisfying "show reached/not reached"
+without waiting on item 7's real run. Reworded the preview's subtitle now
+that exits exist — "no threshold or run integration yet" is what's still
+missing, not "no exits."
+
 ## Results log
 
 **Item 1.** `npm test` 203/203 (was 208 — 5 tests removed, all for formulas
@@ -667,3 +719,31 @@ small chambers (one interior cell each) joined by a pink neck with no blue
 cells in it at all — border cells running straight through the shape's
 middle, the thing a radius-based room could never draw. No video — this
 item is static geometry, not movement or feel.
+
+**Item 5.** `npm test` 246/246 (was 228 — 18 new in `room.test.ts`: exit
+validation at `makeRoom`, `isExit`/`roomExits`, and `structureReachesExit`
+including the connected-vs-disconnected-component cases). `npx tsc -b
+--noEmit` clean. `npm run smoke` 30/30 — added 6 checks: the round room's
+east exit reports `data-room-exit="true"`, the panel starts "Not reached",
+clicking a non-exit border cell leaves it "Not reached", clicking the exit
+cell flips it to "Reached", and unclicking it flips back.
+
+Exit placement (both rooms, opposite doorways, verified in tests):
+
+| room | exits |
+|---|---|
+| Round Room | `2,0` (east), `-2,0` (west) |
+| Hourglass | `0,-4` (top tip), `0,4` (bottom tip) |
+
+Drove `RoomsPreviewPage` in headless Chromium via `tools/browser.mjs`
+(throwaway script, same server-then-screenshot pattern as `smoke.mjs`, run
+and discarded, not committed), clicking cells to build stand-in structures:
+a structure occupying the origin plus a non-exit border cell on the round
+room stayed "Not reached"; adding the east exit cell flipped it to
+"Reached", rendered with a green "EXIT" tile and a yellow occupied ring.
+On the hourglass, a full connected chain of 9 cells from the top tip
+through the neck to the bottom tip reached both exits, showing "Reached"
+with every link in the chain visibly marked occupied — the clearest
+demonstration that this is genuine path connectivity and not a per-cell
+membership check. No video — this item is still geometry and a state
+flip, not movement or feel.
