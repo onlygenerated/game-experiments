@@ -36,7 +36,7 @@ import { canCash, legalCells, scoreCross, scorePlacement } from '../src/board';
 import { cashCellAt, newGame, placeCard, type GameState } from '../src/game';
 import { legalHexCells, scoreHexPlacement } from '../src/hex/board';
 import { newHexGame, placeHexCard, type HexGameState } from '../src/hex/game';
-import { hexDistance, hexKey, ORIGIN, parseHex } from '../src/hex/coords';
+import { hexDistance, hexKey, ORIGIN, parseHex, type Hex } from '../src/hex/coords';
 import { hashSeed, mulberry32 } from '../src/deck';
 import { RULESETS } from '../src/rulesets';
 import {
@@ -46,7 +46,7 @@ import {
   placeInRoom,
   type ExpeditionState,
 } from '../src/rooms/expedition';
-import { roomEndState, type Room } from '../src/rooms/room';
+import { roomEndState, roomExits, type Room } from '../src/rooms/room';
 import { scoreRoomPlacement } from '../src/rooms/scoring';
 import { ROOM_SHAPES } from '../src/rooms/shapes';
 
@@ -349,6 +349,63 @@ function roomLookahead(room: Room, cfg: Config) {
   };
 }
 
+/**
+ * Item 13c: every agent above (`greedy`, `carelessAgent`, `lookahead`/
+ * `roomLookahead`) picks by score alone, so a room's `clear%` in 13b's table
+ * measures whichever exit a score-blind walk happens to stumble into, not
+ * whether the reach condition changes anything. `goalSeekingAgent` is the
+ * simplest agent that can tell the difference: it values a move's own score
+ * *and* how much closer that move brings the structure to the nearest exit,
+ * `v + w * reduction`, per the item's own formula.
+ *
+ * "Distance from the structure to the nearest exit" is `nearestExitDist`
+ * below: the minimum hex distance from any occupied cell to any exit,
+ * straight-line rather than a real path — the item calls for "the simplest
+ * form", and a room this small (17-19 cells) rarely has a blocked route long
+ * enough for the difference from a true shortest-path search to matter.
+ * `reduction` is that distance *before* this placement minus the distance
+ * *after* it (i.e. with the candidate cell folded into the structure) — since
+ * a structure only ever grows and the distance is a min over an expanding
+ * set, `after <= before` always, so `reduction` is never negative and a move
+ * that doesn't get any closer simply scores `v + 0`.
+ *
+ * One edge case worth being explicit about: an empty structure (before the
+ * first placement of a room) has no "distance to reduce" yet — there's
+ * nothing on the board to measure from. Treated as `reduction = 0` for every
+ * candidate on that first turn rather than, say, `Infinity`, which would make
+ * the agent chase the exit blindly on turn one regardless of `w` and ignore
+ * score entirely — the opposite of what a *weighted* trade-off is supposed to
+ * express.
+ */
+function nearestExitDist(cells: Iterable<string>, exits: readonly Hex[]): number {
+  let best = Infinity;
+  for (const key of cells) {
+    const h = parseHex(key);
+    for (const e of exits) best = Math.min(best, hexDistance(h, e));
+  }
+  return best;
+}
+
+function goalSeekingAgent(room: Room, w: number) {
+  const exits = roomExits(room);
+  return (s: ExpeditionState, m: Move[]): Move => {
+    const structure = currentStructure(s);
+    const before = structure.size === 0 ? null : nearestExitDist(structure, exits);
+    let best = m[0];
+    let bestV = -Infinity;
+    for (const mv of m) {
+      const after = nearestExitDist([...structure, mv.key], exits);
+      const reduction = before === null ? 0 : before - after;
+      const v = mv.v + w * reduction;
+      if (v > bestV) {
+        bestV = v;
+        best = mv;
+      }
+    }
+    return best;
+  };
+}
+
 interface RoomRunStats {
   score: number;
   spreads: number[];
@@ -420,18 +477,81 @@ function playRoom(
  * numbers into that shape is item 23's job ("rebuild the Metrics page
  * around clear rate, reach pressure and spread"), not this one's.
  */
+/**
+ * Item 13c: sweep `w` — the weight on getting closer to an exit, relative to
+ * a move's own score — over a few values per room, so the choice used by the
+ * comparison table below is measured rather than guessed. `w=0` is greedy
+ * itself (the reduction term drops out entirely), included as the sweep's
+ * own baseline row rather than trusted to match the `greedy` column in
+ * 'room comparison' by construction alone.
+ */
+const W_SWEEP = [0, 1, 3, 10, 30];
+
+it('goal-seeking weight sweep', () => {
+  const seeds = Array.from({ length: SEEDS }, (_, i) => `probe-goal-${i}`);
+  const rows = [['room', 'w', 'score', 'reached%', 'clear%'].join('\t')];
+
+  for (const room of ROOM_SHAPES) {
+    for (const w of W_SWEEP) {
+      const runs = seeds.map((s) => playRoom(room, CONFIG, s, goalSeekingAgent(room, w)));
+      const sm = median(runs.map((x) => x.score));
+      const reachedPct = Math.round((100 * runs.filter((x) => x.reached).length) / runs.length);
+      const clearPct = Math.round((100 * runs.filter((x) => x.cleared).length) / runs.length);
+      rows.push([room.name.padEnd(16), w, sm, reachedPct + '%', clearPct + '%'].join('\t'));
+    }
+  }
+  console.log('\n' + rows.join('\n'));
+});
+
+/**
+ * The weight the sweep above picked. Every value in `W_SWEEP` produced the
+ * same 100% clear% on both hand-authored rooms, with median score barely
+ * moving (Round Room: 1014-1024 across all five weights; Hourglass: 953,
+ * unchanged to the point of not being affected by `w` at all) — the ceiling
+ * effect the decisions log explains: at threshold 50, on a 17-19 cell room,
+ * with a 12-placement budget, a purely score-driven walk already occupies an
+ * exit almost by construction, so there is no headroom left for "wants to
+ * leave" to improve on. With no value distinguishable on the metric that
+ * matters, `w=10` is picked on a secondary ground: it's large enough to
+ * matter once item 22 sets a real (non-trivial) threshold — the gap between
+ * `reduction`'s typical range (0-4, a room this size) and a placement's own
+ * score (hundreds) means `w=1` would be swamped by score noise — while still
+ * not being so large (`w=30`) that it would start overriding sensible score
+ * choices once ties actually exist to break. This is a bet about item 22's
+ * rooms, not a measurement of these ones; revisit once thresholds are real.
+ */
+const CHOSEN_W = 10;
+
 it('room comparison', () => {
   const seeds = Array.from({ length: SEEDS }, (_, i) => `probe-room-${i}`);
   const rows = [
-    ['room', 'threshold', 'greedy', 'careless', 'skill', '2ply', 'lift', 'reached%', 'spread', 'minCells', 'clear%'].join(
-      '\t',
-    ),
+    [
+      'room',
+      'threshold',
+      'greedy',
+      'careless',
+      'skill',
+      '2ply',
+      'lift',
+      'reached%',
+      'spread',
+      'minCells',
+      'clear%',
+      'goalClear%',
+      'gap',
+    ].join('\t'),
   ];
 
   for (const room of ROOM_SHAPES) {
     const g = seeds.map((s) => playRoom(room, CONFIG, s, greedy));
     const c = seeds.map((s) => playRoom(room, CONFIG, s, carelessAgent(s)));
     const l = seeds.map((s) => playRoom(room, CONFIG, s, roomLookahead(room, CONFIG)));
+    // Item 13c: same seeds, same room, the one difference is that this agent
+    // also values getting closer to an exit (CHOSEN_W, picked from the sweep
+    // above). The gap against `clear%` (greedy, score-only) is the item's
+    // own finding — how much the reach condition changes outcomes when
+    // something actually tries to use it, not just stumbles into it.
+    const gs = seeds.map((s) => playRoom(room, CONFIG, s, goalSeekingAgent(room, CHOSEN_W)));
 
     const gm = median(g.map((x) => x.score));
     const cm = median(c.map((x) => x.score));
@@ -439,6 +559,7 @@ it('room comparison', () => {
 
     const reachedPct = Math.round((100 * g.filter((x) => x.reached).length) / g.length);
     const clearPct = Math.round((100 * g.filter((x) => x.cleared).length) / g.length);
+    const goalClearPct = Math.round((100 * gs.filter((x) => x.cleared).length) / gs.length);
 
     rows.push(
       [
@@ -453,6 +574,8 @@ it('room comparison', () => {
         median(g.flatMap((x) => x.spreads)).toFixed(1),
         median(g.map((x) => x.minLegal)),
         clearPct + '%',
+        goalClearPct + '%',
+        goalClearPct - clearPct,
       ].join('\t'),
     );
   }

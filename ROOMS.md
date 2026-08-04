@@ -206,7 +206,7 @@ a shallow one — it still never walks to the door.
       not change them. The existing edge-based `reach%` keeps its name and
       meaning for those rows; the room rows get a separate honest column rather
       than quietly reusing it for a different question.
-- [ ] **13c. An agent that wants to leave.** Every agent today picks by score
+- [x] **13c. An agent that wants to leave.** Every agent today picks by score
       alone (`greedy` takes `m[0]`, `lookahead` maximises `v + follow`), so a
       room is cleared only by accident and `clear%` measures the bot's blindness
       rather than the design. Add a goal-seeking agent that values score *and*
@@ -1356,6 +1356,67 @@ between greedy's and a goal-seeking agent's clear rate is 13c's finding, not
 this item's, and a 100%-vs-100% number here says nothing about whether the
 reach condition bites. Recorded as a number, not a verdict.
 
+**Item 13c.** All new code stayed inside `tools/probe.test.ts`, same as
+13b — `goalSeekingAgent(room, w)` is agent logic for the probe, not a new
+scorer/tile/item effect, so per 13b's own precedent (and the standing rule
+being about game logic, not measurement tooling) there is no new
+`src/__tests__` coverage; `nearestExitDist`'s only real dependency,
+`hexDistance`, already has its own thorough test file.
+
+The formula is exactly the item's own text, `v + w × reduction`, with
+`reduction` defined as the drop in "distance from the structure to the
+nearest exit" this placement would cause: `nearestExitDist` is the minimum
+hex distance from any occupied cell to any exit, straight-line rather than
+a real shortest path (the item calls for "the simplest form", and these
+rooms are small enough — 17-19 cells — that a blocked route long enough to
+make straight-line distance meaningfully wrong is unlikely). Reduction is
+computed as before-distance minus after-distance, where "after" folds the
+candidate cell into the structure; since a structure only ever grows and
+the distance is a min over a growing set, `after <= before` always holds,
+so `reduction` is never negative — a move that gets no closer just falls
+back to plain greedy for that candidate. The one edge case needing an
+explicit choice: an empty structure, before a room's first placement, has
+no distance to reduce *from*. Defined `reduction = 0` for every candidate
+on that turn rather than treating "no prior distance" as `Infinity` — the
+latter would make the agent chase the nearest exit on turn one regardless
+of `w`, overriding score entirely on the one turn where a *weighted*
+trade-off is supposed to mean something.
+
+Swept `w` over `[0, 1, 3, 10, 30]` (`w=0` is greedy itself, included as the
+sweep's own baseline rather than assumed equal to the `greedy` column by
+construction) across both rooms, 20 seeds each: every weight produced
+identical **100% clear%** on both rooms, with median score essentially flat
+(Round Room 1014-1024 across all five weights; Hourglass exactly 953 at
+every weight). This is the ceiling effect 13b's results log already
+flagged as the likely outcome: at a 50-point placeholder threshold, on a
+17-19 cell room, with a 12-placement budget, a purely score-driven greedy
+walk already lands on an exit almost by construction — there is no
+headroom left in these two rooms for "wants to leave" to improve on, so no
+`w` can be distinguished from any other on the metric that matters. Picked
+`w=10` for the comparison table on a secondary ground, not a measured one:
+it sits above the typical `reduction` range for a room this size (0-4) by
+enough to matter once a real, harder threshold exists (item 22), without
+being so large (`w=30`) that it would start overriding sound score choices
+once ties actually exist to break. This is a bet aimed at item 22's rooms,
+explicitly flagged in the code as needing revisiting once thresholds stop
+being placeholders.
+
+Extended the existing `room comparison` table (not the byte-identical
+`ruleset comparison` one — that constraint was always specific to the
+grid/hex table, and 13b's own table was introduced for exactly this kind of
+extension) with two columns: `goalClear%` (the goal-seeking agent's clear
+rate at `CHOSEN_W`, same seeds as the `greedy`/`clear%` columns for a fair
+comparison) and `gap` (`goalClear% - clear%`), making the item's own
+framing — "the gap between those two is itself the finding" — a printed
+number rather something a reader has to compute by eye. Both rooms measured
+**gap = 0**. Per the item's own text ("a gap near zero means the exit
+condition is not biting"), this reads as an honest, expected non-finding
+given the ceiling above, not a failure of the agent or the room design —
+the dual reach-and-score condition has not yet been tested by anything in
+this project, because no room has had a threshold set high enough to make
+score the harder condition to satisfy. That test is item 22's, once 13d's
+deeper search exists too and real thresholds replace item 6's placeholder.
+
 ## Results log
 
 **Item 1.** `npm test` 203/203 (was 208 — 5 tests removed, all for formulas
@@ -1924,6 +1985,60 @@ and no calibrated threshold yet to test against (22). Recorded so 13c has a
 concrete "before" number: if a goal-seeking agent's clear rate comes back
 at 100% too, the gap the item is designed to surface would read as zero,
 which is itself informative.
+
+**Item 13c.** `npm test` 335/335, unchanged — this item added no code under
+`src/`, only `tools/probe.test.ts`, same as 13b. `npx tsc -b --noEmit`
+clean. `npm run smoke` 63/63, unchanged — no UI or gameplay behaviour
+changed. `git status --short` after the full run shows only
+`tools/probe.test.ts` modified; `git diff src/metrics.generated.ts` is
+empty, confirming the existing `ruleset comparison` table's rows and the
+generated file it feeds are untouched by this item.
+
+The weight sweep, 20 seeds per room per weight, `CONFIG` defaults:
+
+```
+room            	w	score	reached%	clear%
+Round Room      	0	1016	100%	100%
+Round Room      	1	1015	100%	100%
+Round Room      	3	1015	100%	100%
+Round Room      	10	1024	100%	100%
+Round Room      	30	1014	100%	100%
+Hourglass       	0	953	100%	100%
+Hourglass       	1	953	100%	100%
+Hourglass       	3	953	100%	100%
+Hourglass       	10	953	100%	100%
+Hourglass       	30	953	100%	100%
+```
+
+Every weight ties at 100% clear% on both rooms, confirming the ceiling
+predicted in item 13b's own results log. `CHOSEN_W = 10` for the reasons in
+the decisions log — not because the sweep favoured it, since the sweep
+shows no weight is distinguishable from any other here.
+
+The extended `room comparison` table, same 20 seeds as the `greedy` column,
+`CHOSEN_W = 10`:
+
+```
+room            	threshold	greedy	careless	skill	2ply	lift	reached%	spread	minCells	clear%	goalClear%	gap
+Round Room      	50	1027	681	1.51	1094	1.07	100%	1.6	4	100%	100%	0
+Hourglass       	50	967	697	1.39	967	1.00	100%	1.3	1	100%	100%	0
+```
+
+**gap = 0 on both rooms.** Per the item's own text, this is a real, honest
+finding, not an implementation gap: "a gap near zero means the exit
+condition is not biting." The reach-and-score dual condition has not yet
+been tested by anything measured in this project, because no room built so
+far has had a score threshold hard enough for score to be the binding
+constraint rather than the reach requirement — items 6 and 7 explicitly
+left both rooms' thresholds at a round placeholder (50), pending item 22's
+calibration pass. **13c is not the item that answers whether rooms work;
+it is the item that proves the current two rooms are too easy to tell.**
+That answer waits on item 22, once 13d's deeper search exists and real,
+measured thresholds replace the placeholder.
+
+No screenshots and no video — like 13b, this item changed a measurement
+tool only. `git diff --stat` confirms `tools/probe.test.ts` is the only
+file touched; there is nothing rendered to point a browser at.
 
 No screenshots and no video — this item changed a measurement tool, not
 anything rendered. `RoomRunPage`, `RoomBoardView` and every other UI file
