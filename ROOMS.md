@@ -217,7 +217,7 @@ a shallow one — it still never walks to the door.
       finding**: it is how much a room punishes pure score-chasing, which is the
       thing the whole reach-and-score dual condition was built to create. A gap
       near zero means the exit condition is not biting.
-- [ ] **13d. Deeper search.** Beam search at depth 3-4 (keep the top-N beam;
+- [x] **13d. Deeper search.** Beam search at depth 3-4 (keep the top-N beam;
       full width will not fit). Report it as a **new** column beside the
       existing 2-ply lift rather than replacing it, so the historical column
       keeps its meaning and the two are comparable. Expect roughly 25× the
@@ -1417,6 +1417,107 @@ this project, because no room has had a threshold set high enough to make
 score the harder condition to satisfy. That test is item 22's, once 13d's
 deeper search exists too and real thresholds replace item 6's placeholder.
 
+**Item 13d.** All new code stays in `tools/probe.test.ts`, same as 13b/13c —
+a deeper search agent for the probe is measurement tooling, not a scorer,
+tile or item effect, so per those items' own precedent there is no new
+`src/__tests__` coverage to add.
+
+The mechanism is one generic `beamPick(start, m, depth, beamWidth, step)`,
+shared by grid/hex (`beamSearch`) and rooms (`roomBeamSearch`) through a
+`step` façade — the same seam `api`/`roomApi` already draw between the two
+board kinds. It expands the current beam's moves one level, sorts by
+cumulative value, keeps the top `beamWidth`, and repeats until `depth`
+levels deep, returning whichever surviving path's *first* move scored
+highest overall. This is a strict generalisation of `lookahead`
+(`lookahead` is beam search with `depth=2, beamWidth=∞` restricted to the
+root's top 12) — deliberately implemented as new code alongside it rather
+than rewriting `lookahead` in terms of it, since the item's own text says
+the deep column sits "beside the existing 2-ply lift... so the historical
+column keeps its meaning" and touching `lookahead` at all would put that
+at risk for zero benefit.
+
+One real correctness question, not just a knob to tune: what does
+"terminal" mean for a beam node mid-search? For grid/hex, `status !==
+'playing'` is the whole answer. For a room it is not — 13b's own decisions
+log already flagged that `placeInRoom` silently no-ops once
+`placementsLeft` hits zero while `status` stays `'playing'` until
+`leaveRoom` runs (nothing here calls `leaveRoom`). Missing that would have
+been a real, quiet scoring bug: a beam node past its real budget would keep
+"expanding" into identical no-op states while `total` kept adding move
+values that were never actually played, inflating exactly the deepest,
+most-multiplied levels of the search with fabricated score. `roomBeamSearch`'s
+`terminal` checks `status !== 'playing' || placementsLeft <= 0` for exactly
+this reason; `beamSearch`'s (grid/hex) only needs the status check, since
+grid/hex has no equivalent silent-no-op budget.
+
+Picked `DEEP_DEPTH = 4`, `DEEP_BEAM = 10` from the cost shape rather than a
+guess: each non-root level costs up to `beamWidth` extra `moves()` calls (one
+per surviving beam node), so a depth-4 search costs roughly `3 × beamWidth`
+extra calls against lookahead's fixed 12 — at `beamWidth = 10` that is 30,
+about 2.5× lookahead's own cost, deliberately on the conservative side of
+the item's own "roughly 25×" estimate rather than aimed at it. Read that
+estimate as a warning to budget for, not a target to hit: swinging
+`beamWidth` up toward literally 25× (order ~100) risked a genuinely
+multi-minute single test block for no stated benefit over a smaller,
+still-meaningfully-deeper search, and the actual measured cost (below)
+shows the conservative choice was still the more expensive problem, not the
+safer one.
+
+Measured, not assumed: adding the deep agent took the `ruleset comparison`
+test from item 3's own logged ~51.6s to ~215s — about 3.2× the three-agent
+baseline it's added to, close to the 2.5× estimate above once `play()`'s own
+non-`moves()` overhead (board updates, per-turn bookkeeping) is folded in.
+Well under `vitest.probe.config.ts`'s 600s `testTimeout`, so the item's own
+contingency ("if `npm run probe` runs past its timeout, cut the seed count
+for the deep agent only") was never triggered on that specific timeout —
+all four agents ran the full `SEEDS = 20` everywhere, no sample was
+shortened.
+
+**What did go wrong, and was fixed rather than worked around by cutting
+seeds.** The first full run of the recalibrated probe exited non-zero —
+`Test Files 1 passed (1)` and `Tests 3 passed (3)`, but a separate
+"Unhandled Error: [vitest-worker]: Timeout calling 'onTaskUpdate'" still
+failed the process. This is a different timeout from `testTimeout`: vitest's
+worker/main-process RPC heartbeat, which the fully-synchronous `ruleset
+comparison` test body (no `await` anywhere in the loop, one giant blocking
+JS call) never yielded control back to, for the ~215s the deep agent pushed
+the total past. Confirmed by reproducing it a second time identically before
+touching anything, then fixing it with one `await new Promise((resolve) =>
+setTimeout(resolve, 0))` per ruleset inside the loop rather than reducing
+`SEEDS` for the deep agent — yielding to the event loop doesn't change a
+single computed number (the probe's RNG is seeded, nothing reads the wall
+clock), so this recovers the honest fix (full sample, every agent, every
+ruleset) rather than the item's fallback (a documented smaller sample) for a
+problem that was never actually about running past `testTimeout` at all.
+Verified by rerunning: same 30×4-agent table, byte-identical numbers to the
+failing run, exit code 0. `goal-seeking weight sweep` and `room comparison`
+stayed well under a minute each (1.4s, ~13s) and needed no such fix.
+
+`deep`/`deepLift` were deliberately not threaded into `measured` /
+`writeMetrics` in the `ruleset comparison` test — `git diff --stat` after
+the full run confirms `src/metrics.generated.ts` is untouched. Same call
+13b/13c already made for the room table: widening `RulesetMetrics` and the
+Metrics page that reads it is item 23's job, not this one's, and adding a
+column nothing displays yet would be doing that item's work early for a
+shape likely to change once it actually happens.
+
+One finding the numbers themselves surfaced, worth flagging rather than
+smoothing over: `mech-lock-cash`'s `deep` median (180) came in *below* its
+`2ply` median (192) — a beam search that's supposed to look further ahead
+did measurably worse than the shallower one on this specific ruleset. Not a
+bug: `lookahead` evaluates the root's top-12 candidates exhaustively with
+one guaranteed follow-up each, while `beamPick` culls to the top-`beamWidth`
+(10) *cumulative* path after every level, which can prune away a
+candidate that only pays off several moves later — exactly the kind of
+sequence `mech-lock-cash`'s bank-then-cash mechanic rewards (its own
+long-standing ruleset comment already says greedy has no gradient to follow
+there). A beam that's too narrow for a specific mechanic's reward shape can
+search deeper and still find less. Recorded as data, not corrected by
+hand-tuning `beamWidth` up for one ruleset — the standing rule is not to
+tune by eye, and this is exactly the texture a later calibration pass (item
+22, or a dedicated look at `mech-lock-cash`) should use, not something to
+paper over here.
+
 ## Results log
 
 **Item 1.** `npm test` 203/203 (was 208 — 5 tests removed, all for formulas
@@ -2044,3 +2145,89 @@ No screenshots and no video — this item changed a measurement tool, not
 anything rendered. `RoomRunPage`, `RoomBoardView` and every other UI file
 are untouched (`git diff --stat` shows only `tools/probe.test.ts`), so
 there is nothing new to point a browser at.
+
+**Item 13d.** `npm test` 335/335, unchanged — same as 13b/13c, this item
+added no code under `src/`, only `tools/probe.test.ts`. `npx tsc -b
+--noEmit` clean. `npm run smoke` 63/63, unchanged — no UI or gameplay
+behaviour changed. `git status --short` after the full run shows only
+`tools/probe.test.ts` modified; `git diff --stat src/metrics.generated.ts`
+is empty, confirming the existing table's persisted data is untouched by
+this item, same as 13b/13c's own precedent.
+
+`npm run probe`: 230s total (was ~55s at the end of item 13c), all three
+`it` blocks passing, exit code 0. First run exited 1 on an unrelated vitest
+worker-RPC heartbeat timeout, not `testTimeout` — see the decisions log for
+the diagnosis and the one-line fix (a periodic `await` yield, not a
+seed cut); the numbers below are byte-identical between the failing and
+fixed runs, confirming the fix changed nothing about what was measured.
+
+Full recalibrated probe output with the new `deep`/`deepLift` columns
+(`DEEP_DEPTH = 4`, `DEEP_BEAM = 10`), 20 seeds each, beside the unchanged
+`2ply`/`lift`:
+
+| ruleset | target | greedy | careless | skill | 2ply | lift | deep | deepLift | reach% | spread | minCells | clear% |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| poker-baseline | 881 | 881 | 600 | 1.47 | 910 | 1.03 | 921 | 1.05 | 71% | 1.7 | 10 | 55% |
+| poker-tight | 916 | 881 | 600 | 1.47 | 910 | 1.03 | 921 | 1.05 | 71% | 1.7 | 10 | 20% |
+| poker-mult-amped | 881 | 881 | 600 | 1.47 | 910 | 1.03 | 921 | 1.05 | 71% | 1.7 | 10 | 55% |
+| poker-partials | 915 | 915 | 612 | 1.50 | 989 | 1.08 | 1004 | 1.10 | 66% | 1.8 | 10 | 50% |
+| poker-short-run | 545 | 545 | 366 | 1.49 | 557 | 1.02 | 563 | 1.03 | 81% | 1.7 | 10 | 50% |
+| poker-partials-generous | 946 | 946 | 614 | 1.54 | 1021 | 1.08 | 1047 | 1.11 | 65% | 1.8 | 9 | 50% |
+| poker-flat-ranks | 615 | 615 | 440 | 1.40 | 650 | 1.06 | 660 | 1.07 | 75% | 1.7 | 10 | 50% |
+| poker-short-lines | 890 | 890 | 577 | 1.54 | 911 | 1.02 | 921 | 1.03 | 46% | 1.6 | 2 | 50% |
+| poker-long-lines | 920 | 920 | 611 | 1.51 | 945 | 1.03 | 973 | 1.06 | 80% | 1.9 | 12 | 50% |
+| poker-lean-hand | 830 | 830 | 619 | 1.34 | 855 | 1.03 | 865 | 1.04 | 72% | 1.7 | 10 | 50% |
+| poker-small-board | 676 | 676 | 463 | 1.46 | 709 | 1.05 | 699 | 1.03 | 39% | 1.7 | 8 | 50% |
+| draft-cribbage | 534 | 534 | 372 | 1.44 | 570 | 1.07 | 690 | 1.29 | 62% | 2.7 | 9 | 50% |
+| draft-poker | 714 | 714 | 593 | 1.20 | 744 | 1.04 | 791 | 1.11 | 66% | 1.5 | 9 | 50% |
+| draft-hex | 858 | 858 | 478 | 1.79 | 912 | 1.06 | 1034 | 1.21 | 59% | 2.6 | 13 | 50% |
+| hex-sprawl | 1342 | 1342 | 480 | 2.80 | 1505 | 1.12 | 1558 | 1.16 | 55% | 4.3 | 13 | 50% |
+| hex-sprawl-blank | 1146 | 1146 | 468 | 2.45 | 1256 | 1.10 | 1272 | 1.11 | 81% | 3.0 | 6 | 50% |
+| hex-sprawl-flat | 1089 | 1089 | 390 | 2.79 | 1164 | 1.07 | 1191 | 1.09 | 62% | 4.4 | 13 | 50% |
+| cribbage-blank | 687 | 687 | 309 | 2.22 | 723 | 1.05 | 777 | 1.13 | 86% | 3.5 | 5 | 50% |
+| poker-blank | 841 | 841 | 556 | 1.51 | 862 | 1.02 | 870 | 1.03 | 75% | 1.7 | 5 | 50% |
+| cribbage | 747 | 747 | 315 | 2.37 | 816 | 1.09 | 837 | 1.12 | 58% | 4.3 | 9 | 50% |
+| cribbage-unbound | 1170 | 1170 | 327 | 3.58 | 1251 | 1.07 | 1275 | 1.09 | 36% | 6.0 | 13 | 55% |
+| cribbage-pure | 528 | 528 | 120 | 4.40 | 612 | 1.16 | 630 | 1.19 | 49% | 36.0 | 10 | 55% |
+| cribbage-lean | 690 | 690 | 312 | 2.21 | 726 | 1.05 | 759 | 1.10 | 61% | 4.0 | 10 | 50% |
+| reference-poker-squares | 647 | 647 | 571 | 1.13 | 702 | 1.09 | 744 | 1.15 | 45% | 0.0 | 1 | 50% |
+| mech-both-axes | 747 | 747 | 315 | 2.37 | 816 | 1.09 | 837 | 1.12 | 58% | 4.3 | 9 | 50% |
+| mech-suit-axis | 747 | 747 | 315 | 2.37 | 816 | 1.09 | 837 | 1.12 | 58% | 4.3 | 9 | 50% |
+| mech-deferred | 201 | 201 | 69 | 2.91 | 321 | 1.60 | 273 | 1.36 | 50% | 0.0 | 8 | 50% |
+| mech-free | 747 | 747 | 141 | 5.30 | 816 | 1.09 | 837 | 1.12 | 58% | 8.0 | 31 | 50% |
+| mech-lock-cash | 192 | 18 | 30 | 0.60 | 192 | 10.67 | 180 | 10.00 | -- | 9.0 | 0 | 0% |
+| combo-cribbage-poker | 1571 | 1571 | 907 | 1.73 | 1619 | 1.03 | 1664 | 1.06 | 65% | 2.2 | 9 | 50% |
+| cribbage-flush3 | 759 | 759 | 330 | 2.30 | 837 | 1.10 | 861 | 1.13 | 58% | 4.3 | 9 | 50% |
+
+`hex-sprawl` — the ruleset item 22 will compare a room's own deep lift
+against — reads deep lift **1.16** against 2-ply's **1.12**: a real,
+non-zero gain from searching deeper, small but present, which is the honest
+"before" number item 22 needs. Most rulesets move the same direction by a
+similar margin (a few points of lift), with `draft-cribbage` (1.07 → 1.29)
+and `draft-hex` (1.06 → 1.21) standing out as the two where deeper search
+found noticeably more than 2-ply did. `mech-lock-cash` is the one
+exception, and moved the *other* way (10.67 → 10.00) — flagged and
+explained in the decisions log, not a bug.
+
+The `room comparison` table gained the same two columns:
+
+```
+room            	threshold	greedy	careless	skill	2ply	lift	deep	deepLift	reached%	spread	minCells	clear%	goalClear%	gap
+Round Room      	50	1027	681	1.51	1094	1.07	1094	1.07	100%	1.6	4	100%	100%	0
+Hourglass       	50	967	697	1.39	967	1.00	1010	1.04	100%	1.3	1	100%	100%	0
+```
+
+Round Room's deep median matches its 2-ply median exactly (1094) — at a
+17-19 cell room with only 12 placements, 2-ply's exhaustive top-12 already
+finds what a width-10 beam finds too, so there's no headroom for "deeper"
+to add anything here, consistent with item 13c's own ceiling finding for
+these same two placeholder-threshold rooms. Hourglass shows a small real
+gain (967 → 1010, lift 1.00 → 1.04). Neither number changes anything about
+13c's own gap = 0 finding — this item only adds a comparison column, it
+does not touch `clear%`/`goalClear%`/`gap` at all (`git diff` inside
+`it('room comparison', ...)` shows only the two new column insertions and
+the `d`/`dm` computation feeding them).
+
+No screenshots and no video — like 13b/13c, this item changed a measurement
+tool only; `git diff --stat` for the whole item shows exactly one file,
+`tools/probe.test.ts`, so there is nothing rendered to point a browser at.

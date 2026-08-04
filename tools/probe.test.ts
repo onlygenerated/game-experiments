@@ -3,14 +3,18 @@
  * with `npm run probe` when a ruleset needs its target set or its decision
  * quality measured.
  *
- * Three agents play every ruleset over the same seeds:
+ * Four agents play every ruleset over the same seeds:
  *   greedy    — best move available right now
  *   careless  — samples across the move distribution
  *   2-ply     — best immediate move plus best follow-up
+ *   deep      — beam search 3-4 moves deep (item 13d), beside 2-ply, not
+ *               replacing it — see the `deep`/`deepLift` columns
  *
  * The headline number is the **skill gap** (greedy / careless): how much
  * playing well is worth. The second is **lookahead lift** (2-ply / greedy):
- * whether setup plays exist at all.
+ * whether setup plays exist at all. **Deep lift** (deep / greedy) asks the
+ * same question with more search — the two stay side by side so a reader can
+ * see whether looking further ahead finds anything 2-ply missed.
  *
  * Coordinates travel as opaque string keys so grid and hex rulesets go through
  * one path. Measuring a hex ruleset with grid functions would silently produce
@@ -232,12 +236,106 @@ const median = (xs: number[]) => {
   return s[Math.floor(s.length / 2)] ?? 0;
 };
 
+/**
+ * Item 13d: search deeper than `lookahead`'s fixed best-move-plus-one-follow-
+ * up. A full-width search this deep does not fit — even a modest branching
+ * factor compounds fast over 3-4 levels — so `beamPick` keeps only the best
+ * `beamWidth` partial sequences alive between levels rather than expanding
+ * every one of them. Shared by grid/hex (`beamSearch`) and rooms
+ * (`roomBeamSearch`) below through one generic `step` façade, the same
+ * pattern `api`/`roomApi` already use to keep the search itself
+ * structure-blind.
+ *
+ * `terminal` exists because "playing" is not the same question for every
+ * state: for grid/hex, `status !== 'playing'` is the whole answer, but for a
+ * room, `placeInRoom` silently no-ops once `placementsLeft` hits zero while
+ * `status` stays `'playing'` until `leaveRoom` is called (13b's own decisions
+ * log flags exactly this). Without the extra `placementsLeft <= 0` check
+ * here, a beam node past its real budget would keep "expanding" into
+ * identical no-op states while `total` kept adding move values that were
+ * never actually played — free, fabricated score inflating the deeper
+ * levels for no real placement. Explicit rather than assumed for the same
+ * reason 13b made the same call explicit: getting this backwards is a
+ * measurement bug, not a crash, so nothing would flag it on its own.
+ */
+interface BeamNode<S> {
+  state: S;
+  firstMove: Move;
+  total: number;
+}
+
+function beamPick<S>(
+  start: S,
+  m: Move[],
+  depth: number,
+  beamWidth: number,
+  step: {
+    play: (s: S, i: number, key: string) => S;
+    moves: (s: S) => Move[];
+    terminal: (s: S) => boolean;
+  },
+): Move {
+  let beam: BeamNode<S>[] = m.slice(0, beamWidth).map((mv) => ({
+    state: step.play(start, mv.i, mv.key),
+    firstMove: mv,
+    total: mv.v,
+  }));
+  for (let level = 1; level < depth && beam.length; level++) {
+    const next: BeamNode<S>[] = [];
+    for (const b of beam) {
+      if (step.terminal(b.state)) {
+        next.push(b);
+        continue;
+      }
+      const nm = step.moves(b.state);
+      if (!nm.length) {
+        next.push(b);
+        continue;
+      }
+      for (const mv of nm.slice(0, beamWidth)) {
+        next.push({ state: step.play(b.state, mv.i, mv.key), firstMove: b.firstMove, total: b.total + mv.v });
+      }
+    }
+    next.sort((x, y) => y.total - x.total);
+    beam = next.slice(0, beamWidth);
+  }
+  beam.sort((x, y) => y.total - x.total);
+  return beam[0]?.firstMove ?? m[0];
+}
+
+const DEEP_DEPTH = 4;
+const DEEP_BEAM = 10;
+
+function beamSearch(cfg: Config) {
+  const a = api({ ...cfg, targetScore: Number.POSITIVE_INFINITY });
+  return (s: AnyRun, m: Move[]): Move =>
+    beamPick(s, m, DEEP_DEPTH, DEEP_BEAM, {
+      play: (st, i, key) => a.play(st, i, key),
+      moves: (st) => moves(st, a),
+      terminal: (st) => st.status !== 'playing',
+    });
+}
+
 const SEEDS = 20;
 
-it('ruleset comparison', () => {
+it('ruleset comparison', async () => {
   const seeds = Array.from({ length: SEEDS }, (_, i) => `probe-${i}`);
   const rows = [
-    ['ruleset', 'target', 'greedy', 'careless', 'skill', '2ply', 'lift', 'reach%', 'spread', 'minCells', 'clear%'].join('\t'),
+    [
+      'ruleset',
+      'target',
+      'greedy',
+      'careless',
+      'skill',
+      '2ply',
+      'lift',
+      'deep',
+      'deepLift',
+      'reach%',
+      'spread',
+      'minCells',
+      'clear%',
+    ].join('\t'),
   ];
   const measured: Record<string, number | string | null>[] = [];
 
@@ -246,10 +344,22 @@ it('ruleset comparison', () => {
     const g = seeds.map((s) => play(cfg, s, greedy));
     const c = seeds.map((s) => play(cfg, s, carelessAgent(s)));
     const l = seeds.map((s) => play(cfg, s, lookahead(cfg)));
+    const d = seeds.map((s) => play(cfg, s, beamSearch(cfg)));
+    // Item 13d's deep agent is expensive enough that the whole loop's
+    // synchronous run time crossed vitest's worker-RPC heartbeat (a
+    // different timeout from `vitest.probe.config.ts`'s own 600s
+    // `testTimeout`, which this run stays well under) — this test file's
+    // process exited non-zero with "[vitest-worker]: Timeout calling
+    // 'onTaskUpdate'" once the block ran ~200s fully synchronously. Yielding
+    // once per ruleset lets the worker answer that heartbeat without
+    // changing a single computed number (seeded RNG, no wall-clock
+    // dependence anywhere in `play`/`beamSearch`).
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     const gm = median(g.map((x) => x.score));
     const cm = median(c.map((x) => x.score));
     const lm = median(l.map((x) => x.score));
+    const dm = median(d.map((x) => x.score));
     const wins = g.filter((x) => x.wonAt !== null);
 
     const eligible = g.reduce((a, x) => a + x.reachEligible, 0);
@@ -258,6 +368,11 @@ it('ruleset comparison', () => {
     // ruleset the question "does play chase the interior" has no answer.
     const reachPct = eligible > 0 ? Math.round((100 * away) / eligible) : null;
 
+    // `deep`/`deepLift` are deliberately not added here: `measured` feeds
+    // `writeMetrics`, which shapes `RulesetMetrics` and, through it, the
+    // Metrics page — widening that shape is item 23's job ("rebuild the
+    // Metrics page"), not this one's, matching 13b/13c's own precedent of
+    // printing new room columns without touching `writeMetrics` at all.
     measured.push({
       id: rs.id,
       target: cfg.targetScore,
@@ -283,6 +398,8 @@ it('ruleset comparison', () => {
         cm > 0 ? (gm / cm).toFixed(2) : '--',
         lm,
         (lm / Math.max(gm, 1)).toFixed(2),
+        dm,
+        (dm / Math.max(gm, 1)).toFixed(2),
         reachPct === null ? '--' : reachPct + '%',
         median(g.flatMap((x) => x.spreads)).toFixed(1),
         median(g.map((x) => x.minLegal)),
@@ -347,6 +464,23 @@ function roomLookahead(room: Room, cfg: Config) {
     }
     return best;
   };
+}
+
+/**
+ * Item 13d's room counterpart to `beamSearch` — same `beamPick`, the room's
+ * own `roomApi`/`roomMoves` in the `step` façade. `terminal` checks
+ * `placementsLeft <= 0` alongside `status`, not status alone: see the
+ * comment on `beamPick` itself for why skipping that check would silently
+ * inflate scores past the real placement budget.
+ */
+function roomBeamSearch(room: Room, cfg: Config) {
+  const a = roomApi(room, cfg);
+  return (s: ExpeditionState, m: Move[]): Move =>
+    beamPick(s, m, DEEP_DEPTH, DEEP_BEAM, {
+      play: (st, i, key) => a.play(st, i, key),
+      moves: (st) => roomMoves(st, a),
+      terminal: (st) => st.status !== 'playing' || st.placementsLeft <= 0,
+    });
 }
 
 /**
@@ -533,6 +667,8 @@ it('room comparison', () => {
       'skill',
       '2ply',
       'lift',
+      'deep',
+      'deepLift',
       'reached%',
       'spread',
       'minCells',
@@ -546,6 +682,8 @@ it('room comparison', () => {
     const g = seeds.map((s) => playRoom(room, CONFIG, s, greedy));
     const c = seeds.map((s) => playRoom(room, CONFIG, s, carelessAgent(s)));
     const l = seeds.map((s) => playRoom(room, CONFIG, s, roomLookahead(room, CONFIG)));
+    // Item 13d: same seeds, same room, beside 2-ply rather than replacing it.
+    const d = seeds.map((s) => playRoom(room, CONFIG, s, roomBeamSearch(room, CONFIG)));
     // Item 13c: same seeds, same room, the one difference is that this agent
     // also values getting closer to an exit (CHOSEN_W, picked from the sweep
     // above). The gap against `clear%` (greedy, score-only) is the item's
@@ -556,6 +694,7 @@ it('room comparison', () => {
     const gm = median(g.map((x) => x.score));
     const cm = median(c.map((x) => x.score));
     const lm = median(l.map((x) => x.score));
+    const dm = median(d.map((x) => x.score));
 
     const reachedPct = Math.round((100 * g.filter((x) => x.reached).length) / g.length);
     const clearPct = Math.round((100 * g.filter((x) => x.cleared).length) / g.length);
@@ -570,6 +709,8 @@ it('room comparison', () => {
         cm > 0 ? (gm / cm).toFixed(2) : '--',
         lm,
         (lm / Math.max(gm, 1)).toFixed(2),
+        dm,
+        (dm / Math.max(gm, 1)).toFixed(2),
         reachedPct + '%',
         median(g.flatMap((x) => x.spreads)).toFixed(1),
         median(g.map((x) => x.minLegal)),
