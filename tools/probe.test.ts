@@ -31,7 +31,7 @@
  */
 import { writeFileSync } from 'node:fs';
 import { it } from 'vitest';
-import type { Config } from '../src/config';
+import { CONFIG, type Config } from '../src/config';
 import { canCash, legalCells, scoreCross, scorePlacement } from '../src/board';
 import { cashCellAt, newGame, placeCard, type GameState } from '../src/game';
 import { legalHexCells, scoreHexPlacement } from '../src/hex/board';
@@ -39,6 +39,16 @@ import { newHexGame, placeHexCard, type HexGameState } from '../src/hex/game';
 import { hexDistance, hexKey, ORIGIN, parseHex } from '../src/hex/coords';
 import { hashSeed, mulberry32 } from '../src/deck';
 import { RULESETS } from '../src/rulesets';
+import {
+  currentStructure,
+  legalRoomCells,
+  newExpedition,
+  placeInRoom,
+  type ExpeditionState,
+} from '../src/rooms/expedition';
+import { roomEndState, type Room } from '../src/rooms/room';
+import { scoreRoomPlacement } from '../src/rooms/scoring';
+import { ROOM_SHAPES } from '../src/rooms/shapes';
 
 type AnyRun = GameState | HexGameState;
 
@@ -181,7 +191,7 @@ function play(cfg: Config, seed: string, pick: (s: AnyRun, m: Move[]) => Move): 
   };
 }
 
-const greedy = (_s: AnyRun, m: Move[]) => m[0];
+const greedy = <S>(_s: S, m: Move[]) => m[0];
 
 /**
  * The floor: a player who makes legal moves without looking at their value.
@@ -197,7 +207,7 @@ const greedy = (_s: AnyRun, m: Move[]) => m[0];
  */
 const carelessAgent = (seed: string) => {
   const rng = mulberry32(hashSeed(`${seed}:careless`));
-  return (_s: AnyRun, m: Move[]) => m[Math.floor(rng() * m.length)];
+  return <S>(_s: S, m: Move[]) => m[Math.floor(rng() * m.length)];
 };
 
 function lookahead(cfg: Config) {
@@ -282,6 +292,171 @@ it('ruleset comparison', () => {
   }
   console.log('\n' + rows.join('\n'));
   writeMetrics(measured);
+});
+
+/**
+ * Item 13b: the room façade. An agent still sees `Move[]` and returns one —
+ * `roomMoves` builds the same shape `moves()` does above, just off
+ * `ExpeditionState`/`legalRoomCells` instead of a grid or hex board's own
+ * legality. `greedy`/`carelessAgent` (now generic in the state type) are
+ * reused unchanged; `roomLookahead` mirrors `lookahead` for the one thing
+ * that can't be shared — evaluating a follow-up move needs the room's own
+ * `play`.
+ *
+ * A run is one room over its placement budget, per the item's own text —
+ * there is no attempt to leave through an exit here (that would need an
+ * agent that *wants* to, which is item 13c). `roomEndState` is read once, at
+ * the end of the budget, off whatever the board ended up as; reach and score
+ * are both monotone non-decreasing over a room (cards are never removed and
+ * no tile effect ever reduces a placement's score below zero), so reading it
+ * once at the end is equivalent to reading it after every placement and
+ * keeping the best.
+ */
+function roomApi(room: Room, cfg: Config) {
+  return {
+    start: (seed: string): ExpeditionState => newExpedition(seed, [room], cfg),
+    cells: (s: ExpeditionState): string[] => legalRoomCells(s, cfg).map(hexKey),
+    score: (s: ExpeditionState, key: string, i: number) =>
+      scoreRoomPlacement(s.board, parseHex(key), s.hand[i], room.tiles, cfg),
+    play: (s: ExpeditionState, i: number, key: string): ExpeditionState =>
+      placeInRoom(s, i, parseHex(key), cfg),
+  };
+}
+
+function roomMoves(s: ExpeditionState, a: ReturnType<typeof roomApi>): Move[] {
+  const out: Move[] = [];
+  const cells = a.cells(s);
+  for (let i = 0; i < s.hand.length; i++) {
+    for (const key of cells) out.push({ i, key, v: a.score(s, key, i).score });
+  }
+  return out.sort((x, y) => y.v - x.v);
+}
+
+function roomLookahead(room: Room, cfg: Config) {
+  const a = roomApi(room, cfg);
+  return (s: ExpeditionState, m: Move[]): Move => {
+    let best = m[0];
+    let bestV = -1;
+    for (const mv of m.slice(0, 12)) {
+      const next = a.play(s, mv.i, mv.key);
+      const follow = next.status === 'playing' ? (roomMoves(next, a)[0]?.v ?? 0) : 0;
+      if (mv.v + follow > bestV) {
+        bestV = mv.v + follow;
+        best = mv;
+      }
+    }
+    return best;
+  };
+}
+
+interface RoomRunStats {
+  score: number;
+  spreads: number[];
+  minLegal: number;
+  reached: boolean;
+  scoreMet: boolean;
+  cleared: boolean;
+}
+
+/**
+ * Plays exactly one room, stopping when the placement budget runs out (or
+ * sooner, if the hand or the room's legal cells run dry first — mirroring
+ * `play()`'s own `!m.length` guard above). `placeInRoom` itself would also
+ * stop advancing once `placementsLeft` hits zero (a silent no-op past that
+ * point), but the loop's own `s.placementsLeft > 0` guard is what actually
+ * terminates it — without it, a cleared room never flips its `status` away
+ * from `'playing'` (only `leaveRoom` does that, and nothing here calls it),
+ * so the loop would spin forever re-picking the same no-op move.
+ */
+function playRoom(
+  room: Room,
+  cfg: Config,
+  seed: string,
+  pick: (s: ExpeditionState, m: Move[]) => Move,
+): RoomRunStats {
+  const a = roomApi(room, cfg);
+  let s = a.start(seed);
+  let minLegal = Infinity;
+  const spreads: number[] = [];
+  let turn = 0;
+
+  while (s.status === 'playing' && s.placementsLeft > 0) {
+    const m = roomMoves(s, a);
+    if (!m.length) break;
+    turn++;
+    // Same turn>5 gate as `play()` above, for the same reason: the opening
+    // placements are noise before there is a structure to be crowded by.
+    if (turn > 5) minLegal = Math.min(minLegal, a.cells(s).length);
+    const med = m[Math.floor(m.length / 2)].v || 1;
+    spreads.push(m[0].v / med);
+
+    const chosen = pick(s, m);
+    s = a.play(s, chosen.i, chosen.key);
+  }
+
+  const end = roomEndState(room, currentStructure(s), s.score);
+  return {
+    score: s.score,
+    spreads,
+    minLegal: Number.isFinite(minLegal) ? minLegal : 0,
+    reached: end.reached,
+    scoreMet: end.scoreMet,
+    cleared: end.cleared,
+  };
+}
+
+/**
+ * A separate table, not new columns bolted onto `ruleset comparison`'s own —
+ * the item's "leave the existing grid/hex rows byte-identical" is easiest to
+ * honour by never touching that table's header or row-building code at all.
+ * `reached%` and `clear%` are the "two columns" the item asks for (reach and
+ * the reach-and-score conjunction, so a near-miss reads as "got there but
+ * short" the way `roomEndState` itself reports it) — deliberately not named
+ * `reach%`, which keeps its existing edge-based meaning for the grid/hex
+ * table above and would be a wrong answer to a different question here.
+ *
+ * Does not call `writeMetrics` — `RulesetMetrics`/`metrics.generated.ts` are
+ * keyed by ruleset id and read by the existing Metrics page; wiring room
+ * numbers into that shape is item 23's job ("rebuild the Metrics page
+ * around clear rate, reach pressure and spread"), not this one's.
+ */
+it('room comparison', () => {
+  const seeds = Array.from({ length: SEEDS }, (_, i) => `probe-room-${i}`);
+  const rows = [
+    ['room', 'threshold', 'greedy', 'careless', 'skill', '2ply', 'lift', 'reached%', 'spread', 'minCells', 'clear%'].join(
+      '\t',
+    ),
+  ];
+
+  for (const room of ROOM_SHAPES) {
+    const g = seeds.map((s) => playRoom(room, CONFIG, s, greedy));
+    const c = seeds.map((s) => playRoom(room, CONFIG, s, carelessAgent(s)));
+    const l = seeds.map((s) => playRoom(room, CONFIG, s, roomLookahead(room, CONFIG)));
+
+    const gm = median(g.map((x) => x.score));
+    const cm = median(c.map((x) => x.score));
+    const lm = median(l.map((x) => x.score));
+
+    const reachedPct = Math.round((100 * g.filter((x) => x.reached).length) / g.length);
+    const clearPct = Math.round((100 * g.filter((x) => x.cleared).length) / g.length);
+
+    rows.push(
+      [
+        room.name.padEnd(16),
+        room.threshold,
+        gm,
+        cm,
+        cm > 0 ? (gm / cm).toFixed(2) : '--',
+        lm,
+        (lm / Math.max(gm, 1)).toFixed(2),
+        reachedPct + '%',
+        median(g.flatMap((x) => x.spreads)).toFixed(1),
+        median(g.map((x) => x.minLegal)),
+        clearPct + '%',
+      ].join('\t'),
+    );
+  }
+  console.log('\n' + rows.join('\n'));
 });
 
 /**

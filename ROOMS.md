@@ -196,7 +196,7 @@ has been measured by nothing.
 13d is a refinement. A deeper score-maximiser has exactly the same blindness as
 a shallow one — it still never walks to the door.
 
-- [ ] **13b. Teach the probe to play a room.** A room façade behind the same
+- [x] **13b. Teach the probe to play a room.** A room façade behind the same
       agent API the grid and hex paths already use: an agent still sees `Move[]`
       and returns one, but the moves are room-cell placements and a run is one
       room over its placement budget. `clear%` becomes the real condition —
@@ -1264,6 +1264,98 @@ joining it. Final room score 407, carried into `runningTotal` after
 leaving. `HOURGLASS_ROOM` stays bare, same reasoning items 8-12 already
 gave: one room proving each new tile kind is enough.
 
+**Item 13b.** All new code lives inside `tools/probe.test.ts` — no exported
+function in `src/` changed shape, and every primitive the room façade calls
+(`newExpedition`, `legalRoomCells`, `placeInRoom`, `scoreRoomPlacement`,
+`roomEndState`, `currentStructure`) already has its own unit tests in
+`expedition.test.ts`/`room.test.ts`/`scoring.test.ts`. So this item added no
+new `src/__tests__` coverage — the standing "every new scorer/tile/item
+effect gets unit tests" rule is about game logic, and there is none here to
+cover; the façade is wiring, not a new rule.
+
+The one real subtlety, worth stating because it is easy to get backwards: a
+room's `status` never becomes `'complete'` on its own — only `leaveRoom`
+does that, and item 13b's agents never call it (that is deliberately item
+13c's job: "every agent today picks by score alone... a room is cleared
+only by accident"). So a naive `while (s.status === 'playing')` loop, the
+same shape `play()` uses for grid/hex, would spin forever the moment a room
+is cleared with budget still unspent: `placeInRoom` itself no-ops once
+`placementsLeft <= 0`, but nothing flips `status` away from `'playing'` in
+that case, so the same (now-frozen) move list would keep getting re-picked.
+`playRoom`'s loop condition is `s.status === 'playing' && s.placementsLeft >
+0` specifically to make the budget itself the stopping rule, matching the
+item's own framing ("a run is one room over its placement budget") rather
+than relying on a status transition that, for a cleared room, never comes
+without item 13c's agent existing to trigger it.
+
+Followed from that: `roomEndState` only needs reading once, after the loop
+exits, not on every placement. Reach can only go false→true over a room
+(cards are never removed, so a structure's connectivity to an exit is
+monotone), and score only goes up (every scorer, including the two
+multiplier tiles, adds a non-negative amount — `cardContribution` is
+clamped at zero and a multiplier bonus is only applied when it is positive,
+per items 9-10's own decisions). So whatever `cleared` reads as at the end
+of the budget is the true answer for the whole room, not an artifact of
+stopping early.
+
+Reused `greedy` and `carelessAgent` unchanged in behaviour — both only
+touch `Move[]`, never the state argument — by making their previously-`AnyRun`
+parameter generic (`<S>(_s: S, m: Move[]) => ...`) rather than widening
+`AnyRun` itself to a three-way union with `ExpeditionState`. Widening
+`AnyRun` would have made every existing grid/hex call site (`play`,
+`lookahead`, `moves`) accept a room state they never actually receive, a
+looser type for no benefit; the generic keeps each call site exactly as
+narrow as it already was. `lookahead` itself could not be reused the same
+way — it closes over a structure-dispatched `api(cfg)` — so `roomLookahead`
+mirrors its shape one-for-one against `roomApi`/`roomMoves` instead of
+trying to force a shared implementation across a grid/hex board and an
+`ExpeditionState`, which do not share enough surface (no `targetScore`
+short-circuit to neutralise, for one — see below) to be worth unifying.
+
+Chose a **separate printed table** (`it('room comparison', ...)`, its own
+header) over adding a `roomReach%` column to the existing `ruleset
+comparison` table. The item's "leave the existing grid/hex rows
+byte-identical" is unambiguous under a separate table — the existing
+table's header, row-building code, and printed output are untouched by this
+item, `git diff` confirms zero lines changed inside `it('ruleset
+comparison', ...)` itself. Bolting a new column onto that table would have
+meant every existing row's printed line grew a trailing `--`, which is
+"change" by any literal reading even if the *values* stayed the same — a
+risk not worth taking for a distinction the item's own next sentence
+already resolves in a table-agnostic way ("the room rows get **a separate
+honest column**"). Named the two new columns `reached%` and `clear%` — the
+"two columns" the item's text asks for, reach and the reach-∧-score
+conjunction — and deliberately not `reach%`, so there is no chance of a
+reader conflating it with the existing edge-based proxy column one table up,
+which keeps its old name and meaning for the grid/hex rows exactly as the
+item requires.
+
+Did not call `writeMetrics` for the room rows, so `metrics.generated.ts`
+and `RulesetMetrics` (keyed by ruleset id, read by the existing Metrics
+page) are untouched by this item — confirmed with `git diff
+src/metrics.generated.ts` coming back empty after running `npm run probe`.
+Folding room numbers into that shape is explicitly item 23's job
+("Metrics for rooms... Rebuild the Metrics page"), not this one's, and
+inventing a placeholder shape now would be doing that item's design work
+early for a page that does not read rooms yet.
+
+Used `CONFIG` (the same default the real `RoomRunPage` plays with — cribbage
+counter, `roomPlacementBudget: 12`) rather than threading a config through
+`ROOM_SHAPES`, since a `Room` carries no `Config` of its own — the scoring
+lens, hand size and placement budget are expedition-level concerns, not
+room-shape ones, exactly as `RoomRunPage.tsx` already assumes.
+
+Both hand-authored rooms measured **100% reached and 100% cleared** for
+greedy over 20 seeds — expected and not yet meaningful: both rooms' 50-point
+thresholds are item 6's own placeholder ("gave both rooms the same round
+placeholder... not tuned"), and a score-only greedy agent placing up to 12
+cards, most of which touch the room's own two-cell-wide-at-most geometry,
+reaches *some* exit almost by construction. This is precisely the
+"accidental" clearing 13c exists to distinguish from a real one — the gap
+between greedy's and a goal-seeking agent's clear rate is 13c's finding, not
+this item's, and a 100%-vs-100% number here says nothing about whether the
+reach condition bites. Recorded as a number, not a verdict.
+
 ## Results log
 
 **Item 1.** `npm test` 203/203 (was 208 — 5 tests removed, all for formulas
@@ -1802,3 +1894,38 @@ item 7/8's stale-port note, run and discarded, not committed):
 
 No video — this item is a static "always visible, becomes collected" state
 flip, not movement or feel.
+
+**Item 13b.** `npm test` 335/335, unchanged from item 13 — this item added
+no code under `src/`, only `tools/probe.test.ts`. `npx tsc -b --noEmit`
+clean. `npm run smoke` 63/63, unchanged — no UI or gameplay behaviour
+changed, so there was nothing new for the smoke test to cover.
+
+`npm run probe` now runs two `it` blocks instead of one (54.8s total, up
+from ~51.6s for the ruleset table alone; the room table adds ~3.2s for two
+rooms × three agents × 20 seeds). The existing `ruleset comparison` table's
+30 rows are confirmed unchanged: `hex-sprawl` still reads spread 4.3 / lift
+1.12, matching this file's own recalibration table above, and `git diff
+src/metrics.generated.ts` after the run is empty.
+
+The new `room comparison` table, 20 seeds each, `CONFIG` defaults:
+
+```
+room            	threshold	greedy	careless	skill	2ply	lift	reached%	spread	minCells	clear%
+Round Room      	50	1027	681	1.51	1094	1.07	100%	1.6	4	100%
+Hourglass       	50	967	697	1.39	967	1.00	100%	1.3	1	100%
+```
+
+Both rooms clear 100% of the time for greedy, for the reason given in the
+decisions log: a 50-point placeholder threshold is trivial for a
+seven-figure greedy score, and a score-blind agent still stumbles onto an
+exit inside a room this small almost every run. Not a pass or fail on the
+room design — there is no goal-seeking agent yet to compare against (13c)
+and no calibrated threshold yet to test against (22). Recorded so 13c has a
+concrete "before" number: if a goal-seeking agent's clear rate comes back
+at 100% too, the gap the item is designed to surface would read as zero,
+which is itself informative.
+
+No screenshots and no video — this item changed a measurement tool, not
+anything rendered. `RoomRunPage`, `RoomBoardView` and every other UI file
+are untouched (`git diff --stat` shows only `tools/probe.test.ts`), so
+there is nothing new to point a browser at.
