@@ -195,6 +195,24 @@ const roomPanel = () => p.locator('[data-room-panel="Round Room"]');
 ok('room starts not reached', (await roomPanel().locator('[data-room-reach]').getAttribute('data-room-reach')) === 'false');
 ok('leave is disabled before clearing', await p.locator('[data-room-leave]').isDisabled());
 
+// The room also carries a real 'blocked' tile at (1,-1) (item 11) — rubble
+// that can never be placed on. Checked before any real placement happens, so
+// the check doesn't depend on timing elsewhere in the sequence. `placeInRoom`
+// is a no-op on a blocked cell, so selection is left as-is by the click —
+// deselect explicitly afterward so the placeHand0 helper below still finds
+// hand[0] unselected for its first real placement.
+ok(
+  'the blocked tile renders before anything is attempted on it',
+  (await p.locator('[data-room-cell="1,-1"]').getAttribute('data-room-tile')) === 'blocked',
+);
+await p.locator('[data-hand-index="0"]').click();
+await p.waitForTimeout(120);
+await p.locator('[data-room-cell="1,-1"]').click();
+await p.waitForTimeout(200);
+ok('clicking a blocked cell places nothing', (await p.locator('[data-room-cell="1,-1"] .card-face').count()) === 0);
+ok('the failed click spent no placement', (await text()).includes('placements left 12'));
+await p.locator('[data-hand-index="0"]').click(); // deselect
+
 async function placeHand0(cell) {
   await p.locator('[data-hand-index="0"]').click();
   await p.waitForTimeout(120);

@@ -166,7 +166,7 @@ stand on. Sized for 30 minutes each.
 - [x] **10. Bonus tiles: line multipliers.** Double the total of one line
       through the tile. The Scrabble word square, and a different decision —
       letter squares reward a big card, word squares reward a big line.
-- [ ] **11. Blocked tiles.** Rubble that cannot be placed on, so a room's shape
+- [x] **11. Blocked tiles.** Rubble that cannot be placed on, so a room's shape
       can constrain routes rather than just bound them. Cheap, and it makes
       reach a real problem.
 - [ ] **12. Traps.** Placing on or beside one costs you a card from hand or
@@ -905,6 +905,67 @@ decisions asks for stacking, and speculatively supporting it now would be
 doing item 22's (or a future item's) design work early for a combination
 nobody has asked to ship.
 
+**Item 11.** The simplest of the four tile kinds so far: `{ kind: 'blocked' }`
+has no fields at all, because there is nothing to configure about a cell
+that just cannot be played on — no multiplier number, no arbitrary label.
+Its one effect lives in `expedition.ts`'s `isLegalRoomPlacement`, as one new
+`tileAt(room.tiles, h)?.kind === 'blocked'` check placed right after the
+existing occupied-cell check (the two read almost identically: an occupied
+cell and a blocked cell are both "this coordinate is otherwise a real room
+cell but off-limits right now/forever"). `scoring.ts` needed one line, not a
+new code path: `tileLineBonus`'s switch grew a `'blocked'` case falling
+through to the same `return null` as `'marker'` — TypeScript's exhaustiveness
+check on the switch (no `default` branch) caught that this was needed the
+moment the union grew, which is exactly the kind of compiler-verified
+completeness the project has leaned on since item 9's `.label` → `tileBadge`
+rename.
+
+The one real design question, raised but not settled by the item's own text:
+should a `'blocked'` tile be barred from sitting on an exit cell, the way
+`makeRoom` already bars an exit from sitting outside the room or off the
+border? Considered adding that validation and rejected it, on the strength
+of item 8's own precedent test — "a tile can sit on an exit cell — a tile and
+a doorway are independent facts about a cell" — which was written generically,
+not scoped to markers. A room with more than one exit (both hand-authored
+rooms have two) stays clearable through its other exit even if one were
+blocked, so "blocked + exit" isn't automatically a broken room the way, say,
+an exit outside the room's own cells always is; it would only be a broken
+room if *every* exit were blocked, which is a stronger, room-wide invariant
+this item's "cheap" framing doesn't ask for and neither hand-authored room
+needs — `ROUND_ROOM`'s new blocked cell at `(1,-1)` isn't an exit or
+adjacent to either exit's only approach, so the question never actually
+arises there. Left as a documented non-decision rather than silently
+resolved either way, for whichever later item (room archetypes, item 19, or
+seeded generation, item 20) first needs to author a room where it matters.
+
+`ROUND_ROOM` gained one `{ kind: 'blocked' }` tile at `(1,-1)` — adjacent to
+the existing marker (`1,0`) and card-multiplier (`0,-1`) tiles, inside the
+radius-2 disc, and not part of the established five-move smoke sequence
+(`(2,0)` → `(1,0)` → `(0,0)` → `(0,-1)` → `(-1,-1)`), so that sequence's four
+hard-coded scores (7, 31, 73, 88, 115 from items 7-10) stay exactly what they
+were — this item only adds a *rejected* click, never a scored one, so there
+was nothing here that could perturb those numbers even in principle.
+`HOURGLASS_ROOM` stays bare, same reasoning items 8-10 already gave: one room
+proving each new tile kind is enough.
+
+Considered — and set aside — putting the blocked tile in the hourglass's neck
+instead, specifically to *dramatise* "makes reach a real problem" the way the
+item's own text puts it. Worked out on paper why that would prove less than
+it looks like it would: `structureReachesExit` only requires *some* connected
+piece of the structure to touch *some* exit (item 5's own design, not new
+here), and the hourglass already has one exit per chamber — blocking any of
+the three one-wide neck cells would fully sever the two chambers from each
+other (no lateral space to route around a one-cell-wide neck) but a
+structure built entirely within either chamber alone already reaches that
+chamber's own exit without ever needing the neck. So the dramatic-looking
+version would not actually demonstrate a constrained *route to an exit*, only
+an severed path between two independently-exitable halves — a different, less
+interesting claim than the one the item is making. A blocked cell that
+narrows the *approach* to a single exit inside one room, without another exit
+to fall back on, is the shape that would actually demonstrate the pathology —
+that is a room-authoring question for item 19/20, not something to force into
+today's two placeholder-threshold rooms.
+
 ## Results log
 
 **Item 1.** `npm test` 203/203 (was 208 — 5 tests removed, all for formulas
@@ -1313,3 +1374,33 @@ item 7/8's stale-port note, run and discarded, not committed):
 | full board after the fifth placement | all three tile kinds visible at once (`T8` marker under `5♣`, `×2` card multiplier under `K♠`, `L×2` line multiplier under `A♣`), header reading "Score 276 / 50 (met)" / "Cleared", and the log line "Last placement: A♣ at -1,-1 scored 115" — matching the offline calculation exactly |
 
 No video — this item changes what a placement is worth, not movement or feel.
+
+**Item 11.** `npm test` 305/305 (was 299 — 6 new: 3 in `tile.test.ts` for the
+`blocked` shape, its fixed `▓` badge, and coexistence with a `lineMultiplier`
+tile in the same room; 3 in `expedition.test.ts` covering `isLegalRoomPlacement`
+rejecting a blocked cell, `legalRoomCells` excluding it while leaving the rest
+of a small room's cells open, and `placeInRoom` being a true no-op on a
+blocked target — same object identity, no placement spent, board untouched).
+`npx tsc -b --noEmit` clean, including the exhaustiveness check on
+`scoring.ts`'s `tileLineBonus` switch catching the missing `'blocked'` case
+the moment the `Tile` union grew. `npm run smoke` 50/50 (was 47 — 3 new: the
+blocked tile renders before anything is attempted on it, clicking it with a
+card selected places nothing, and the placement budget is unaffected by the
+rejected click).
+
+Drove `RoomRunPage` in headless Chromium via `tools/browser.mjs` (throwaway
+script, same server-then-screenshot pattern as items 7-10, fresh port, run
+and discarded, not committed):
+
+| screenshot | shows |
+|---|---|
+| zoomed on `(1,-1)` | a solid dark rubble-tinted hex with a centred "▓" badge, visibly distinct from the pink border tint neighbouring cells carry |
+| full board | all four tile kinds visible at once — `T8` marker, `×2` card multiplier, `L×2` line multiplier, and the blocked cell as a flat black hex with no border/exit tint showing through it — after an attempted placement on it left the board still empty, "Score 0 / 50", and "placements left 12" unchanged |
+
+The dark fill was chosen to override the border/exit/interior tinting
+entirely rather than layer on top of it (a blocked cell inside the Round
+Room's ring gets the same flat black regardless of whether it happens to sit
+on the border), so a blocked cell reads as "not part of the playable shape"
+at a glance rather than as a fourth thing to notice on top of the existing
+three-tint system. No video — this item is a legality rejection, not
+movement or feel.

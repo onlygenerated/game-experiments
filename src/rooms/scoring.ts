@@ -83,6 +83,7 @@ function tileLineBonus(
       return bonus > 0 ? { bonus, label: `Line ×${tile.multiplier} tile` } : null;
     }
     case 'marker':
+    case 'blocked':
       return null;
   }
 }

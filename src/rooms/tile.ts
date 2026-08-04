@@ -17,13 +17,20 @@
  * item 10 adds `'lineMultiplier'` (the word square — doubles a line's whole
  * total instead of just this card's share of it; see `scoring.ts` for both
  * effects — this file only defines the shapes and their badge text).
+ *
+ * Item 11 adds `'blocked'` — rubble with no fields at all, since there is
+ * nothing to configure about a cell that simply cannot be played on. Unlike
+ * the multiplier kinds it has no scoring effect and touches no code in
+ * `scoring.ts`; its one effect is on legality, in `expedition.ts`'s
+ * `isLegalRoomPlacement`.
  */
 import { hexKey, type Hex } from '../hex/coords';
 
 export type Tile =
   | { kind: 'marker'; label: string }
   | { kind: 'cardMultiplier'; multiplier: number }
-  | { kind: 'lineMultiplier'; multiplier: number };
+  | { kind: 'lineMultiplier'; multiplier: number }
+  | { kind: 'blocked' };
 
 /** The short text a tile shows on the board — every kind needs one, but not
  * every kind stores it under the same field (a marker's is arbitrary text,
@@ -40,6 +47,8 @@ export function tileBadge(tile: Tile): string {
       return `×${tile.multiplier}`;
     case 'lineMultiplier':
       return `L×${tile.multiplier}`;
+    case 'blocked':
+      return '▓';
   }
 }
 

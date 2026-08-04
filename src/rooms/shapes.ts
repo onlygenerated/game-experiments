@@ -20,8 +20,9 @@
  * tile: the Scrabble letter square, doubling whatever the card placed on it
  * contributes to each line it joins. Item 10 adds one `'lineMultiplier'`
  * tile: the word square, doubling a whole line's total rather than just the
- * placed card's share of it. Blocked/trap/artifact tiles (items 11-13)
- * still have nothing here yet.
+ * placed card's share of it. Item 11 adds one `'blocked'` tile: rubble that
+ * can never be placed on. Trap/artifact tiles (items 12-13) still have
+ * nothing here yet.
  */
 import { hexesWithinRadius, type Hex } from '../hex/coords';
 import { makeRoom, type Room } from './room';
@@ -42,6 +43,7 @@ export const ROUND_ROOM: Room = makeRoom(
     [{ q: 1, r: 0 }, { kind: 'marker', label: 'T8' }],
     [{ q: 0, r: -1 }, { kind: 'cardMultiplier', multiplier: 2 }],
     [{ q: -1, r: -1 }, { kind: 'lineMultiplier', multiplier: 2 }],
+    [{ q: 1, r: -1 }, { kind: 'blocked' }],
   ],
 );
 

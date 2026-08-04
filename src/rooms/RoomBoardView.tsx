@@ -33,6 +33,12 @@ const POINTY_TOP = 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%
  * the badge sits. That is what "rendering underneath cards so a placed card
  * does not hide what it landed on" means here: nothing is stacked *behind*
  * the card, the two simply don't occupy the same pixels.
+ *
+ * Item 11 adds a fourth cell tint for `'blocked'` tiles — a dark stone fill
+ * that overrides the border/exit/interior colouring rather than layering on
+ * top of it, so a blocked cell reads as "not part of the playable shape"
+ * even where it sits on the border. It gets the same badge treatment as
+ * every other tile kind, no special-casing there.
  */
 export function RoomBoardView({
   room,
@@ -74,6 +80,7 @@ export function RoomBoardView({
         const card = board?.get(k);
         const occupied = card !== undefined || (structure?.has(k) ?? false);
         const tile = tileAt(room.tiles, h);
+        const blocked = tile?.kind === 'blocked';
         return (
           <div
             key={k}
@@ -89,19 +96,23 @@ export function RoomBoardView({
               width: 1.733 * size,
               height: 2 * size,
               clipPath: POINTY_TOP,
-              cursor: onCellClick ? 'pointer' : undefined,
-              background: exit
-                ? 'rgba(74,222,128,.35)'
-                : border
-                  ? 'rgba(244,114,182,.28)'
-                  : 'rgba(56,189,248,.16)',
-              boxShadow: occupied
-                ? 'inset 0 0 0 3px rgba(250,204,21,.9)'
+              cursor: onCellClick ? (blocked ? 'not-allowed' : 'pointer') : undefined,
+              background: blocked
+                ? 'rgba(41,37,36,.75)'
                 : exit
-                  ? 'inset 0 0 0 2px rgba(74,222,128,.85)'
+                  ? 'rgba(74,222,128,.35)'
                   : border
-                    ? 'inset 0 0 0 2px rgba(244,114,182,.75)'
-                    : 'inset 0 0 0 1px rgba(255,255,255,.08)',
+                    ? 'rgba(244,114,182,.28)'
+                    : 'rgba(56,189,248,.16)',
+              boxShadow: blocked
+                ? 'inset 0 0 0 2px rgba(120,113,108,.6)'
+                : occupied
+                  ? 'inset 0 0 0 3px rgba(250,204,21,.9)'
+                  : exit
+                    ? 'inset 0 0 0 2px rgba(74,222,128,.85)'
+                    : border
+                      ? 'inset 0 0 0 2px rgba(244,114,182,.75)'
+                      : 'inset 0 0 0 1px rgba(255,255,255,.08)',
             }}
           >
             {tile && (

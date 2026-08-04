@@ -18,6 +18,10 @@
  * through `scoring.ts`'s `scoreRoomPlacement` rather than `scoreHexPlacement`
  * directly as of item 9 — a thin wrapper that applies whatever the room's
  * tile at the placed cell does, without touching the shared scorer itself.
+ * Item 11's `'blocked'` tile is the other kind of legality check here: it has
+ * no scoring effect at all (nothing in `scoring.ts` reads it), it just makes
+ * `isLegalRoomPlacement` reject the cell outright, the same way an already-
+ * occupied cell is rejected.
  */
 import { CONFIG, type Config } from '../config';
 import { draw, shuffledDeck, type Card } from '../deck';
@@ -33,6 +37,7 @@ import {
 import { type Hex } from '../hex/coords';
 import { isInRoom, roomCells, roomEndState, type Room, type RoomEndState } from './room';
 import { scoreRoomPlacement } from './scoring';
+import { tileAt } from './tile';
 
 export type ExpeditionStatus = 'playing' | 'lost' | 'complete';
 
@@ -74,6 +79,7 @@ export function isLegalRoomPlacement(state: ExpeditionState, h: Hex, cfg: Config
   const room = currentRoom(state);
   if (!isInRoom(room, h)) return false;
   if (isHexOccupied(state.board, h)) return false;
+  if (tileAt(room.tiles, h)?.kind === 'blocked') return false;
   if (cfg.mechanics.requireAdjacency && !isHexBoardEmpty(state.board) && !hasHexNeighbor(state.board, h)) {
     return false;
   }

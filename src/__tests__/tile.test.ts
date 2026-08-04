@@ -129,3 +129,24 @@ describe('lineMultiplier tiles (item 10)', () => {
     expect(tileAt(room.tiles, east)?.kind).toBe('lineMultiplier');
   });
 });
+
+describe('blocked tiles (item 11)', () => {
+  it('stores and retrieves a blocked tile like any other kind', () => {
+    const tiles = withTile(emptyTileMap(), ORIGIN, { kind: 'blocked' });
+    expect(tileAt(tiles, ORIGIN)).toEqual({ kind: 'blocked' });
+  });
+
+  it('badges with a fixed glyph, since a blocked tile has no configurable field', () => {
+    expect(tileBadge({ kind: 'blocked' })).toBe('▓');
+  });
+
+  it('coexists with a lineMultiplier tile at a different cell in the same room', () => {
+    const east = { q: 1, r: 0 };
+    const room = makeRoom('Test', [ORIGIN, east], [], 0, [
+      [ORIGIN, { kind: 'lineMultiplier', multiplier: 2 }],
+      [east, { kind: 'blocked' }],
+    ]);
+    expect(tileAt(room.tiles, ORIGIN)?.kind).toBe('lineMultiplier');
+    expect(tileAt(room.tiles, east)?.kind).toBe('blocked');
+  });
+});

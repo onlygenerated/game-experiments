@@ -18,6 +18,13 @@ const SMALL_ROOM: Room = makeRoom('Small', hexesWithinRadius(1), [{ q: 1, r: 0 }
 const SECOND_ROOM: Room = makeRoom('Second', hexesWithinRadius(1), [{ q: -1, r: 0 }], 0);
 const EXIT: Hex = { q: 1, r: 0 };
 
+// A blocked cell (item 11) that is not the exit — the room stays clearable
+// through the exit; the blocked cell just isn't a legal placement target.
+const BLOCKED_CELL: Hex = { q: 0, r: -1 };
+const BLOCKED_ROOM: Room = makeRoom('Blocked', hexesWithinRadius(1), [{ q: 1, r: 0 }], 0, [
+  [BLOCKED_CELL, { kind: 'blocked' }],
+]);
+
 const cfg = (over: Partial<Config> = {}): Config => ({ ...CONFIG, ...over });
 
 describe('newExpedition', () => {
@@ -55,6 +62,18 @@ describe('isLegalRoomPlacement / legalRoomCells', () => {
     state = placeInRoom(state, 0, { q: -2, r: 0 }, c); // far west
     expect(isLegalRoomPlacement(state, { q: 2, r: 0 }, c)).toBe(false); // far east: not adjacent
     expect(isLegalRoomPlacement(state, { q: -1, r: 0 }, c)).toBe(true); // neighbours the occupied cell
+  });
+
+  it('rejects a blocked cell even though it is inside the room and unoccupied', () => {
+    const state = newExpedition('exp-1', [BLOCKED_ROOM], cfg());
+    expect(isLegalRoomPlacement(state, BLOCKED_CELL, cfg())).toBe(false);
+  });
+
+  it('excludes the blocked cell from legalRoomCells but keeps the rest of the room open', () => {
+    const state = newExpedition('exp-1', [BLOCKED_ROOM], cfg());
+    const legal = legalRoomCells(state, cfg());
+    expect(legal.some((h) => h.q === BLOCKED_CELL.q && h.r === BLOCKED_CELL.r)).toBe(false);
+    expect(legal).toHaveLength(BLOCKED_ROOM.cells.size - 1);
   });
 });
 
@@ -95,6 +114,14 @@ describe('placeInRoom', () => {
     expect(state.status).toBe('lost');
     const next = placeInRoom(state, 0, EXIT, c);
     expect(next).toBe(state);
+  });
+
+  it('is a no-op when the target cell is blocked, spending no placement and drawing no card', () => {
+    const state = newExpedition('exp-1', [BLOCKED_ROOM], cfg());
+    const next = placeInRoom(state, 0, BLOCKED_CELL, cfg());
+    expect(next).toBe(state);
+    expect(next.placementsLeft).toBe(state.placementsLeft);
+    expect(next.board.size).toBe(0);
   });
 });
 
