@@ -282,6 +282,9 @@ a shallow one — it still never walks to the door.
   it first — publishing 409s unless the current version has been read).
   **Never publish to the artifact on `main`**
   (`6613c961-31a5-4a7b-8c61-abeb633d25e6`) — that is the build being played.
+  **Favicon**: 🚪 — not recorded before item 18's firing (no prior entry here
+  and none discoverable in the fetched page itself), chosen fresh and written
+  down here so it stays stable across every later republish.
 - **Build**: `npx vite build`, then inline `dist/assets/*.css` and `*.js` into a
   single body-only HTML file. Nothing may reference an external host.
 - **Browser**: `import { launch } from './tools/browser.mjs'`. Never run
