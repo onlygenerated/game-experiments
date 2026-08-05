@@ -34,7 +34,7 @@ export interface RulesetMetrics {
 }
 
 export const METRICS_SEEDS = 20;
-export const METRICS_GENERATED = '2026-08-04';
+export const METRICS_GENERATED = '2026-08-05';
 
 export const METRICS: RulesetMetrics[] = [
   {id: "poker-baseline", target: 881, greedy: 881, careless: 600, skill: 1.47, twoPly: 910, lift: 1.03, reachPct: 71, spread: 1.7, minCells: 10, clearPct: 55},

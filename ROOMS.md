@@ -267,7 +267,7 @@ a shallow one — it still never walks to the door.
       the top of this file are pre-additive and are void — they measured a score
       model that no longer exists, and comparing a room against them would
       manufacture a pass out of the units changing.
-- [ ] **23. Metrics for rooms.** Rebuild the Metrics page around clear rate,
+- [x] **23. Metrics for rooms.** Rebuild the Metrics page around clear rate,
       reach pressure and spread, with the old hex sprawl as the reference line
       the way Poker Squares was before.
 
@@ -3385,3 +3385,153 @@ give, not three moves' worth); `item22-4-hourglass-cleared-1043-of-967.png`
 (Hourglass cleared with 2 of 12 placements still unspent, running total
 carried in from Round Room). No video — this item is about numbers and a
 threshold crossing, not movement or feel.
+
+**Item 23.** The first question was where the numbers should come from.
+`tools/probe.test.ts`'s own `room comparison` test (item 22) already computes
+every number this item needs — per-room greedy/careless/skill/2ply/lift/
+deep/deepLift/spread/minCells, plus reached%/clear%/goalClear%/gap — and
+prints them to a console table, but never captured them into a `measured`
+array the way `ruleset comparison` does for the flat page. Added exactly
+that: a `RoomMetricsRow` interface and a `measured: RoomMetricsRow[]` array
+pushed into inside the existing per-room loop (no new computation, same
+`gm`/`cm`/`lm`/`dm`/`reachedPct`/`clearPct`/`goalClearPct` values the printed
+row already uses), plus one more row for the `hex-sprawl` reference —
+pulled from `METRICS` (item 3's own artifact) for
+greedy/careless/skill/twoPly/lift/spread/minCells, with `deep`/`deepLift`
+computed fresh (same seeds and `beamSearch` agent `ruleset comparison`
+already uses for `hex-sprawl`) since item 13d's own decisions log flagged
+that `deep`/`deepLift` were deliberately kept out of `writeMetrics` — "that's
+item 23's job." `threshold`/`reachedPct`/`clearPct`/`goalClearPct`/`gap` are
+`null` on that row rather than a number or a zero: hex-sprawl has no exit and
+no threshold, so those questions have no answer for it, the same reasoning
+`RulesetMetrics.skill` already uses for "random play scored zero."
+
+A new `writeRoomMetrics()` function (mirroring `writeMetrics()` exactly —
+same `JSON.stringify`-then-reformat body, same generated-file-header
+convention) writes `src/roomMetrics.generated.ts`, a new file rather than
+widening `RulesetMetrics`/`metrics.generated.ts` itself: a room's
+reach-and-score conjunction is a different quantity from a flat ruleset's
+single target (ROOMS.md's own "what transfers" section already says this
+about `targetScore` generally), and cramming both shapes into one interface
+would mean every flat row grows four permanently-null columns or every room
+row grows a permanently-null `target`. Two small, honest shapes beat one
+overloaded one.
+
+`RoomsMetricsPage.tsx` is a new component, not a retrofit of `MetricsPage.tsx`
+in place — copied its structure deliberately (the `Bar` component, the
+sortable-column-buttons pattern, the sticky-first-column table, the
+per-column "meaning" footer) rather than trying to parametrise one component
+over two different `Column` key unions and two different generated-data
+shapes for a single item's worth of value. The reference-row highlight (sky
+tint, "reference" badge, pale tick inside every bar) is the exact visual
+language `MetricsPage` already uses for Poker Squares, carried over
+unchanged — the item's own text asks for hex sprawl to play that role, and
+inventing a different visual convention for the same concept would cost
+clarity for no reason.
+
+Column choice: the item names three ("clear rate, reach pressure and
+spread") as the ones to rebuild *around*, not the only three to show.
+Included seven more that item 22's own table already treats as the
+supporting cast for those three — goal-seeking clear % and its gap against
+plain clear rate (13c/22's own finding that the gap can go negative), 2-ply
+and deep lift (13d), skill gap, min cells, and threshold — on the reasoning
+that a metrics page which hid the numbers item 22's decisions log actually
+reasoned from would be strictly less useful than the log entry itself.
+Sorted by clear rate by default (the item's first-named metric), the four
+real rooms shown beneath the pinned reference row regardless of sort so it
+never disappears off the bottom of a rank-sorted table.
+
+One thing this page cannot claim: reach-pressure's exact number is not
+directly comparable between the reference row and the room rows the way
+spread and lift are. The flat table's `reachPct` measures "share of turns the
+best move ignored a reachable board edge" (high = bad, an edge stand-in for
+an exit that didn't exist yet at item 3); a room's `reachedPct` measures
+"share of runs whose structure reached a real exit at all" (high = good, a
+real exit). Putting both under one column key would silently conflate two
+opposite-direction quantities, so the reference row's `reachedPct` is `null`
+here — not reused from `METRICS`'s `reachPct` — and the page's own column
+description states plainly what it means for the four real rooms rather than
+implying a like-for-like comparison the numbers don't support. Spread and lift
+*are* directly comparable (same computation, same units, in both tables), so
+those two carry the actual pass/fail weight, matching item 22's own verdict.
+
+Ran `npm run probe` once to regenerate `src/metrics.generated.ts` (values
+identical to before this item, only `METRICS_GENERATED`'s date moved —
+confirmed with `git diff`, since the flat rulesets and their computation are
+untouched) and produce the new `src/roomMetrics.generated.ts`:
+
+    Round Room       clear 60% reach 100% spread ×1.6  2ply ×1.07 deep ×1.07
+    Hourglass        clear 50% reach 100% spread ×1.3  2ply ×1.00 deep ×1.04
+    Cribbage Vault   clear 50% reach 100% spread ×1.4  2ply ×1.01 deep ×1.09
+    Combo Bazaar     clear 50% reach  95% spread ×1.7  2ply ×1.15 deep ×1.18
+    Hex Sprawl (ref)   —      —     spread ×4.3  2ply ×1.12 deep ×1.16  skill ×2.80
+
+Every number matches item 22's own recorded verdict exactly (spread 4.3 →
+1.58 median, PASS; 2-ply lift 1.12 → 1.07, FAIL; deep lift 1.16 → 1.09,
+FAIL) — this item changes nothing about what was measured, only where it's
+displayed.
+
+`npm test` 490/490 (unchanged — no new game logic; a metrics page reads
+generated data, it doesn't compute any). `npx tsc -b --noEmit` clean.
+`npm run smoke` 123/123 (was 117 — 6 new): a "Room Metrics" section added
+after the existing room-graph closing segment, clicking the new header
+button and asserting the page opens, its three named columns (`Clear rate`,
+`Reach %`, `Choice spread`) render, the Hex Sprawl reference row is present,
+and all four calibration rooms are listed. (The pre-existing count read 116
+in item 22's own log entry; re-running that same build today reports 117
+with no code changes to `smoke.mjs` in between — a one-line discrepancy in
+a hand-counted number from a prior entry, not a regression introduced here,
+confirmed by diffing `tools/smoke.mjs` against item 22's commit.)
+
+Drove it live in headless Chromium via `tools/browser.mjs` (throwaway
+script, run and discarded, not committed): `item23-room-metrics.png` shows
+the page at 1500×1100 with the Hex Sprawl reference row pinned at the top
+(sky-tinted, badged) above the four calibration rooms sorted by clear rate.
+Noticed the table overflows its panel even above the 1280px breakpoint where
+`MetricsPage`'s own "scroll sideways" hint hides itself (measured
+`scrollWidth` 1191 vs `clientWidth` 990 at 1500px viewport width) — this
+page has three more columns than the flat one (goal-seeking clear %, reach
+gap, threshold), so the same breakpoint choice doesn't transfer. Fixed by
+dropping the `min-[1280px]:hidden` class so the hint stays visible at every
+width on this page specifically, rather than copying `MetricsPage`'s
+breakpoint uncritically; confirmed with a second screenshot
+(`item23-room-metrics-scrolled.png`) that scrolling the panel reveals Skill
+gap, Min cells and Threshold intact and correctly valued (Hex Sprawl's skill
+gap reads ×2.80, matching `METRICS`'s own recorded value for that ruleset).
+No video — this item is about a data page, not movement or feel.
+
+Every backlog item is now ticked.
+
+## Status: backlog complete
+
+All 23 items are done as of item 23's firing (2026-08-05). Rooms is a
+playable second mode alongside the untouched existing game: additive
+scoring on a hex board, hand-authored and seeded room shapes with exits and
+a score threshold, five tile kinds, five carried items with temporary/
+permanent distinction, room archetypes, a multi-exit room graph, a probe
+that plays a room the way the flat game's probe plays a run, and a Room
+Metrics page reporting clear rate, reach pressure and choice spread against
+the pre-Rooms hex-sprawl baseline.
+
+The calibration pass (item 22) delivered a mixed, honestly-reported verdict:
+choice spread is fixed decisively (hex-sprawl's 4.3 down to a median 1.58
+across the four archetypes — PASS), but lookahead value is *lower* than open
+sprawl on both 2-ply (1.12 → 1.07) and deep search (1.16 → 1.09) — FAIL on
+both. Item 22's own reasoning for why these two results are connected, not
+contradictory, is in its decisions log entry above. This was measured once,
+under one weight for the goal-seeking agent and four hand-authored/generated
+archetypes — a real finding about these rooms as built, not a proof the
+additive-with-tiles model can't do better with different rooms or a
+per-room-tuned agent.
+
+`npm test` 490/490, `npx tsc -b --noEmit` clean, `npm run smoke` 123/123 —
+all green as of this firing. Nothing in the existing game (the 30 flat
+rulesets, their metrics, the sprawl/grid modes) was touched beyond item 1's
+sanctioned, tested scoring collapse.
+
+No new backlog items are being invented here per the standing instruction.
+Whoever picks this up next should read item 22's verdict and this summary
+first: the open questions are design questions (is a 5-10% lift shortfall
+against open sprawl an acceptable trade for a 63% spread reduction, should
+`goalSeekingAgent`'s weight be per-room rather than one constant, would
+different room shapes change the deep-lift result), not engineering ones.

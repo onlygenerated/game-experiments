@@ -43,6 +43,7 @@ import { newHexGame, placeHexCard, type HexGameState } from '../src/hex/game';
 import { hexDistance, hexKey, ORIGIN, parseHex, type Hex } from '../src/hex/coords';
 import { hashSeed, mulberry32 } from '../src/deck';
 import { RULESETS } from '../src/rulesets';
+import { METRICS } from '../src/metrics.generated';
 import {
   currentStructure,
   legalRoomCells,
@@ -678,6 +679,38 @@ const CHOSEN_W = 10;
  */
 const CALIBRATION_ROOMS: readonly Room[] = [...ROOM_SHAPES, ...ARCHETYPE_ROOMS];
 
+/**
+ * Item 23: the shape `writeRoomMetrics` emits, one row per calibration room
+ * plus a `reference: true` row for `hex-sprawl` — the same "highlighted
+ * baseline row" idea the flat table already uses for Poker Squares (see
+ * `MetricsPage.tsx`'s `REFERENCE`), not a new concept. Kept as its own
+ * interface rather than widening `RulesetMetrics`: a room's `threshold` and
+ * `reached%`/`clear%`/`goalClear%`/`gap` describe a reach-and-score
+ * conjunction that a flat ruleset simply does not have, and forcing one
+ * shape to cover both would mean every flat row grows four columns that are
+ * always null. The reference row leaves those four `null` for the same
+ * reason: hex-sprawl has no exit and no threshold, so the question "did it
+ * reach one" has no answer for it, not a false one.
+ */
+interface RoomMetricsRow {
+  label: string;
+  reference: boolean;
+  threshold: number | null;
+  greedy: number;
+  careless: number;
+  skill: number | null;
+  twoPly: number;
+  lift: number;
+  deep: number;
+  deepLift: number;
+  reachedPct: number | null;
+  spread: number;
+  minCells: number;
+  clearPct: number | null;
+  goalClearPct: number | null;
+  gap: number | null;
+}
+
 it('room comparison', () => {
   const seeds = Array.from({ length: SEEDS }, (_, i) => `probe-room-${i}`);
   const rows = [
@@ -700,6 +733,7 @@ it('room comparison', () => {
     ].join('\t'),
   ];
   const perRoom: { spread: number; lift: number; deepLift: number }[] = [];
+  const measured: RoomMetricsRow[] = [];
 
   for (const room of CALIBRATION_ROOMS) {
     const g = seeds.map((s) => playRoom(room, CONFIG, s, greedy));
@@ -748,6 +782,25 @@ it('room comparison', () => {
       lift: lm / Math.max(gm, 1),
       deepLift: dm / Math.max(gm, 1),
     });
+
+    measured.push({
+      label: room.name,
+      reference: false,
+      threshold: room.threshold,
+      greedy: gm,
+      careless: cm,
+      skill: cm > 0 ? Number((gm / cm).toFixed(2)) : null,
+      twoPly: lm,
+      lift: Number((lm / Math.max(gm, 1)).toFixed(2)),
+      deep: dm,
+      deepLift: Number((dm / Math.max(gm, 1)).toFixed(2)),
+      reachedPct,
+      spread: Number(median(g.flatMap((x) => x.spreads)).toFixed(1)),
+      minCells: median(g.map((x) => x.minLegal)),
+      clearPct,
+      goalClearPct,
+      gap: goalClearPct - clearPct,
+    });
   }
   console.log('\n' + rows.join('\n'));
 
@@ -769,7 +822,8 @@ it('room comparison', () => {
   const hg = hexSeeds.map((s) => play(hexSprawlCfg, s, greedy));
   const hd = hexSeeds.map((s) => play(hexSprawlCfg, s, beamSearch(hexSprawlCfg)));
   const hexSprawlGm = median(hg.map((x) => x.score));
-  const hexSprawlDeepLift = median(hd.map((x) => x.score)) / Math.max(hexSprawlGm, 1);
+  const hexSprawlDm = median(hd.map((x) => x.score));
+  const hexSprawlDeepLift = hexSprawlDm / Math.max(hexSprawlGm, 1);
 
   // The four archetypes' own per-room spread/lift/deepLift, reduced to one
   // comparable figure the same way any of the individual room numbers above
@@ -807,6 +861,36 @@ it('room comparison', () => {
     ].join('\t'),
   ];
   console.log('\nitem 22 verdict\n' + verdictRows.join('\n'));
+
+  // Item 23: the reference row itself. Pulled from the flat table's own
+  // recorded entry (`METRICS`, item 3's artifact) rather than re-measured,
+  // except `deep`/`deepLift` — item 13d deliberately never wrote those into
+  // `writeMetrics` ("that's item 23's job" — see the comment there), so this
+  // is the one place they get computed, same seeds and agent the flat
+  // `ruleset comparison` test above uses for `hex-sprawl`.
+  const hexSprawlRow = METRICS.find((m) => m.id === 'hex-sprawl')!;
+  measured.push({
+    label: 'Hex Sprawl (reference)',
+    reference: true,
+    // Null, not a number: hex-sprawl has no exit and no threshold, so "did it
+    // reach one" / "did it clear" have no answer here, not a false one.
+    threshold: null,
+    greedy: hexSprawlGm,
+    careless: hexSprawlRow.careless,
+    skill: hexSprawlRow.skill,
+    twoPly: hexSprawlRow.twoPly,
+    lift: hexSprawlRow.lift,
+    deep: hexSprawlDm,
+    deepLift: Number(hexSprawlDeepLift.toFixed(2)),
+    reachedPct: null,
+    spread: hexSprawlRow.spread,
+    minCells: hexSprawlRow.minCells,
+    clearPct: null,
+    goalClearPct: null,
+    gap: null,
+  });
+
+  writeRoomMetrics(measured);
 });
 
 /**
@@ -862,6 +946,78 @@ export const METRICS_SEEDS = ${SEEDS};
 export const METRICS_GENERATED = '${new Date().toISOString().slice(0, 10)}';
 
 export const METRICS: RulesetMetrics[] = [
+${body},
+];
+`,
+  );
+}
+
+/**
+ * Item 23's counterpart to `writeMetrics`, for `RoomsMetricsPage`. A separate
+ * generated file rather than folding rooms into `METRICS`/`RulesetMetrics`:
+ * a room's `threshold`/`reachedPct`/`clearPct`/`goalClearPct`/`gap` describe
+ * a reach-and-score conjunction no flat ruleset has, and every flat row
+ * growing four permanently-null columns (or every room row growing a
+ * permanently-null `target`) would be worse than two small, honest shapes.
+ */
+function writeRoomMetrics(measured: RoomMetricsRow[]) {
+  const body = measured
+    .map((m) => '  ' + JSON.stringify(m).replace(/"(\w+)":/g, '$1: ').replace(/,(?=\S)/g, ', '))
+    .join(',\n');
+
+  writeFileSync(
+    new URL('../src/roomMetrics.generated.ts', import.meta.url),
+    `/**
+ * GENERATED by \`npm run probe\` — do not edit by hand.
+ *
+ * Medians over ${SEEDS} seeds, each room played over its own placement
+ * budget. One row per calibration room (item 19's archetypes plus the two
+ * hand-authored shapes), plus a single \`reference: true\` row for
+ * \`hex-sprawl\` — the pre-Rooms baseline this design is measured against,
+ * the same role Poker Squares plays in the flat table (\`metrics.generated.ts\`).
+ */
+
+export interface RoomMetricsRow {
+  label: string;
+  /** True for exactly one row: the hex-sprawl baseline, not a calibration room. */
+  reference: boolean;
+  /** Null on the reference row — hex-sprawl has no exit or threshold. */
+  threshold: number | null;
+  /** Median final score for the best-move-now agent. */
+  greedy: number;
+  /** Median for an agent picking a mid-quality move each turn. */
+  careless: number;
+  /** greedy / careless. Null when random play scores 0. */
+  skill: number | null;
+  twoPly: number;
+  /** twoPly / greedy — how much planning one move ahead is worth. */
+  lift: number;
+  deep: number;
+  /** deep / greedy — item 13d's beam search, beside 2-ply lift, not replacing it. */
+  deepLift: number;
+  /** Share of runs (greedy agent) whose structure reached an exit. Null on
+   * the reference row: hex-sprawl has no exit to reach. */
+  reachedPct: number | null;
+  /** Best move / median move on a turn. Lower is better — a room's whole
+   * point is to flatten this against the flat game's own farmed pockets. */
+  spread: number;
+  /** Fewest legal cells seen after turn 5. */
+  minCells: number;
+  /** Share of runs (greedy agent) that reached an exit AND met the score
+   * threshold. Null on the reference row — there is no threshold to meet. */
+  clearPct: number | null;
+  /** Same as clearPct, but for the goal-seeking agent (item 13c) that also
+   * values getting closer to an exit. Null on the reference row. */
+  goalClearPct: number | null;
+  /** goalClearPct - clearPct — how much the reach condition changes outcomes
+   * once something actually tries to use it. Null on the reference row. */
+  gap: number | null;
+}
+
+export const ROOM_METRICS_SEEDS = ${SEEDS};
+export const ROOM_METRICS_GENERATED = '${new Date().toISOString().slice(0, 10)}';
+
+export const ROOM_METRICS: RoomMetricsRow[] = [
 ${body},
 ];
 `,

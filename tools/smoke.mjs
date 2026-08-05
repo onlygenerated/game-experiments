@@ -685,6 +685,26 @@ ok(
 await p.locator('button:has-text("Back to the board")').click();
 await p.waitForTimeout(300);
 
+// --- item 23: the room metrics page -----------------------------------------
+//
+// Rebuilds the Metrics page's own idea (clear rate, reach pressure, spread,
+// a highlighted baseline row) for rooms instead of flat rulesets. Hex Sprawl
+// plays the reference-row part Poker Squares plays on the flat page.
+await p.locator('button:has-text("Room Metrics"):visible').first().click();
+await p.waitForTimeout(400);
+const roomMetricsText = await text();
+ok('room metrics page opens', roomMetricsText.includes('Room Metrics'));
+ok('clear rate column shown', roomMetricsText.includes('Clear rate'));
+ok('reach pressure column shown', roomMetricsText.includes('Reach %'));
+ok('choice spread column shown', roomMetricsText.includes('Choice spread'));
+ok('hex sprawl reference row shown', roomMetricsText.includes('Hex Sprawl'));
+ok(
+  'all four calibration rooms listed',
+  ['Round Room', 'Hourglass', 'Cribbage Vault', 'Combo Bazaar'].every((n) => roomMetricsText.includes(n)),
+);
+await p.locator('button:has-text("Back to the board")').click();
+await p.waitForTimeout(300);
+
 await p.screenshot({ path: `${SP}/smoke-final.png` });
 
 // A 404 for the favicon is expected in the preview server and is not a fault.
