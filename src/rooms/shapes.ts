@@ -48,6 +48,7 @@
  * become real numbers.
  */
 import { hexesWithinRadius, type Hex } from '../hex/coords';
+import { makeRoomGraph, type RoomGraph } from './graph';
 import { makeRoom, type Room } from './room';
 
 /** The disc the old "everything within radius N" sprawl used — the baseline
@@ -160,3 +161,30 @@ export const COMBO_BAZAAR_ROOM: Room = makeRoom(
 /** Item 19's two counter/density/threshold archetypes, kept out of the
  * default `ROOM_SHAPES` sequence — see the file header for why. */
 export const ARCHETYPE_ROOMS: readonly Room[] = [CRIBBAGE_VAULT_ROOM, COMBO_BAZAAR_ROOM];
+
+/**
+ * Item 21: the room graph `RoomRunPage`'s default run actually plays now —
+ * `ROOM_SHAPES` above stays exactly as it was (unchanged, still exported,
+ * still what `generate.test.ts`'s own fixture-preservation check counts on)
+ * since a graph-less two-room list is still a real, useful thing to have,
+ * not something this item replaces.
+ *
+ * Round Room's two exits now lead somewhere genuinely different from each
+ * other. Its east doorway — the one every pre-item-21 smoke sequence and
+ * test already reaches — still leads to the Hourglass, preserving that
+ * entire established path unchanged. Its west doorway, never exercised by
+ * any existing test, now leads to the Cribbage Vault instead of nowhere —
+ * reusing item 19's own archetype room rather than authoring a third fresh
+ * shape, since this item is about routing, not new content, and a room that
+ * scores under its own cribbage-only counters (unlike the Hourglass, which
+ * has none and falls back to the run's own `Config`) makes the two branches
+ * visibly different once you're inside them, not just differently named.
+ * Both destinations are leaves — no outgoing routes of their own — so
+ * leaving through either one completes the expedition, the same "ran off
+ * the end" case a flat list's last room always was.
+ */
+export const DEFAULT_ROOM_LIST: readonly Room[] = [ROUND_ROOM, HOURGLASS_ROOM, CRIBBAGE_VAULT_ROOM];
+export const DEFAULT_ROOM_GRAPH: RoomGraph = makeRoomGraph(DEFAULT_ROOM_LIST, [
+  { from: 0, exit: { q: 2, r: 0 }, to: 1 },
+  { from: 0, exit: { q: -2, r: 0 }, to: 2 },
+]);

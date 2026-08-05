@@ -14,6 +14,7 @@ import {
   roomExits,
   roomInterior,
   roomTraps,
+  structureReachedExits,
   structureReachesExit,
   tileDensity,
   trapCellsNear,
@@ -230,6 +231,42 @@ describe('structureReachesExit', () => {
     const noExitRoom = makeRoom('NoExits', hexesWithinRadius(1));
     const structure = new Set(hexesWithinRadius(1).map(hexKey));
     expect(structureReachesExit(noExitRoom, structure)).toBe(false);
+  });
+});
+
+// Item 21: the room graph needs to know *which* exits a structure reaches,
+// not just whether it reaches one at all, so route choice has something to
+// choose between.
+describe('structureReachedExits (item 21)', () => {
+  const room = makeRoom('Test', hexesWithinRadius(2), [
+    { q: 2, r: 0 },
+    { q: -2, r: 0 },
+  ]);
+
+  it('is empty for an empty structure', () => {
+    expect(structureReachedExits(room, new Set())).toEqual([]);
+  });
+
+  it('lists exactly the one exit a structure reaches', () => {
+    const structure = new Set([hexKey(ORIGIN), hexKey({ q: 1, r: 0 }), hexKey({ q: 2, r: 0 })]);
+    expect(structureReachedExits(room, structure).map(hexKey)).toEqual(['2,0']);
+  });
+
+  it('lists both exits when a single connected structure spans the room', () => {
+    const chain = [
+      { q: 2, r: 0 },
+      { q: 1, r: 0 },
+      ORIGIN,
+      { q: -1, r: 0 },
+      { q: -2, r: 0 },
+    ];
+    const reached = structureReachedExits(room, new Set(chain.map(hexKey))).map(hexKey);
+    expect(reached.sort()).toEqual(['-2,0', '2,0']);
+  });
+
+  it('agrees with structureReachesExit on whether anything was reached', () => {
+    const structure = new Set([hexKey({ q: 2, r: 0 })]);
+    expect(structureReachedExits(room, structure).length > 0).toBe(structureReachesExit(room, structure));
   });
 });
 

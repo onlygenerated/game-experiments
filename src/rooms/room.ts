@@ -64,6 +64,13 @@
  * placement: throws at construction time if either id names an unknown
  * lens, rather than deferring that failure to the first placement scored
  * inside the room.
+ *
+ * Item 21 adds `structureReachedExits` — see its own doc comment below —
+ * for the room graph (`graph.ts`) to route on. `Room` itself gains nothing
+ * new here: a room's exits already say nothing about what lies past them,
+ * and that stays true; where a given exit leads is `graph.ts`'s concern,
+ * kept out of `Room` the same way `Room` already keeps no notion of "the
+ * next room" or a fixed sequence.
  */
 import { hexKey, hexNeighbors, parseHex, type Hex } from '../hex/coords';
 import { getLens } from '../lens';
@@ -198,22 +205,28 @@ export function artifactCellsNear(room: Room, h: Hex): Hex[] {
 }
 
 /**
- * True if some connected piece of the placed structure — cells occupied by a
- * card, linked to each other by hex adjacency — includes an exit. Walking
- * connectivity rather than testing set membership directly matters once a
- * structure can be more than one blob: an isolated stray placement
- * elsewhere on the board must not be credited just because *some* cell
- * somewhere is occupied, and a piece that reaches an exit must not be
- * penalised for a separate, disconnected piece existing.
+ * Every exit the placed structure actually reaches — cells occupied by a
+ * card, linked to each other by hex adjacency, whichever connected piece(s)
+ * include one. Walking connectivity rather than testing set membership
+ * directly matters once a structure can be more than one blob: an isolated
+ * stray placement elsewhere on the board must not be credited just because
+ * *some* cell somewhere is occupied, and a piece that reaches an exit must
+ * not be penalised for a separate, disconnected piece existing.
  *
  * `structure` is a set of hex keys, the same shape `HexBoard` keys already
  * use — this stays independent of `HexBoard`/`Card` on purpose, since no
  * room has an engine wired to it yet (item 7).
+ *
+ * Item 21 needs the specific exits, not just whether any exist: once a
+ * room's doors can lead to different next rooms (`graph.ts`), two exits
+ * are no longer interchangeable ways to say "done" — `leaveRoom` has to
+ * know which doorway a structure is actually standing at.
  */
-export function structureReachesExit(room: Room, structure: ReadonlySet<string>): boolean {
-  if (room.exits.size === 0) return false;
+export function structureReachedExits(room: Room, structure: ReadonlySet<string>): Hex[] {
+  if (room.exits.size === 0) return [];
 
   const seen = new Set<string>();
+  const reached: Hex[] = [];
   for (const startKey of structure) {
     if (seen.has(startKey)) continue;
 
@@ -233,10 +246,19 @@ export function structureReachesExit(room: Room, structure: ReadonlySet<string>)
       }
     }
 
-    if (component.some((k) => room.exits.has(k))) return true;
+    for (const k of component) {
+      if (room.exits.has(k)) reached.push(parseHex(k));
+    }
   }
 
-  return false;
+  return reached;
+}
+
+/** True if the structure reaches at least one exit — `roomEndState`'s own
+ * reach condition, expressed on top of `structureReachedExits` so there is
+ * exactly one connectivity walk in this file, not two that could drift. */
+export function structureReachesExit(room: Room, structure: ReadonlySet<string>): boolean {
+  return structureReachedExits(room, structure).length > 0;
 }
 
 /** Reach and score, reported separately, plus their conjunction. */

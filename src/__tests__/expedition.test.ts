@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG, type Config } from '../config';
 import { ORIGIN, hexKey, hexesWithinRadius, type Hex } from '../hex/coords';
+import { makeRoomGraph } from '../rooms/graph';
 import { makeRoom, type Room } from '../rooms/room';
 import { COMBO_BAZAAR_ROOM, CRIBBAGE_VAULT_ROOM } from '../rooms/shapes';
 import {
   addItem,
   currentEndState,
   currentRoom,
+  graphDestinations,
   isLegalRoomPlacement,
   leaveRoom,
   legalRoomCells,
@@ -717,5 +719,99 @@ describe('room counters (item 19)', () => {
     const combo = placeInRoom(newExpedition('exp-1', [COMBO_BAZAAR_ROOM], runCfg), 0, UNTILED_CELL, runCfg);
     expect(combo.log[0].card).toEqual(single.log[0].card); // identical seed and draw
     expect(combo.score).toBeGreaterThan(single.score);
+  });
+});
+
+// Item 21: a room graph — different exits of the same room can lead to
+// different next rooms. `WIDE_ROOM` has opposite exits far enough apart
+// that a structure can be built to reach either one alone, or (by walking
+// a connected chain all the way across) both at once, which is exactly the
+// ambiguous case route choice has to reject rather than guess at.
+describe('room graph and route choice (item 21)', () => {
+  const EAST_EXIT: Hex = { q: 2, r: 0 };
+  const WEST_EXIT: Hex = { q: -2, r: 0 };
+  const WIDE_ROOM: Room = makeRoom('Wide', hexesWithinRadius(2), [EAST_EXIT, WEST_EXIT], 0);
+  const DEST_A: Room = makeRoom('DestA', hexesWithinRadius(1), [{ q: 1, r: 0 }], 0);
+  const DEST_B: Room = makeRoom('DestB', hexesWithinRadius(1), [{ q: 1, r: 0 }], 0);
+
+  const branchGraph = makeRoomGraph([WIDE_ROOM, DEST_A, DEST_B], [
+    { from: 0, exit: EAST_EXIT, to: 1 },
+    { from: 0, exit: WEST_EXIT, to: 2 },
+  ]);
+
+  it('graphDestinations is null for a graph-less expedition', () => {
+    const state = newExpedition('exp-1', [SMALL_ROOM], cfg());
+    expect(graphDestinations(state)).toBeNull();
+  });
+
+  it('graphDestinations is null once inside a leaf room (no outgoing routes)', () => {
+    const c = cfg({ roomPlacementBudget: 5 });
+    let state = newExpedition('exp-1', [WIDE_ROOM, DEST_A, DEST_B], c, branchGraph);
+    state = placeInRoom(state, 0, EAST_EXIT, c);
+    state = leaveRoom(state, c);
+    expect(currentRoom(state)).toBe(DEST_A);
+    expect(graphDestinations(state)).toBeNull();
+  });
+
+  it('graphDestinations previews every route, flagging only the reached one', () => {
+    const c = cfg({ roomPlacementBudget: 5 });
+    let state = newExpedition('exp-1', [WIDE_ROOM, DEST_A, DEST_B], c, branchGraph);
+    state = placeInRoom(state, 0, EAST_EXIT, c);
+    const destinations = graphDestinations(state)!;
+    expect(destinations).toHaveLength(2);
+    const byExit = new Map(destinations.map((d) => [hexKey(d.exit), d]));
+    expect(byExit.get(hexKey(EAST_EXIT))).toMatchObject({ room: DEST_A, reached: true });
+    expect(byExit.get(hexKey(WEST_EXIT))).toMatchObject({ room: DEST_B, reached: false });
+  });
+
+  it('leaveRoom auto-selects the sole reached exit when none is named', () => {
+    const c = cfg({ roomPlacementBudget: 5 });
+    let state = newExpedition('exp-1', [WIDE_ROOM, DEST_A, DEST_B], c, branchGraph);
+    state = placeInRoom(state, 0, WEST_EXIT, c);
+    const next = leaveRoom(state, c);
+    expect(currentRoom(next)).toBe(DEST_B);
+  });
+
+  it('leaveRoom no-ops when the named exit has not actually been reached', () => {
+    const c = cfg({ roomPlacementBudget: 5 });
+    let state = newExpedition('exp-1', [WIDE_ROOM, DEST_A, DEST_B], c, branchGraph);
+    state = placeInRoom(state, 0, EAST_EXIT, c); // only east reached
+    const next = leaveRoom(state, c, WEST_EXIT);
+    expect(next).toBe(state);
+  });
+
+  it('leaveRoom no-ops on an ambiguous choice — two routed exits reached, none named', () => {
+    const c = cfg({ roomPlacementBudget: 6 });
+    let state = newExpedition('exp-1', [WIDE_ROOM, DEST_A, DEST_B], c, branchGraph);
+    state = placeInRoom(state, 0, ORIGIN, c);
+    state = placeInRoom(state, 0, { q: 1, r: 0 }, c);
+    state = placeInRoom(state, 0, EAST_EXIT, c);
+    state = placeInRoom(state, 0, { q: -1, r: 0 }, c);
+    state = placeInRoom(state, 0, WEST_EXIT, c);
+    expect(currentEndState(state).cleared).toBe(true);
+
+    expect(leaveRoom(state, c)).toBe(state);
+
+    const viaEast = leaveRoom(state, c, EAST_EXIT);
+    expect(currentRoom(viaEast)).toBe(DEST_A);
+    const viaWest = leaveRoom(state, c, WEST_EXIT);
+    expect(currentRoom(viaWest)).toBe(DEST_B);
+  });
+
+  it('completes the expedition when the specific reached exit has no route registered', () => {
+    const c = cfg({ roomPlacementBudget: 5 });
+    const eastOnlyGraph = makeRoomGraph([WIDE_ROOM, DEST_A], [{ from: 0, exit: EAST_EXIT, to: 1 }]);
+    let state = newExpedition('exp-1', [WIDE_ROOM, DEST_A], c, eastOnlyGraph);
+    state = placeInRoom(state, 0, WEST_EXIT, c); // reached, but this exit has no route
+    const next = leaveRoom(state, c);
+    expect(next.status).toBe('complete');
+  });
+
+  it('a graph-less expedition ignores an exit argument, exactly its pre-item-21 behaviour', () => {
+    const c = cfg({ roomPlacementBudget: 5 });
+    let state = newExpedition('exp-1', [SMALL_ROOM, SECOND_ROOM], c);
+    state = placeInRoom(state, 0, EXIT, c);
+    const next = leaveRoom(state, c, { q: 99, r: 99 }); // not even a real cell — ignored
+    expect(currentRoom(next)).toBe(SECOND_ROOM);
   });
 });

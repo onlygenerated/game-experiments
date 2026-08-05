@@ -183,7 +183,15 @@ ok('combo preset scores under both counters', (await text()).toLowerCase().inclu
 // not require using every placement, only clearing the room.
 await p.locator('button:has-text("Rooms"):visible').first().click();
 await p.waitForTimeout(400);
-ok('rooms page opens', (await text()).includes('Room 1 / 2'));
+// Item 21: the default run is now a 3-room graph (Round Room -> Hourglass or
+// Cribbage Vault, depending on which of Round Room's two exits is reached),
+// not the 2-room flat list items 7-20 built against — hence "/ 3" rather
+// than the old "/ 2". Every placement below still lands on the *east* exit
+// only, the one path item 21's graph routes to the Hourglass, so the entire
+// established sequence through item 20 (scores, tiles, items) is otherwise
+// untouched; the room graph's west branch (-> Cribbage Vault) gets its own,
+// separate demonstration near the end of this file.
+ok('rooms page opens', (await text()).includes('Room 1 / 3'));
 ok('round room renders', (await p.locator('[data-room="Round Room"] [data-room-cell]').count()) > 0);
 ok(
   'round room exit is marked',
@@ -352,9 +360,18 @@ ok(
   (await p.locator('[data-expedition-items]').innerText()) === 'Items: Temporary marker (this room only)',
 );
 
+// Item 21: the leave button itself now previews its destination — "something
+// known about each [next room] before you commit" — rather than an
+// unlabelled "leave through exit". Only one button renders here since only
+// the east exit has been reached; the west exit's own destination
+// (Cribbage Vault) gets its own demonstration further down.
+ok(
+  'the leave button previews its destination before being clicked',
+  (await p.locator('[data-room-leave]').getAttribute('data-room-leave-to')) === 'Hourglass',
+);
 await p.locator('[data-room-leave]').click();
 await p.waitForTimeout(300);
-ok('leaving moves to the next room', (await text()).includes('Room 2 / 2'));
+ok('leaving moves to the next room', (await text()).includes('Room 2 / 3'));
 ok('the next room is the Hourglass', (await p.locator('[data-room="Hourglass"] [data-room-cell]').count()) > 0);
 ok('the new room starts unreached and unscored', (await p.locator('[data-room-reach]').getAttribute('data-room-reach')) === 'false');
 ok(
@@ -404,7 +421,7 @@ ok(
 // "New expedition" resets to a brand-new Round Room with an empty inventory.
 await p.locator('button:has-text("New expedition")').click();
 await p.waitForTimeout(300);
-ok('a fresh expedition starts back in the Round Room', (await text()).includes('Room 1 / 2 — Round Room'));
+ok('a fresh expedition starts back in the Round Room', (await text()).includes('Room 1 / 3 — Round Room'));
 ok(
   'the trap is still hidden by default on a fresh expedition — sight has not been picked up yet',
   (await p.locator('[data-room-cell="-2,1"]').getAttribute('data-room-tile')) === null,
@@ -565,6 +582,51 @@ ok(
   (await p.locator('[data-room-cell="0,0"]').getAttribute('data-room-tile')) === 'trap',
 );
 ok('the sprung trap cost a card, logged the same way as any hand-authored room', (await text()).includes('a trap sprang'));
+
+// Item 21: prove the room graph's west branch actually leads somewhere
+// different from the east branch's Hourglass — the whole point of the item.
+// Round Room's west exit (-2,0) is never touched by the primary sequence
+// above, which only ever walks east. A fresh expedition this time, walked
+// along a path that starts at the west exit's own neighbour and grows
+// outward — unlike every offline-computed score elsewhere in this file,
+// this is a freshly reset, freshly seeded run, so instead of asserting an
+// exact number, placements continue (bounded by the room's own
+// 12-placement budget, well under the 9-cell path below, so this can never
+// hang) until the room actually reads cleared.
+await p.locator('button:has-text("New expedition")').click();
+await p.waitForTimeout(300);
+ok('a fresh default expedition starts back in the Round Room', (await text()).includes('Room 1 / 3 — Round Room'));
+
+const westPath = ['-1,0', '-2,0', '0,0', '1,0', '0,1', '0,-1', '2,-1', '-1,-1', '-1,1'];
+let westCleared = false;
+for (const cell of westPath) {
+  await placeHand0(cell);
+  westCleared = (await p.locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'true';
+  if (westCleared) break;
+}
+ok('walking toward the west exit eventually clears the room', westCleared);
+ok(
+  'the west exit itself is occupied — this run reached west, not east',
+  (await p.locator('[data-room-cell="-2,0"] .card-face').count()) === 1,
+);
+ok(
+  'only one leave button renders — the east exit was never reached this run',
+  (await p.locator('[data-room-leave]').count()) === 1,
+);
+ok(
+  "the leave button previews the room graph's west branch, distinct from the east branch's Hourglass",
+  (await p.locator('[data-room-leave]').getAttribute('data-room-leave-to')) === 'Cribbage Vault',
+);
+await p.locator('[data-room-leave]').click();
+await p.waitForTimeout(300);
+ok(
+  "the west exit led to a genuinely different room than the east exit's Hourglass",
+  (await text()).includes('Room 3 / 3 — Cribbage Vault'),
+);
+ok(
+  'the destination room actually rendered, not just the header text',
+  (await p.locator('[data-room="Cribbage Vault"] [data-room-cell]').count()) === 7,
+);
 
 await p.locator('button:has-text("Back to the board")').click();
 await p.waitForTimeout(300);

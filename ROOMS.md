@@ -250,7 +250,7 @@ a shallow one — it still never walks to the door.
       as a room property, not a separate build.
 - [x] **20. Seeded room generation.** Shapes, tiles and exits from a seed, with
       the hand-authored rooms kept as fixtures so failures stay reproducible.
-- [ ] **21. Room graph and route choice.** More than one exit, leading to
+- [x] **21. Room graph and route choice.** More than one exit, leading to
       different next rooms, with something known about each before you commit.
 - [ ] **22. Calibration pass.** Requires 13b, 13c and 13d — until the probe can
       play a room there is nothing here to calibrate against. Probe every
@@ -3057,3 +3057,140 @@ only renders correctly but plays correctly, its hand-authored-room
 machinery (traps, tiles, exits, reach) working unmodified against a shape
 nobody typed by hand. No video — this item is about generation producing
 valid, playable data, not movement or feel.
+
+**Item 21.** The load-bearing decision was what a "room graph" should be
+addressed by. Rejected giving rooms their own id field and a graph keyed by
+that id, on the strength of what already exists: `ExpeditionState.rooms:
+readonly Room[]` plus `roomIndex` (item 7) already names every room in play
+unambiguously, and roughly 60 call sites across `expedition.test.ts`,
+`room.test.ts` and `tools/probe.test.ts` already construct expeditions
+against that exact shape. `src/rooms/graph.ts`'s `RoomGraph` is instead
+`ReadonlyMap<number, ReadonlyMap<string, number>>` — source room index to
+(exit hex key to destination room index) — reusing `rooms`' own addressing
+rather than inventing a second one that would need to stay in sync with it.
+`makeRoomGraph(rooms, edges)` validates every edge at construction time
+(`isExit` on the source room, both indices in range, no exit routed twice)
+so a typo'd coordinate throws immediately, the same "fail loud at
+construction" convention `makeRoom` already uses for its own exits and
+tiles.
+
+This addressing choice is what made the item additive rather than a
+rewrite: `ExpeditionState` gained one optional field, `graph?: RoomGraph`,
+and `newExpedition` one optional fourth parameter. Every one of those ~60
+existing call sites — `newExpedition(seed, [rooms], cfg)`,
+`leaveRoom(state, cfg)` — needed zero changes, because `resolveLeave`
+(the new core of `leaveRoom`) reproduces the *exact* pre-item-21 logic
+(`nextIndex = roomIndex + 1`, complete once that runs past the array's end)
+whenever `state.graph` is absent, restructured into its own function rather
+than rewritten. `npm test` before touching a single existing test still
+passed 472/472 with the new code present but unused by anything, confirming
+the fallback path really is inert. Rewriting the addressing scheme to
+something graph-native (say, rooms keyed by name) would have meant
+rewriting or re-verifying all ~60 sites for a 30-minute item with slack, not
+spending it on tests and driving the feature.
+
+The harder design question was what happens when a structure reaches more
+than one routed exit at once — Round Room's two exits are four hexes apart
+on a budget of 12 placements, so a wide enough structure can touch both.
+`leaveRoom` gained an optional `exit: Hex` parameter; `resolveLeave` auto-
+selects the sole reached exit when `exit` is omitted and exactly one
+qualifies (the common case, and what keeps every graph-less *and* every
+single-exit-reached graph call needing no new argument), but refuses —
+returns `state` unchanged, the same no-op contract every other illegal
+action in this file already has — when zero or more than one exit is
+reached and the caller didn't say which. Guessing (nearest exit? first
+registered edge?) would have silently picked a direction for the player;
+`expedition.test.ts`'s "requires an explicit exit when the structure
+reaches two routed exits at once" test locks in both the no-op on an
+unnamed ambiguous call and that naming either exit explicitly resolves to
+the correct, distinct destination.
+
+`structureReachesExit` (item 5) answered "is any exit reached" with one
+connectivity walk; route choice needs to know *which* one(s). Rather than a
+second, near-duplicate walk, `room.ts`'s connectivity BFS was pulled out
+into `structureReachedExits(room, structure): Hex[]`, and
+`structureReachesExit` is now `.length > 0` on top of it — one walk, two
+callers, and `room.test.ts`'s existing `structureReachesExit` suite is
+untouched (still exercises the same connectivity behaviour, just through
+the derived function) while a new `structureReachedExits` describe block
+covers the genuinely new case: a single connected chain spanning the whole
+room reports *both* exits, not just "reached: true".
+
+"Something known about each [next room] before you commit" needed its own
+judgment call: preview every route regardless of whether its exit has been
+reached, or only the ones actually reached? Went with reached-only.
+`graphDestinations(state)` (the read-only query, used by both the UI and
+the "ambiguous" test above) returns every route with a `reached` flag,
+but `RoomRunPage` filters to `reached` before rendering a button — a door
+nobody has walked to yet stays unspoiled, matching "something known... once
+you're standing at it, before you click leave" rather than a full map spoiler
+the moment a room opens. This is also what keeps the entire established
+smoke sequence (items 7-20, over 80 assertions) needing zero changes beyond
+the room-count text below: Round Room's west route is never reached in that
+sequence, so exactly one `[data-room-leave]` button — the Hourglass one —
+ever renders there, precisely as before.
+
+`RoomRunPage`'s default run (`DEFAULT_ROOM_LIST`/`DEFAULT_ROOM_GRAPH`,
+`shapes.ts`) is now three rooms, not two: Round Room's east exit still
+routes to the Hourglass (the only path every pre-item-21 test and the whole
+established smoke sequence ever reaches), and its west exit — never
+exercised before — now routes to item 19's own `CRIBBAGE_VAULT_ROOM`
+rather than a fresh fourth shape. Reusing it was a deliberate choice, not
+laziness: this item is about routing, not new content, and a room that
+scores under its own cribbage-only counters (unlike the Hourglass, which
+sets none and falls back to the run's `Config`) makes the two branches
+visibly, not just nominally, different the moment you step through — the
+screenshots below show a 19-cell poker-scored Round Room reaching either a
+17-cell poker Hourglass or a 7-cell cribbage Vault, distinguishable at a
+glance before the leave click even fires. Both destinations are leaves (no
+outgoing edges of their own in `DEFAULT_ROOM_GRAPH`), so leaving through
+either completes the expedition — the same "ran off the end" case a flat
+list's last room always was, now reached two different ways.
+
+`ARCHETYPE_ROOMS` (item 19's dev button) and the single-generated-room dev
+button (item 20's) were deliberately left graph-less, still calling
+`newExpedition` with no fourth argument — they already demonstrate their
+own items' point (archetype variety, seeded generation) and giving them a
+graph too would be scope creep this item's text doesn't ask for; the
+room-graph feature is what the *default* run now demonstrates.
+
+`npm test` 490/490 (was 472 — 18 new: 4 in `room.test.ts`'s new
+`structureReachedExits` describe block, including the both-exits-at-once
+case; 6 in a new `graph.test.ts` covering `makeRoomGraph`'s routing and its
+three failure modes — unknown room index, an exit that isn't one of the
+source room's own, a double-routed exit; 8 in `expedition.test.ts`'s new
+"room graph and route choice" describe block — `graphDestinations` null
+without a graph and null inside a leaf, its reached-flag accuracy, auto-
+select-the-sole-reached-exit, no-op on a named-but-unreached exit, no-op on
+an unnamed ambiguous choice with both explicit choices resolving correctly,
+completing the expedition when the specific reached exit has no route of
+its own, and a graph-less expedition ignoring a garbage exit argument
+entirely). `npx tsc -b --noEmit` clean. `npm run smoke` 116/116 (was 106 —
+10 new): the three pre-existing room-count assertions updated from `/ 2` to
+`/ 3` (the default run's room-array length, not its title-in-progress) with
+an explanatory comment rather than silently changed; one new assertion that
+the established leave button previews `data-room-leave-to="Hourglass"`
+*before* being clicked; and a new closing segment — reusing the existing
+`placeHand0` helper on a fresh expedition, walked along a tile-adjacent
+9-cell path toward the west exit only, placements continuing (bounded by
+the room's own 12-placement budget) until the room actually reads cleared
+rather than asserting an offline-computed score the way every earlier
+placement in this file does, since this run's seed and cards were never
+worked out by hand — confirms exactly one leave button renders (the west
+exit was the only one reached), previews `Cribbage Vault` before the click,
+and lands in a real, fully-rendered 7-cell Cribbage Vault afterward,
+distinct from the Hourglass the established sequence reaches via east.
+
+Drove it live in headless Chromium via `tools/browser.mjs` (throwaway
+script, same pattern as every earlier item's, run and discarded, not
+committed): `item21-2-east-cleared-preview-hourglass.png` shows the cleared
+Round Room with its single leave button reading "Leave via 2,0 → Hourglass
+— 17 cells · threshold 50 · Poker"; a fresh expedition walked toward the
+west exit instead produced `item21-4-west-cleared-preview-cribbage-
+vault.png`, the same room, same threshold, but the button now reads "Leave
+via -2,0 → Cribbage Vault — 7 cells · threshold 30 · Cribbage" — the
+preview genuinely differs before either click happens.
+`item21-5-arrived-cribbage-vault.png` confirms the click landed in a real
+7-cell, two-exit Cribbage Vault with the running total (68) carried over,
+header reading "Room 3 / 3 — Cribbage Vault". No video — this item is about
+routing and information, not movement or feel.

@@ -8,6 +8,7 @@ import {
   addItem,
   currentEndState,
   currentRoom,
+  graphDestinations,
   leaveRoom,
   newExpedition,
   placeInRoom,
@@ -18,7 +19,7 @@ import { generateRoom } from './generate';
 import { itemLabel, type Item } from './item';
 import { RoomBoardView } from './RoomBoardView';
 import { roomConfig, roomExits, tileDensity, type Room } from './room';
-import { ARCHETYPE_ROOMS, ROOM_SHAPES } from './shapes';
+import { ARCHETYPE_ROOMS, DEFAULT_ROOM_GRAPH, DEFAULT_ROOM_LIST } from './shapes';
 
 const DEFAULT_SEED = 'rooms-1';
 /** Item 20: a fixed seed for the dev "load generated room" control, not a
@@ -51,25 +52,37 @@ function roomCounterNames(room: Room): string {
  * implementation.
  */
 export function RoomRunPage({ onClose }: { onClose: () => void }) {
-  const [state, setState] = useState<ExpeditionState>(() => newExpedition(DEFAULT_SEED, ROOM_SHAPES, CONFIG));
+  const [state, setState] = useState<ExpeditionState>(() =>
+    newExpedition(DEFAULT_SEED, DEFAULT_ROOM_LIST, CONFIG, DEFAULT_ROOM_GRAPH),
+  );
   const [selected, setSelected] = useState<number | null>(null);
 
   const room = currentRoom(state);
   const end = currentEndState(state);
   const playing = state.status === 'playing';
+  // Item 21: every route out of this room whose destination is worth
+  // knowing about right now — filtered to exits the structure has actually
+  // reached, so a door nobody has walked to yet stays unspoiled rather than
+  // previewing every possible destination up front. `null` for the two dev
+  // flows below, which still run graph-less exactly as items 19-20 built them.
+  const reachedDestinations = graphDestinations(state)?.filter((d) => d.reached) ?? null;
 
   function restart() {
-    setState(newExpedition(`${DEFAULT_SEED}-${state.roomIndex}-${state.log.length}`, ROOM_SHAPES, CONFIG));
+    setState(
+      newExpedition(
+        `${DEFAULT_SEED}-${state.roomIndex}-${state.log.length}`,
+        DEFAULT_ROOM_LIST,
+        CONFIG,
+        DEFAULT_ROOM_GRAPH,
+      ),
+    );
     setSelected(null);
   }
 
-  // Item 19: no in-run way to choose a room graph exists yet (that's item 21)
-  // — the fixed `ROOM_SHAPES` sequence is what `restart` above always loads.
-  // This is the same kind of dev stand-in items 15-18 used for a mechanic
-  // with no real trigger yet, so the two new archetype rooms (differing
-  // counters, tile density and threshold — see `shapes.ts`) are actually
-  // reachable and screenshot-able in the running app rather than provable
-  // only in a test file.
+  // Item 15-18's own dev-stand-in pattern, reused here: `ARCHETYPE_ROOMS`
+  // stays a plain graph-less pair, exactly as item 19 built it, so this
+  // button's own run keeps behaving byte-identically to before item 21 —
+  // the room graph is what the default run above demonstrates.
   function loadArchetypeRooms() {
     setState(newExpedition(`${DEFAULT_SEED}-archetypes-${state.log.length}`, ARCHETYPE_ROOMS, CONFIG));
     setSelected(null);
@@ -94,8 +107,9 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
     setSelected(null);
   }
 
-  function leave() {
-    const next = leaveRoom(state, CONFIG);
+  function leave(exit?: Hex) {
+    const next = leaveRoom(state, CONFIG, exit);
+    if (next === state) return;
     setState(next);
     setSelected(null);
   }
@@ -273,18 +287,42 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
                   ? 'Score is enough, but you have not reached an exit'
                   : 'Not cleared'}
           </p>
-          <button
-            data-room-leave
-            disabled={!playing || !end.cleared}
-            onClick={leave}
-            className={`mt-2 rounded px-3 py-2 text-sm font-semibold shadow-md ${
-              playing && end.cleared
-                ? 'cursor-pointer bg-gradient-to-b from-emerald-500 to-emerald-700 active:from-emerald-400 active:to-emerald-600'
-                : 'cursor-not-allowed bg-neutral-800 text-neutral-500 shadow-none'
-            }`}
-          >
-            Leave through exit
-          </button>
+          {reachedDestinations && reachedDestinations.length > 0 ? (
+            <div className="mt-2 flex flex-col gap-1.5">
+              {reachedDestinations.map((d) => (
+                <button
+                  key={hexKey(d.exit)}
+                  data-room-leave
+                  data-room-leave-to={d.room.name}
+                  disabled={!playing || !end.scoreMet}
+                  onClick={() => leave(d.exit)}
+                  className={`rounded px-3 py-2 text-left text-xs font-semibold shadow-md ${
+                    playing && end.scoreMet
+                      ? 'cursor-pointer bg-gradient-to-b from-emerald-500 to-emerald-700 active:from-emerald-400 active:to-emerald-600'
+                      : 'cursor-not-allowed bg-neutral-800 text-neutral-500 shadow-none'
+                  }`}
+                >
+                  Leave via {hexKey(d.exit)} → {d.room.name}
+                  <span className="block font-normal text-[10px] opacity-80">
+                    {d.room.cells.size} cells · threshold {d.room.threshold} · {roomCounterNames(d.room)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <button
+              data-room-leave
+              disabled={!playing || !end.cleared}
+              onClick={() => leave()}
+              className={`mt-2 rounded px-3 py-2 text-sm font-semibold shadow-md ${
+                playing && end.cleared
+                  ? 'cursor-pointer bg-gradient-to-b from-emerald-500 to-emerald-700 active:from-emerald-400 active:to-emerald-600'
+                  : 'cursor-not-allowed bg-neutral-800 text-neutral-500 shadow-none'
+              }`}
+            >
+              Leave through exit
+            </button>
+          )}
         </div>
       </div>
 

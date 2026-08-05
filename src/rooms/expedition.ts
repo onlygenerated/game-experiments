@@ -102,6 +102,26 @@
  * unaffected: `isLegalRoomPlacement`'s adjacency check only ever reads
  * `effectiveCfg.mechanics.requireAdjacency`, which a room's counters never
  * touch, so it keeps taking the plain `cfg` it always has.
+ *
+ * Item 21 adds an optional `graph` (`graph.ts`) alongside the existing
+ * `rooms`/`roomIndex` addressing, plus an optional `exit` parameter on
+ * `leaveRoom`. Without a graph, `leaveRoom` reproduces its exact
+ * pre-item-21 behaviour byte for byte (`resolveLeave`'s `!state.graph`
+ * branch is the original `nextIndex >= state.rooms.length` logic, just
+ * pulled into its own function) — every existing call site, and both
+ * graph-less dev flows (a fixed archetype pair, a single generated room),
+ * are untouched. With a graph, which room comes next depends on which
+ * specific exit the structure reached: `resolveLeave` requires an
+ * unambiguous choice (the caller names one, or exactly one exit is
+ * currently reached) and refuses to leave — returning `state` unchanged,
+ * the same "illegal, no-op" contract every other rejected action in this
+ * file already has — rather than guessing when a structure reaches two
+ * exits with different routes at once. `graphDestinations` is the read-only
+ * half: for each of the current room's routes, the real destination `Room`
+ * (already fully-defined data — no mystery box) plus whether that specific
+ * doorway has been reached yet, which is what lets `RoomRunPage` show
+ * "something known about each before you commit" rather than a single
+ * unlabelled "leave" button once more than one road is open.
  */
 import { CONFIG, type Config } from '../config';
 import { draw, shuffledDeck, type Card } from '../deck';
@@ -114,7 +134,8 @@ import {
   type HexBoard,
   type HexPlacementScore,
 } from '../hex/board';
-import { hexKey, type Hex } from '../hex/coords';
+import { hexKey, parseHex, type Hex } from '../hex/coords';
+import type { RoomGraph } from './graph';
 import {
   applyItemEffects,
   consumeReachAnchorItem,
@@ -130,6 +151,7 @@ import {
   roomConfig,
   roomEndState,
   roomTraps,
+  structureReachedExits,
   trapCellsNear,
   type Room,
   type RoomEndState,
@@ -154,9 +176,16 @@ export interface ExpeditionLogEntry extends HexPlacementScore {
 
 export interface ExpeditionState {
   seed: string;
-  /** The room sequence, in order. Item 21's room graph replaces the fixed order; not yet. */
+  /** Every room in play, addressed by index. A graph-less expedition (the
+   * default before item 21, still how the archetype-pair and single-generated-
+   * room dev flows run) simply visits them in order. */
   rooms: readonly Room[];
   roomIndex: number;
+  /** Item 21: which exit leads where, as routes between `rooms` indices.
+   * Absent means "no graph" — `leaveRoom` falls back to advancing
+   * `roomIndex + 1` regardless of which exit was reached, its original
+   * behaviour from item 7 through item 20. */
+  graph?: RoomGraph;
   board: HexBoard;
   deck: Card[];
   hand: Card[];
@@ -183,6 +212,41 @@ export const currentStructure = (state: ExpeditionState): ReadonlySet<string> =>
 
 export const currentEndState = (state: ExpeditionState): RoomEndState =>
   roomEndState(currentRoom(state), currentStructure(state), state.score);
+
+/** Item 21: the specific exits the current structure reaches right now —
+ * `structureReachedExits` applied to this expedition's own room and board,
+ * the same pairing `currentEndState` already does for the boolean version. */
+export const currentReachedExits = (state: ExpeditionState): Hex[] =>
+  structureReachedExits(currentRoom(state), currentStructure(state));
+
+/** One route out of the current room, resolved to the actual destination
+ * `Room` plus whether that specific doorway has been reached yet. */
+export interface RoomGraphDestination {
+  exit: Hex;
+  room: Room;
+  reached: boolean;
+}
+
+/**
+ * Item 21: "something known about each [next room] before you commit" —
+ * every route out of the current room, resolved to real, already-defined
+ * `Room` data rather than a mystery box. `null` when this expedition
+ * carries no graph, or the current room has no outgoing routes (a leaf) —
+ * either way there is nothing to preview, and `RoomRunPage` falls back to
+ * the single "leave through exit" button it had before this item.
+ */
+export function graphDestinations(state: ExpeditionState): RoomGraphDestination[] | null {
+  if (!state.graph) return null;
+  const routes = state.graph.get(state.roomIndex);
+  if (!routes || routes.size === 0) return null;
+
+  const reachedKeys = new Set(currentReachedExits(state).map(hexKey));
+  return [...routes.entries()].map(([exitKey, toIndex]) => ({
+    exit: parseHex(exitKey),
+    room: state.rooms[toIndex],
+    reached: reachedKeys.has(exitKey),
+  }));
+}
 
 /**
  * Item 16: which trap cells should actually render as revealed right now —
@@ -258,6 +322,7 @@ export function newExpedition(
   seed: string,
   rooms: readonly Room[],
   cfg: Config = CONFIG,
+  graph?: RoomGraph,
 ): ExpeditionState {
   const shuffled = shuffledDeck(seed);
   const { drawn: hand, deck } = draw(shuffled, cfg.handSize);
@@ -266,6 +331,7 @@ export function newExpedition(
     seed,
     rooms,
     roomIndex: 0,
+    graph,
     board: emptyHexBoard(),
     deck,
     hand,
@@ -392,37 +458,79 @@ export function placeInRoom(
   );
 }
 
+type LeaveResolution =
+  | { kind: 'next'; index: number }
+  | { kind: 'complete' }
+  /** No unambiguous, actually-reached exit to leave through — `leaveRoom` no-ops. */
+  | { kind: 'invalid' };
+
 /**
- * Leave the current room through its exit. No-op (returns state unchanged)
- * unless the room is actually cleared right now — reach and score are read
- * live off the current board, so a structure that lost reach (impossible
- * with real cards, which are never removed, but kept as a guard rather than
- * assumed) can't be left through.
+ * Item 21: which room `leaveRoom` should move to, if any. Without a graph
+ * this reproduces the original (item 7) behaviour exactly — advance to
+ * `roomIndex + 1`, or `'complete'` once that runs past the end — and
+ * ignores `exit` entirely, since a graph-less expedition never had per-exit
+ * routes to choose between.
+ *
+ * With a graph: `exit` names which of the current room's exits to leave
+ * through. If omitted and exactly one exit is currently reached (the common
+ * case — most cleared rooms are touching one door, not several), that one
+ * is used; omitted with zero or more than one reached, or naming an exit
+ * the structure hasn't actually reached, resolves to `'invalid'` rather
+ * than guessing. An exit with no route registered for it — every
+ * hand-authored room's every exit, until a graph names one — completes the
+ * expedition exactly like running off the end of a flat list always did;
+ * a route that *is* registered gives the specific next room index.
+ */
+function resolveLeave(state: ExpeditionState, exit: Hex | undefined): LeaveResolution {
+  if (!state.graph) {
+    const nextIndex = state.roomIndex + 1;
+    return nextIndex < state.rooms.length ? { kind: 'next', index: nextIndex } : { kind: 'complete' };
+  }
+
+  const reached = currentReachedExits(state);
+  const chosen = exit ?? (reached.length === 1 ? reached[0] : undefined);
+  if (!chosen || !reached.some((h) => hexKey(h) === hexKey(chosen))) return { kind: 'invalid' };
+
+  const nextIndex = state.graph.get(state.roomIndex)?.get(hexKey(chosen));
+  return nextIndex === undefined ? { kind: 'complete' } : { kind: 'next', index: nextIndex };
+}
+
+/**
+ * Leave the current room through `exit` (or, without a graph, through
+ * whichever exit — a graph-less room never distinguished between them). A
+ * no-op (returns `state` unchanged) unless the room is actually cleared
+ * right now — reach and score are read live off the current board, so a
+ * structure that lost reach (impossible with real cards, which are never
+ * removed, but kept as a guard rather than assumed) can't be left through —
+ * and, with a graph, unless `exit` (or the sole reached exit, if `exit` is
+ * omitted) names a doorway the structure has actually reached.
  *
  * The deck and hand carry over untouched — "deck intact" — and only the
  * board, this room's score, and the placement budget reset. Leaving costs
  * nothing on its own; the placements it took to clear the room were the cost.
  */
-export function leaveRoom(state: ExpeditionState, cfg: Config = CONFIG): ExpeditionState {
+export function leaveRoom(state: ExpeditionState, cfg: Config = CONFIG, exit?: Hex): ExpeditionState {
   if (state.status !== 'playing') return state;
   if (!currentEndState(state).cleared) return state;
 
+  const resolution = resolveLeave(state, exit);
+  if (resolution.kind === 'invalid') return state;
+
   const runningTotal = state.runningTotal + state.score;
-  const nextIndex = state.roomIndex + 1;
   // Item 18: a room-scoped item's duration ends the moment its room does —
   // stripped here, alongside the board/score/trap/artifact reset every other
   // per-room fact already gets. Anything else (the default) passes through
   // untouched, exactly item 14's existing "inventory is not per-room" test.
   const items = state.items.filter((item) => itemDuration(item) !== 'room');
 
-  if (nextIndex >= state.rooms.length) {
+  if (resolution.kind === 'complete') {
     return { ...state, runningTotal, items, status: 'complete' };
   }
 
   return settleExpedition(
     {
       ...state,
-      roomIndex: nextIndex,
+      roomIndex: resolution.index,
       board: emptyHexBoard(),
       score: 0,
       runningTotal,
