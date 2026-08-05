@@ -3543,3 +3543,14 @@ verification suite rather than inventing a backlog item that doesn't exist:
 passed. No source changed. Per the standing instruction, stopping here
 without further action — the open questions above are still for a human to
 weigh, not for another firing to resolve by guessing.
+
+**Firing of 2026-08-05, post-completion (2).** Same result again: `git reset
+--hard origin/rooms` then `git merge origin/main` was already up to date (no
+new commits on either branch since the prior firing), so there was nothing
+to sync. `node_modules` was absent this time (fresh container) — ran `npm
+install` to restore it, which is infrastructure, not a source change.
+Re-ran the full suite: `npm test` 490/490, `npx tsc -b --noEmit` clean,
+`npm run smoke` 123/123 — identical to the prior firing's numbers, no
+regressions. No source file changed (`git status --short` empty before this
+edit). Stopping again per the standing instruction; nothing here for a
+future firing to act on until a human weighs the open questions above.
