@@ -3535,3 +3535,11 @@ first: the open questions are design questions (is a 5-10% lift shortfall
 against open sprawl an acceptable trade for a 63% spread reduction, should
 `goalSeekingAgent`'s weight be per-room rather than one constant, would
 different room shapes change the deep-lift result), not engineering ones.
+
+**Firing of 2026-08-05, post-completion.** Synced onto `origin/rooms`
+(fast-forward, `origin/main` had nothing new to merge) and re-ran the full
+verification suite rather than inventing a backlog item that doesn't exist:
+`npm test` 490/490, `npx tsc -b --noEmit` clean, `npm run smoke` all checks
+passed. No source changed. Per the standing instruction, stopping here
+without further action — the open questions above are still for a human to
+weigh, not for another firing to resolve by guessing.
