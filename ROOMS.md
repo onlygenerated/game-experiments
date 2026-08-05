@@ -252,7 +252,7 @@ a shallow one — it still never walks to the door.
       the hand-authored rooms kept as fixtures so failures stay reproducible.
 - [x] **21. Room graph and route choice.** More than one exit, leading to
       different next rooms, with something known about each before you commit.
-- [ ] **22. Calibration pass.** Requires 13b, 13c and 13d — until the probe can
+- [x] **22. Calibration pass.** Requires 13b, 13c and 13d — until the probe can
       play a room there is nothing here to calibrate against. Probe every
       archetype, set thresholds from measured medians, and record the numbers.
       Then answer the two questions this design was built to answer, each with
@@ -3194,3 +3194,194 @@ preview genuinely differs before either click happens.
 7-cell, two-exit Cribbage Vault with the running total (68) carried over,
 header reading "Room 3 / 3 — Cribbage Vault". No video — this item is about
 routing and information, not movement or feel.
+
+**Item 22.** `tools/probe.test.ts`'s `room comparison` table extended from
+`ROOM_SHAPES` (Round Room, Hourglass) to all four archetypes — `CALIBRATION_ROOMS
+= [...ROOM_SHAPES, ...ARCHETYPE_ROOMS]`, adding Cribbage Vault and Combo Bazaar
+— since "probe every archetype" is the item's own text and item 19 built four,
+not two. Ran it once against the item-6/19 placeholder thresholds (50, 50, 30,
+80) purely to read each room's greedy median off the `greedy` column — the same
+technique item 3 used for every ruleset's `targetScore` (run the real probe with
+the *old* target, since `play()`/`playRoom()` always run the full budget
+regardless of what the target is, so the median it reports is already the new
+one) — then wrote those medians straight into `shapes.ts` as each room's real
+`threshold` (Round Room 1027, Hourglass 967, Cribbage Vault 166, Combo Bazaar
+1731) and re-ran to confirm. `npm test` 490/490 unchanged throughout — nothing
+here touches the existing modes or any src/__tests__-covered game logic; a
+threshold is a data value on a `Room`, not a new scorer, tile or item effect, so
+per 13b/13c/13d's own precedent there is nothing new to unit-test.
+
+**The ceiling effect, quantified and then fixed.** Item 6's 50/30/80
+placeholders were so far below what a full 12-placement room can score that
+every room read 100% (95% for Combo Bazaar) reached *and* cleared for greedy —
+13b's own results log had already flagged this by name ("no headroom left in
+these two rooms"). With real thresholds, `clear%` reads 60/50/50/50 across the
+four rooms — squarely the ~50% a "target = measured median" calibration should
+produce, exactly as item 3's own recalibration did for the flat-run rulesets.
+Round Room's `goalClear%` (50%) is now *below* its plain `clear%` (60%), giving
+`gap = -10` — the first negative gap this project has measured. Read together
+with 13c's own reasoning ("a gap near zero means the exit condition is not
+biting"), a *negative* gap means the reach-seeking bias actively costs Round
+Room clears now that score is the binding constraint: `goalSeekingAgent`
+trades away some of its highest-value moves to shave distance to an exit it
+was always going to reach anyway (100% `reached%` at every threshold measured
+so far), spending budget on distance-reduction that doesn't buy anything once
+reach stops being the bottleneck. The other three rooms measured `gap = 0` —
+this is the first real evidence, across five items of building the machinery
+to measure it, that the reach condition can bite in either direction depending
+on the room, not always help.
+
+**The `w` sweep was revisited, not just the thresholds.** 13c's own sweep ran
+against the placeholder threshold and said so explicitly ("revisit once
+thresholds are real"); this item is that revisit. Swept `[0, 1, 3, 10, 30,
+100]` (13c's five values plus 100, since a real threshold is hundreds of points
+higher than `reduction`'s typical range (0-4) can move against with `w<=30`)
+against all four archetypes at their own real thresholds. Result: no single `w`
+dominates, and the effect is not monotonic — Round Room favours a *large* `w`
+(45% clear at `w=100` vs 35% at `w=0`), Hourglass and Cribbage Vault are
+completely flat across every weight tried (identical score and clear% at all
+six — in both rooms greedy's own path already heads toward an exit, so
+`reduction` never has anything real to trade against), and Combo Bazaar is
+*hurt* by a large `w` (65% at `w=0` falling to 35% at `w=30`) — chasing the
+exit there trades away the multiplier-tile detours that actually drive its
+score, the opposite of Round Room's own finding. `CHOSEN_W` stays 10 — not
+because the revisit confirmed 13c's reasoning, but because averaged clear% is
+flat across `{0, 3, 10}` (55%) and only clearly worse at `w=30` (45%), so
+nothing in the data makes a case for a different single number. A per-room
+weight is what this data actually points to; out of this item's scope, noted
+for whoever picks up per-room agent tuning next.
+
+**The verdict — one pass, two fails, reported straight rather than
+softened.** `tools/probe.test.ts`'s `room comparison` test now ends with a
+computed verdict table, not a paragraph, comparing the median of each room's
+own spread/lift/deepLift against `hex-sprawl`'s post-additive baselines (item
+3's recalibration table: spread 4.3, 2-ply lift 1.12). `hex-sprawl`'s own deep
+lift has no recorded home anywhere — item 13d deliberately kept `deep`/
+`deepLift` out of `writeMetrics` ("that's item 23's job") — so it's measured
+fresh in the same test, same seeds `ruleset comparison` already uses for
+`hex-sprawl`, landing at 1.16.
+
+- **Spread: 4.3 → 1.58. PASS.** The room design's core bet — that requiring
+  reach as well as score kills the farm-one-rich-pocket pathology — reads
+  clearly here. A move's own score no longer screams over the field the way
+  open hex sprawl's did; the median best-move-over-median-move ratio dropped
+  by nearly two-thirds.
+- **2-ply lift: 1.12 → 1.07. FAIL.** **Deep lift: 1.16 → 1.09. FAIL.** Rooms
+  measure *less* setup-play value than open hex sprawl, not more, on both
+  search depths. Read together with the spread result rather than in
+  isolation: the two questions aren't independent restatements of the same
+  thing. Killing the rich-pocket pathology (spread) means no single placement
+  is wildly better than its neighbours *within a turn* — and that is close to
+  the same property that makes look-ahead *across* turns pay less: if this
+  turn's options are already close in value, planning two moves ahead has
+  less of a gap left to close than it did when one move could scream over the
+  rest. A design that flattens the within-turn spread should be expected to
+  flatten the across-turn lift somewhat too; this item's own numbers are the
+  first measurement of how much. Not spun as a wash — the brief's own two
+  questions get an explicit fail here, not a paragraph explaining it away.
+
+Two things this pass deliberately does **not** claim. First, this is one
+calibration under one set of hand-authored/archetype rooms, at one weight for
+the goal-seeking agent — it is not proof the additive-with-tiles model
+*cannot* beat hex sprawl's lift, only that these four rooms as built don't.
+Second, `clear%` landing near 50% by construction (that's what "threshold =
+measured median" produces) says nothing about whether 50% is the *right*
+difficulty for a shipped room — that is a game-design question item 23's
+Metrics page, or direct playtesting, is better placed to answer than a probe
+whose only job here was removing the placeholder skew.
+
+**The smoke test could not simply keep its old numbers, and the fix went
+deeper than expected.** `tools/smoke.mjs`'s entire established Round
+Room/Hourglass sequence (items 7-21) was built against the 50-point
+placeholder, where the room cleared after 3 of 12 placements and the rest of
+the sequence was "prove more tiles work while there's slack budget left."
+Recalibrating broke it immediately (`npm run smoke` hung on a permanently-
+disabled leave button) — a real threshold needs most or all of a room's
+budget, not three throwaway moves, so "clear the room" and "demonstrate every
+tile" now have to happen *together* over the full run rather than
+clear-then-tour.
+
+Root cause required two separate offline investigations (both throwaway
+scripts against `expedition.ts`/`RoomRunPage.tsx` directly, run and discarded,
+not committed, same convention every prior item's exact numbers used):
+
+1. `'rooms-1'` (the seed every item 7-21 smoke number was built on) cannot
+   clear Round Room under threshold 1027 even under fully-optimal play — an
+   offline greedy-over-every-(card,cell)-pair walk on that seed tops out at
+   721. This is expected, not a bug: a threshold set to the *median* greedy
+   score means roughly half of all seeds fall short by construction, and
+   `'rooms-1'` happens to be one of them. Searched seeds `'rooms-1'` through
+   `'rooms-30'` for one where a walk that still visits every item 8-13
+   mechanic cell *and* clears within budget exists; `'rooms-13'` is the first.
+   `RoomRunPage.tsx`'s `DEFAULT_SEED` changed accordingly, with a comment
+   explaining why (the smoke test's whole established sequence depends on the
+   default seed being clearable, and `'rooms-1'` no longer is).
+2. `RoomRunPage.tsx`'s "New expedition" button (`restart`) does **not**
+   reseed from the bare `DEFAULT_SEED` — it was already deriving
+   `${DEFAULT_SEED}-${state.roomIndex}-${state.log.length}` from whichever
+   state was live at click time (so repeated clicks never repeat a room),
+   something no earlier item's smoke numbers ever had to account for because
+   they never needed a *specific*, score-crossing outcome from a reset click
+   — item 16/17's fresh-room checks are purely geometric (legality, not
+   score) and never depended on which exact seed they got. Item 21's own
+   west-branch check inherited this same blind spot; its old assertions never
+   depended on an exact score either, only "clears eventually," so the
+   composite seed never mattered until this item needed the west run to
+   *also* cross a real threshold. Found the actual composite seed
+   (`'rooms-13-0-1'`, after the item 19/20 dev-button detours that precede it
+   in the established sequence) by temporarily instrumenting `restart` with a
+   `console.log` and reading it back off a Playwright console listener in a
+   throwaway debug script — reverted before committing, not left in.
+
+With the real seeds known, every affected section was rebuilt around a
+highest-scoring-(card,cell)-pair-per-turn walk (the same shape the probe's own
+`greedy` agent already uses, and — for the Round Room west branch, which fell
+10 points short of its threshold under plain greedy on `'rooms-13-0-1'` — a
+one-ply lookahead, the same shape as `tools/probe.test.ts`'s own `lookahead`),
+computed offline and transcribed as `[handIndex, cell]` pairs. This needed a
+new smoke helper, `placeHandAt(i, cell)`, alongside the existing `placeHand0` —
+a real player chooses which of their seven hand cards to play, not always the
+first one, and matching that is what closes the gap between a real playthrough
+and the probe's own greedy baseline. The item 8-13 tile-triggering moves (exit,
+marker, cardMultiplier, lineMultiplier, trap-beside, artifact-beside) keep
+using `placeHand0` at their original cells, since that 7-move opening tour is
+unchanged — the same relative positions, same demonstrated mechanics, just no
+longer immediately sufficient to clear. Every score number after the tour is
+new (worked out for `'rooms-13'`/`'rooms-13-0-1'` specifically) and the
+regex matching "Score N / 50" was generalised to match each room's own real
+threshold. What did **not** need to change at all: item 15's counter-effect
+demo (now spread across the whole Hourglass run rather than one placement,
+since the item is picked up before any placement and every subsequent score
+already reflects it), items 16-17's sight/reach-anchor checks (purely
+geometric, never depended on a specific card), items 19-20's archetype/
+generated-room checks (Cribbage Vault's "scored 9" is cribbage's flat
+no-combination formula, seed-independent for any single isolated card; the
+generated room's own threshold comes from `generate.ts`'s own size-scaled
+formula, untouched by this item).
+
+`npm test` 490/490 (unchanged — no new game logic). `npx tsc -b --noEmit`
+clean. `npm run smoke` 116/116, all green (same assertion count as item 21 —
+this item rewrote assertion bodies, not the count) after the rebuild above; it
+red-lined twice first, both informative rather than wasted: once as a hung
+process (the disabled-forever leave button after the very first placeholder
+threshold recalibration, before `DEFAULT_SEED` changed), and once on a
+`roomPanel()` scoping bug in two new Hourglass assertions (copy-pasted from
+the Round Room section above them, which is genuinely scoped to
+`[data-room-panel="Round Room"]` — a panel that no longer exists once the run
+has moved to the Hourglass, so the locator waited the full 30s timeout for an
+element that would never appear). Both are documented here rather than
+silently fixed, per the standing rule that a wrong idea is worth recording.
+
+Screenshots (`tools/browser.mjs`, throwaway script, discarded): `item22-1-
+round-room-fresh.png` (opening state, unchanged from before this item);
+`item22-2-round-room-reached-but-short.png` (after the 7-move tour — reached
+true, cleared false, score 510 of 1027, nineteen cells with the room barely a
+third full — the "reached long ago, still short" state item 6's dual
+condition was built to distinguish, now actually observable rather than
+theoretical); `item22-3-round-room-cleared-1045-of-1027.png` (end of the
+12-placement budget, the board nearly entirely full, two cells short of
+completely covered — clearing a room now visibly costs most of what it has to
+give, not three moves' worth); `item22-4-hourglass-cleared-1043-of-967.png`
+(Hourglass cleared with 2 of 12 placements still unspent, running total
+carried in from Round Room). No video — this item is about numbers and a
+threshold crossing, not movement or feel.

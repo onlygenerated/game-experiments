@@ -173,14 +173,16 @@ ok('combo preset scores under both counters', (await text()).toLowerCase().inclu
 
 // --- rooms: a real room-to-room run (item 7) --------------------------------
 //
-// The default seed ('rooms-1') and CONFIG are fixed, so this exact sequence —
-// hand[0] onto (2,0), (1,0), (0,0) in the Round Room — is a deterministic
-// path verified offline (a throwaway script against `expedition.ts`, run and
-// discarded, not committed): move 1 lands on the exit (reach true, score 7),
-// move 3 crosses the room's threshold of 50 (score 73), so the room reads
-// cleared after exactly 3 placements with 9 of the 12-placement budget still
-// unspent. That leftover budget is the point being tested next: leaving does
-// not require using every placement, only clearing the room.
+// The default seed ('rooms-13' as of item 22 — see RoomRunPage.tsx's own
+// comment on why 'rooms-1' no longer works) and CONFIG are fixed, so this
+// entire sequence is a deterministic path verified offline (a throwaway
+// script against `expedition.ts` directly, run and discarded, not
+// committed). Item 22 recalibrated Round Room's threshold from item 6's
+// placeholder (50, clearable in 3 placements) to its own measured greedy
+// median (1027, over the room's full 12-placement budget) — so unlike the
+// old sequence, reaching the exit (move 1) and clearing the room (now move
+// 12, the last placement in the budget) are far apart: "reached but short"
+// is true for most of the room, not a fleeting moment before an early win.
 await p.locator('button:has-text("Rooms"):visible').first().click();
 await p.waitForTimeout(400);
 // Item 21: the default run is now a 3-room graph (Round Room -> Hourglass or
@@ -234,7 +236,17 @@ async function placeHand0(cell) {
   await p.waitForTimeout(200);
 }
 
-await placeHand0('2,0'); // lands on the exit — reach, but score (7) is well short of the threshold (50)
+/** Item 22: the higher, real threshold means clearing needs cards other than
+ * whichever one happens to be hand[0] — see the file header for why. Mirrors
+ * `placeHand0` exactly, parameterised on which hand slot to click. */
+async function placeHandAt(i, cell) {
+  await p.locator(`[data-hand-index="${i}"]`).click();
+  await p.waitForTimeout(120);
+  await p.locator(`[data-room-cell="${cell}"]`).click();
+  await p.waitForTimeout(200);
+}
+
+await placeHand0('2,0'); // lands on the exit — reach true, but score (40) is nowhere near the threshold (1027)
 ok('placing on the exit reaches it', (await roomPanel().locator('[data-room-reach]').getAttribute('data-room-reach')) === 'true');
 ok('reached but under threshold does not clear', (await roomPanel().locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'false');
 ok('a real card renders on the placed cell', (await p.locator('[data-room-cell="2,0"] .card-face').count()) > 0);
@@ -248,7 +260,7 @@ ok(
   (await p.locator('[data-room-cell="1,0"]').getAttribute('data-room-tile')) === 'marker',
 );
 
-await placeHand0('1,0'); // still short (score 31)
+await placeHand0('1,0'); // still short (total 91)
 ok('still short after the second placement', (await roomPanel().locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'false');
 ok(
   'the tile is still there once a card is placed on the same cell',
@@ -259,74 +271,55 @@ ok(
   (await p.locator('[data-room-cell="1,0"] .card-face').count()) === 1,
 );
 
-await placeHand0('0,0'); // crosses the threshold (score 73) — reach was already true
-ok('reach + score at the threshold clears the room', (await roomPanel().locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'true');
-ok('leave is enabled once cleared', !(await p.locator('[data-room-leave]').isDisabled()));
+await placeHand0('0,0'); // still nowhere close (total 126) — reach was already true, score is the long pole here
+ok('still short after the third placement, unlike the pre-item-22 sequence', (await roomPanel().locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'false');
 
-const clearedScore = Number((await text()).match(/Score (\d+) \/ 50/)?.[1] ?? -1);
-ok('cleared room scored above its threshold', clearedScore > 50);
-
-// The room also carries a real 'cardMultiplier' tile at (0,-1) (item 9) —
-// the room is already cleared, but 9 of the 12-placement budget remain, so
-// there's room to prove the tile before leaving. The exact scores below were
-// worked out offline against `expedition.ts` directly (same throwaway-script
-// convention as items 7-8, run and discarded, not committed): the same card
-// at (0,-1) scores 50 with no tile there and 88 with the ×2 tile — a
-// 38-point boost, not card luck.
+// The room also carries a real 'cardMultiplier' tile at (0,-1) (item 9). The
+// exact score below was worked out offline against `expedition.ts` directly
+// (same throwaway-script convention every prior item's numbers used, run and
+// discarded, not committed).
 ok(
   'the cardMultiplier tile renders before anything is placed on it',
   (await p.locator('[data-room-cell="0,-1"]').getAttribute('data-room-tile')) === 'cardMultiplier',
 );
 await placeHand0('0,-1');
-ok('the tile boosted the placement to the expected score', (await text()).includes('scored 88'));
-const afterCardTile = Number((await text()).match(/Score (\d+) \/ 50/)?.[1] ?? -1);
-ok('score after the cardMultiplier placement reflects the boosted placement', afterCardTile === clearedScore + 88);
+ok('the tile boosted the placement to the expected score', (await text()).includes('scored 87'));
 
 // The room also carries a real 'lineMultiplier' tile at (-1,-1) (item 10) —
-// same offline-verified convention as item 9: the same card at (-1,-1)
-// scores 58 with no tile there and 115 with the L×2 tile, since a word
-// square doubles the *whole* E-W line's value rather than just the placed
-// card's own contribution to it (the distinction item 10 exists to draw).
+// a word square doubling the *whole* E-W line's value rather than just the
+// placed card's own contribution to it (the distinction item 10 exists to
+// draw). Same offline-verified convention as item 9.
 ok(
   'the lineMultiplier tile renders before anything is placed on it',
   (await p.locator('[data-room-cell="-1,-1"]').getAttribute('data-room-tile')) === 'lineMultiplier',
 );
 await placeHand0('-1,-1');
-ok('the line tile boosted the placement to the expected score', (await text()).includes('scored 115'));
-const afterLineTile = Number((await text()).match(/Score (\d+) \/ 50/)?.[1] ?? -1);
-ok('score after the line-multiplier placement reflects the boosted placement', afterLineTile === afterCardTile + 115);
+ok('the line tile boosted the placement to the expected score', (await text()).includes('scored 130'));
 
 // The room also carries a real 'trap' tile at (-2,1) (item 12) — hidden
 // until a placement lands on or beside it. The next cell in the placement
 // chain, (-1,0), neighbours the trap without sitting on it, so this move
 // demonstrates the "beside" trigger case rather than the more obvious "on"
-// one. The exact score (70) was worked out offline against `expedition.ts`
-// directly (same throwaway-script convention as items 7-10, run and
-// discarded, not committed) — a trap costs a card, not points, so the
-// score itself is untouched by the reveal happening on the same move.
+// one. A trap costs a card, not points, so the score itself is untouched by
+// the reveal happening on the same move.
 ok(
   'the trap tile is hidden before anything triggers it',
   (await p.locator('[data-room-cell="-2,1"]').getAttribute('data-room-tile')) === null,
 );
 await placeHand0('-1,0');
-ok('the placement beside the trap scored normally', (await text()).includes('scored 70'));
+ok('the placement beside the trap scored normally', (await text()).includes('scored 97'));
 ok(
   'the trap is revealed once triggered',
   (await p.locator('[data-room-cell="-2,1"]').getAttribute('data-room-tile')) === 'trap',
 );
 ok('the log reports the trap cost', (await text()).includes('a trap sprang'));
-const finalScore = Number((await text()).match(/Score (\d+) \/ 50/)?.[1] ?? -1);
-ok('final score includes the trap-triggering placement', finalScore === afterLineTile + 70);
 
 // The room also carries a real 'artifact' tile at (-1,2) (item 13) — a card
 // sitting on the board, always visible (no hidden/revealed state, unlike a
 // trap), that joins the deck once the structure detours beside it. The next
 // cell in the chain, (0,1), neighbours the artifact without landing on it —
 // an artifact cell is never a legal placement target (the card is already
-// there), so "beside" is the only case there is to demonstrate. The exact
-// score (61) and the artifact's badge/id were worked out offline against
-// `expedition.ts` directly (same throwaway-script convention as items 7-12,
-// run and discarded, not committed).
+// there), so "beside" is the only case there is to demonstrate.
 ok(
   'the artifact tile renders before anything triggers it, badged with its own card',
   (await p.locator('[data-room-cell="-1,2"]').getAttribute('data-room-tile')) === 'artifact' &&
@@ -337,14 +330,37 @@ ok(
   (await p.locator('[data-room-cell="-1,2"]').getAttribute('data-room-artifact-collected')) === 'false',
 );
 await placeHand0('0,1');
-ok('the placement beside the artifact scored normally', (await text()).includes('scored 61'));
+ok('the placement beside the artifact scored normally', (await text()).includes('scored 70'));
 ok(
   'the artifact is marked collected once triggered',
   (await p.locator('[data-room-cell="-1,2"]').getAttribute('data-room-artifact-collected')) === 'true',
 );
 ok('the log reports the card gained', (await text()).includes('an artifact joined the deck'));
-const finalScoreWithArtifact = Number((await text()).match(/Score (\d+) \/ 50/)?.[1] ?? -1);
-ok('final score includes the artifact-triggering placement', finalScoreWithArtifact === finalScore + 61);
+const scoreAfterTour = Number((await text()).match(/Score (\d+) \/ 1027/)?.[1] ?? -1);
+ok('every item 8-13 tile has now triggered, and the room is still nowhere near cleared', scoreAfterTour === 510);
+ok('reached long ago, still short on score — the dual condition item 22 exists to test', (await roomPanel().locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'false');
+
+// Item 22: with a real (not placeholder) threshold, clearing Round Room needs
+// most of its 12-placement budget, and needs cards other than whichever one
+// happens to be hand[0] — a real player chooses which card to play, so this
+// continuation plays the highest-scoring (card, cell) pair each turn, same as
+// the calibration probe's own `greedy` agent, worked out offline the same way
+// as every score above. It deliberately avoids the *west* exit ((-2,0)) even
+// though it would be legally reachable, so this run stays a clean
+// single-exit demonstration — the west branch gets its own run, further down.
+await placeHandAt(6, '0,-2'); // the just-collected artifact card
+ok('still short after the first continuation placement', (await roomPanel().locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'false');
+await placeHandAt(5, '0,2');
+await placeHandAt(3, '1,1');
+await placeHandAt(4, '-1,1');
+await placeHandAt(3, '-2,1'); // the trap cell itself — already sprung, so no second cost
+
+ok('reach + score together clear the room, right at the end of the budget', (await roomPanel().locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'true');
+ok('leave is enabled once cleared', !(await p.locator('[data-room-leave]').isDisabled()));
+
+const clearedScore = Number((await text()).match(/Score (\d+) \/ 1027/)?.[1] ?? -1);
+ok('cleared room scored above its threshold', clearedScore > 1027);
+const finalScoreWithArtifact = clearedScore;
 
 // Item 18: temporary vs permanent items. Picked up here, right before
 // leaving Round Room 1 — a room-duration item should read distinctly from a
@@ -389,13 +405,12 @@ ok(
 // via item 2's own combining machinery. There is no in-room pickup mechanic
 // yet (nothing in the backlog through item 18 asks for one), so a small dev
 // button stands in for it — see RoomRunPage.tsx's own comment on why. Picked
-// up here, in the fresh Hourglass, then landed on its own north exit: worked
-// out offline against `expedition.ts` directly (same throwaway-script
-// convention as items 7-13, run and discarded, not committed) that the same
-// card at the same cell scores 46 under poker alone (reached, but short of
-// the 50 threshold) and 59 once cribbage is carried too (reached AND past
-// the threshold) — the item is the entire difference between a near-miss and
-// a clear here, not just a bigger number.
+// up here, in the fresh Hourglass, before any placement, so every score
+// below is already the combo (cribbage + poker) figure, not a single
+// before/after placement the way item 15 first demonstrated it against the
+// old placeholder threshold — item 22's real threshold (967, the room's own
+// measured greedy median) needs most of the room's budget to reach, the same
+// reason Round Room's own continuation above does.
 ok('cribbage counter pickup is available', await p.locator('[data-pickup-second-counter]').isEnabled());
 await p.locator('[data-pickup-second-counter]').click();
 await p.waitForTimeout(150);
@@ -405,12 +420,27 @@ ok(
 );
 ok('the pickup control disables once carried', await p.locator('[data-pickup-second-counter]').isDisabled());
 
-await placeHand0('0,-4'); // the Hourglass's own north exit
-ok('the carried counter boosted the placement to the expected score', (await text()).includes('scored 59'));
+// Same offline-verified convention as Round Room's own continuation above:
+// the highest-scoring (card, cell) pair each turn, played under the combo
+// counter from the very first placement.
+await placeHandAt(1, '0,-4'); // the Hourglass's own north exit
+ok('landing on the exit reaches it', (await p.locator('[data-room-reach]').getAttribute('data-room-reach')) === 'true');
+ok('reached, but nowhere near the 967 threshold yet', (await p.locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'false');
+await placeHandAt(2, '1,-4');
+await placeHandAt(5, '0,-3');
+await placeHandAt(5, '-1,-3');
+await placeHandAt(3, '1,-3');
+await placeHandAt(6, '-1,-2');
+await placeHandAt(6, '0,-2');
+await placeHandAt(2, '0,-1');
+await placeHandAt(2, '0,0');
+ok('still short with one placement left in the budget', (await p.locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'false');
+await placeHandAt(6, '0,1');
 ok(
-  'the boosted placement alone clears the room — 46 alone would not have',
+  'the combo counter carried the room past its threshold with placements to spare',
   (await p.locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'true',
 );
+ok('the Hourglass cleared under a real, non-placeholder threshold', (await text()).includes('Score 1043 / 967'));
 
 // Item 16: sight — a carried item that reveals a room's hidden tiles (traps)
 // ahead of triggering any of them, without touching score or their cost —
@@ -586,21 +616,45 @@ ok('the sprung trap cost a card, logged the same way as any hand-authored room',
 // Item 21: prove the room graph's west branch actually leads somewhere
 // different from the east branch's Hourglass — the whole point of the item.
 // Round Room's west exit (-2,0) is never touched by the primary sequence
-// above, which only ever walks east. A fresh expedition this time, walked
-// along a path that starts at the west exit's own neighbour and grows
-// outward — unlike every offline-computed score elsewhere in this file,
-// this is a freshly reset, freshly seeded run, so instead of asserting an
-// exact number, placements continue (bounded by the room's own
-// 12-placement budget, well under the 9-cell path below, so this can never
-// hang) until the room actually reads cleared.
+// above, which only ever walks east. A fresh expedition this time, bounded
+// by the room's own 12-placement budget so this can never hang even if it
+// needed every last placement.
+//
+// "New expedition" does not reseed from the bare `DEFAULT_SEED` — its own
+// handler (`RoomRunPage.tsx`'s `restart`) derives
+// `${DEFAULT_SEED}-${state.roomIndex}-${state.log.length}` from whatever
+// state was active the moment it's clicked, so the seed actually in play
+// here depends on everything that happened earlier in this same run (the
+// item 20 generated-room detour immediately above it, in particular). Found
+// by instrumenting `restart` with a temporary `console.log` and reading it
+// back off a Playwright console listener (reverted before committing, not
+// left in) rather than assumed — the seed here is `rooms-13-0-1`, not
+// `rooms-13`. A plain greedy walk on that seed, avoiding the east exit,
+// falls 10 points short of the 1027 threshold using the full budget; a
+// one-ply lookahead (best move plus best immediate follow-up, same shape as
+// `lookahead` in `tools/probe.test.ts`) closes the gap, worked out offline
+// the same way as every other score in this file.
 await p.locator('button:has-text("New expedition")').click();
 await p.waitForTimeout(300);
 ok('a fresh default expedition starts back in the Round Room', (await text()).includes('Room 1 / 3 — Round Room'));
 
-const westPath = ['-1,0', '-2,0', '0,0', '1,0', '0,1', '0,-1', '2,-1', '-1,-1', '-1,1'];
+const westPath = [
+  [4, '0,-1'],
+  [1, '0,-2'],
+  [2, '-1,0'],
+  [4, '-1,-1'],
+  [4, '-2,0'], // the west exit
+  [4, '-2,1'],
+  [3, '-1,1'],
+  [6, '0,0'],
+  [0, '0,1'],
+  [4, '0,2'],
+  [6, '1,-2'],
+  [6, '1,0'],
+];
 let westCleared = false;
-for (const cell of westPath) {
-  await placeHand0(cell);
+for (const [i, cell] of westPath) {
+  await placeHandAt(i, cell);
   westCleared = (await p.locator('[data-room-cleared]').getAttribute('data-room-cleared')) === 'true';
   if (westCleared) break;
 }

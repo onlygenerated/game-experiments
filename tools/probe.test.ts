@@ -52,7 +52,7 @@ import {
 } from '../src/rooms/expedition';
 import { roomEndState, roomExits, type Room } from '../src/rooms/room';
 import { scoreRoomPlacement } from '../src/rooms/scoring';
-import { ROOM_SHAPES } from '../src/rooms/shapes';
+import { ARCHETYPE_ROOMS, ROOM_SHAPES } from '../src/rooms/shapes';
 
 type AnyRun = GameState | HexGameState;
 
@@ -619,13 +619,25 @@ function playRoom(
  * own baseline row rather than trusted to match the `greedy` column in
  * 'room comparison' by construction alone.
  */
-const W_SWEEP = [0, 1, 3, 10, 30];
+const W_SWEEP = [0, 1, 3, 10, 30, 100];
 
+/**
+ * Item 22: swept again, this time against every archetype (not just
+ * `ROOM_SHAPES`) and each one's own real, calibrated threshold. Item 13c's
+ * own sweep ran against the item-6 placeholder threshold (50) and explicitly
+ * flagged itself as "a bet about item 22's rooms, not a measurement of these
+ * ones; revisit once thresholds are real" — thresholds are real as of this
+ * item, so this is that revisit. `w=100` was added to 13c's own five values
+ * because a real threshold is hundreds of points higher than a placement's
+ * `reduction` term (0-4 for a room this size) can move with `w<=30`; a wider
+ * sweep is needed to tell whether *any* plausible weight changes the
+ * outcome, not just confirm the same five values are still tied.
+ */
 it('goal-seeking weight sweep', () => {
   const seeds = Array.from({ length: SEEDS }, (_, i) => `probe-goal-${i}`);
   const rows = [['room', 'w', 'score', 'reached%', 'clear%'].join('\t')];
 
-  for (const room of ROOM_SHAPES) {
+  for (const room of [...ROOM_SHAPES, ...ARCHETYPE_ROOMS]) {
     for (const w of W_SWEEP) {
       const runs = seeds.map((s) => playRoom(room, CONFIG, s, goalSeekingAgent(room, w)));
       const sm = median(runs.map((x) => x.score));
@@ -638,23 +650,33 @@ it('goal-seeking weight sweep', () => {
 });
 
 /**
- * The weight the sweep above picked. Every value in `W_SWEEP` produced the
- * same 100% clear% on both hand-authored rooms, with median score barely
- * moving (Round Room: 1014-1024 across all five weights; Hourglass: 953,
- * unchanged to the point of not being affected by `w` at all) — the ceiling
- * effect the decisions log explains: at threshold 50, on a 17-19 cell room,
- * with a 12-placement budget, a purely score-driven walk already occupies an
- * exit almost by construction, so there is no headroom left for "wants to
- * leave" to improve on. With no value distinguishable on the metric that
- * matters, `w=10` is picked on a secondary ground: it's large enough to
- * matter once item 22 sets a real (non-trivial) threshold — the gap between
- * `reduction`'s typical range (0-4, a room this size) and a placement's own
- * score (hundreds) means `w=1` would be swamped by score noise — while still
- * not being so large (`w=30`) that it would start overriding sensible score
- * choices once ties actually exist to break. This is a bet about item 22's
- * rooms, not a measurement of these ones; revisit once thresholds are real.
+ * Item 22's revisit: with real thresholds the ceiling is gone (clear% now
+ * ranges 25-75% across `w`, not pinned at 100), but no single weight
+ * dominates every room, and the effect is not even monotonic. Round Room
+ * favours a *large* w (45% clear at w=100 vs 35% at w=0); Hourglass and
+ * Cribbage Vault are completely flat across all six weights (identical score
+ * and clear% at every w — in both rooms the greedy path already heads toward
+ * an exit, so "reduction" never has anything to trade against); Combo Bazaar
+ * is actively *hurt* by a large w (65% at w=0, falling to 35% at w=30) —
+ * chasing the exit there trades away the multiplier-tile detours that drive
+ * its score, the opposite of Round Room's own finding. Averaged clear%
+ * across all four rooms is flat at 55% for w in {0, 3, 10} and only clearly
+ * worse at w=30 (45%); nothing in the sweep makes a case for replacing
+ * `w=10` with a different single number, so it stays — not because 13c's
+ * original reasoning was confirmed, but because the revisit found no better
+ * one-size-fits-all replacement. A per-room weight is the more honest fix
+ * this data actually points to; out of this item's scope, noted for later.
  */
 const CHOSEN_W = 10;
+
+/**
+ * Item 22: every hand-authored archetype, not just the two that happen to sit
+ * in the default room-graph sequence (`ROOM_SHAPES`). `ARCHETYPE_ROOMS`
+ * (Cribbage Vault, Combo Bazaar — item 19) differ along exactly the axes the
+ * calibration pass is supposed to probe (active counters, tile density), so
+ * leaving them out would calibrate half the design and call it done.
+ */
+const CALIBRATION_ROOMS: readonly Room[] = [...ROOM_SHAPES, ...ARCHETYPE_ROOMS];
 
 it('room comparison', () => {
   const seeds = Array.from({ length: SEEDS }, (_, i) => `probe-room-${i}`);
@@ -677,8 +699,9 @@ it('room comparison', () => {
       'gap',
     ].join('\t'),
   ];
+  const perRoom: { spread: number; lift: number; deepLift: number }[] = [];
 
-  for (const room of ROOM_SHAPES) {
+  for (const room of CALIBRATION_ROOMS) {
     const g = seeds.map((s) => playRoom(room, CONFIG, s, greedy));
     const c = seeds.map((s) => playRoom(room, CONFIG, s, carelessAgent(s)));
     const l = seeds.map((s) => playRoom(room, CONFIG, s, roomLookahead(room, CONFIG)));
@@ -719,8 +742,71 @@ it('room comparison', () => {
         goalClearPct - clearPct,
       ].join('\t'),
     );
+
+    perRoom.push({
+      spread: median(g.flatMap((x) => x.spreads)),
+      lift: lm / Math.max(gm, 1),
+      deepLift: dm / Math.max(gm, 1),
+    });
   }
   console.log('\n' + rows.join('\n'));
+
+  // Item 22's own pass/fail: does the room design actually fix the flaw it
+  // was built for? `hex-sprawl`'s own baselines (spread 4.3, 2-ply lift 1.12
+  // — item 3's post-additive recalibration table, the only honest baseline
+  // per ROOMS.md's own warning that the pre-additive 15.5/1.26-1.43 numbers
+  // are void) are fixed constants transcribed from `metrics.generated.ts`
+  // rather than re-measured here, since that file is exactly the artifact
+  // item 3 built for this purpose. `hex-sprawl`'s deep lift has no such
+  // recorded home — item 13d deliberately kept `deep`/`deepLift` out of
+  // `writeMetrics` (that's item 23's job) — so it is measured fresh here,
+  // same seeds and agent `ruleset comparison` already uses for `hex-sprawl`,
+  // rather than guessed or left uncompared.
+  const HEX_SPRAWL_SPREAD = 4.3;
+  const HEX_SPRAWL_LIFT = 1.12;
+  const hexSprawlCfg = RULESETS.find((r) => r.id === 'hex-sprawl')!.config;
+  const hexSeeds = Array.from({ length: SEEDS }, (_, i) => `probe-${i}`);
+  const hg = hexSeeds.map((s) => play(hexSprawlCfg, s, greedy));
+  const hd = hexSeeds.map((s) => play(hexSprawlCfg, s, beamSearch(hexSprawlCfg)));
+  const hexSprawlGm = median(hg.map((x) => x.score));
+  const hexSprawlDeepLift = median(hd.map((x) => x.score)) / Math.max(hexSprawlGm, 1);
+
+  // The four archetypes' own per-room spread/lift/deepLift, reduced to one
+  // comparable figure the same way any of the individual room numbers above
+  // already are a median over seeds: the median *across rooms* of each
+  // room's own median. Not a pooled median over every seed of every room —
+  // that would let the largest room's seed count dominate the figure for no
+  // principled reason, whereas "the median room" is what "does the room
+  // design fix the flaw" is actually asking about.
+  const roomsSpread = median(perRoom.map((r) => r.spread));
+  const roomsLift = median(perRoom.map((r) => r.lift));
+  const roomsDeepLift = median(perRoom.map((r) => r.deepLift));
+
+  const verdictRows = [
+    ['metric', 'hex-sprawl', 'rooms (median of 4)', 'pass = lower/higher', 'verdict'].join('\t'),
+    [
+      'spread',
+      HEX_SPRAWL_SPREAD,
+      roomsSpread.toFixed(2),
+      'lower',
+      roomsSpread < HEX_SPRAWL_SPREAD ? 'PASS' : 'FAIL',
+    ].join('\t'),
+    [
+      '2ply lift',
+      HEX_SPRAWL_LIFT,
+      roomsLift.toFixed(2),
+      'higher',
+      roomsLift > HEX_SPRAWL_LIFT ? 'PASS' : 'FAIL',
+    ].join('\t'),
+    [
+      'deep lift',
+      hexSprawlDeepLift.toFixed(2),
+      roomsDeepLift.toFixed(2),
+      'higher',
+      roomsDeepLift > hexSprawlDeepLift ? 'PASS' : 'FAIL',
+    ].join('\t'),
+  ];
+  console.log('\nitem 22 verdict\n' + verdictRows.join('\n'));
 });
 
 /**

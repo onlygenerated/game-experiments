@@ -21,7 +21,16 @@ import { RoomBoardView } from './RoomBoardView';
 import { roomConfig, roomExits, tileDensity, type Room } from './room';
 import { ARCHETYPE_ROOMS, DEFAULT_ROOM_GRAPH, DEFAULT_ROOM_LIST } from './shapes';
 
-const DEFAULT_SEED = 'rooms-1';
+/** Item 22: 'rooms-1' (every item before this one) could not clear Round Room
+ * under its own calibrated threshold — even fully-optimal play tops out
+ * around 720-930 against a 1027 target on that seed (see item 22's decisions
+ * log). 'rooms-13' is the first seed found, searching in order, for which a
+ * deterministic offline walk (`expedition.ts` directly, the same throwaway-
+ * script convention every prior item's exact numbers used, run and
+ * discarded, not committed) clears both Round Room and the Hourglass within
+ * their own real budgets — the smoke test's whole established sequence
+ * depends on this seed actually being clearable. */
+const DEFAULT_SEED = 'rooms-13';
 /** Item 20: a fixed seed for the dev "load generated room" control, not a
  * random one per click — the smoke test asserts on this room's exact cell
  * count, exits and tile placements (worked out offline against `generate.ts`

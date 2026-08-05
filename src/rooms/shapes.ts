@@ -9,10 +9,14 @@
  * than one, so reaching "an" exit is a real choice of direction and not a
  * single forced target.
  *
- * Both rooms' thresholds (item 6) are round-number placeholders, not
- * calibration — no room has an engine wired to it yet to measure a real
- * score distribution against (item 7), and thresholds get set from probed
- * medians in item 22, per the standing "never tune a room by eye" rule.
+ * Both rooms' thresholds (item 6) started as round-number placeholders (50)
+ * and were replaced in item 22 with the room's own measured greedy median
+ * over a full 12-placement budget (`tools/probe.test.ts`'s `room comparison`
+ * table, `CONFIG`'s own poker counter, 20 seeds), the same method item 3 used
+ * for every ruleset's `targetScore` — see item 22's decisions log for why 50
+ * turned out to be off by more than an order of magnitude (a placeholder
+ * threshold that a 3-placement opening already cleared, versus a real one
+ * that needs most of the budget).
  *
  * The Round Room carries one `'marker'` tile (item 8) — a placeholder kind
  * that does nothing, kept to prove the tile layer renders and survives a
@@ -42,10 +46,9 @@
  * a real question). Both are exported individually and via `ARCHETYPE_ROOMS`
  * so `RoomRunPage`'s new "Dev: load archetype rooms" control can drive them
  * the same way items 15-18's dev-pickup buttons stand in for mechanics with
- * no in-run acquisition path yet. Neither threshold is calibrated — same
- * round-placeholder status as `ROUND_ROOM`/`HOURGLASS_ROOM`'s own 50s, per
- * the standing "never tune a room by eye" rule; item 22 is where all four
- * become real numbers.
+ * no in-run acquisition path yet. Both thresholds were calibrated in item 22
+ * the same way `ROUND_ROOM`/`HOURGLASS_ROOM`'s were — the room's own measured
+ * greedy median, under its own `counters` where it sets one.
  */
 import { hexesWithinRadius, type Hex } from '../hex/coords';
 import { makeRoomGraph, type RoomGraph } from './graph';
@@ -62,7 +65,7 @@ export const ROUND_ROOM: Room = makeRoom(
     { q: 2, r: 0 },
     { q: -2, r: 0 },
   ],
-  50,
+  1027,
   [
     [{ q: 1, r: 0 }, { kind: 'marker', label: 'T8' }],
     [{ q: 0, r: -1 }, { kind: 'cardMultiplier', multiplier: 2 }],
@@ -102,7 +105,7 @@ export const HOURGLASS_ROOM: Room = makeRoom(
     { q: 0, r: -4 },
     { q: 0, r: 4 },
   ],
-  50,
+  967,
 );
 
 export const ROOM_SHAPES: readonly Room[] = [ROUND_ROOM, HOURGLASS_ROOM];
@@ -123,7 +126,7 @@ export const CRIBBAGE_VAULT_ROOM: Room = makeRoom(
     { q: 1, r: 0 },
     { q: -1, r: 0 },
   ],
-  30,
+  166,
   [[{ q: 0, r: -1 }, { kind: 'cardMultiplier', multiplier: 2 }]],
   { lensId: 'cribbage', secondLensId: '' },
 );
@@ -143,7 +146,7 @@ export const COMBO_BAZAAR_ROOM: Room = makeRoom(
     { q: 2, r: 0 },
     { q: -2, r: 0 },
   ],
-  80,
+  1731,
   [
     [{ q: -1, r: -1 }, { kind: 'cardMultiplier', multiplier: 2 }],
     [{ q: 0, r: -2 }, { kind: 'cardMultiplier', multiplier: 2 }],
