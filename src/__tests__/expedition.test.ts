@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CONFIG, type Config } from '../config';
 import { ORIGIN, hexKey, hexesWithinRadius, type Hex } from '../hex/coords';
 import { makeRoom, type Room } from '../rooms/room';
+import { COMBO_BAZAAR_ROOM, CRIBBAGE_VAULT_ROOM } from '../rooms/shapes';
 import {
   addItem,
   currentEndState,
@@ -632,5 +633,89 @@ describe('visibleTraps / sight item (item 16)', () => {
     const room = makeRoom('NoTrap', hexesWithinRadius(1), [{ q: 1, r: 0 }]);
     const state = addItem(newExpedition('exp-1', [room], cfg()), SIGHT);
     expect(visibleTraps(state).size).toBe(0);
+  });
+});
+
+describe('room counters (item 19)', () => {
+  // The run's own cfg says poker — every test below is only interesting if a
+  // room's own counters actually win out over this.
+  const runCfg = cfg({ roomPlacementBudget: 5, lensId: 'poker', secondLensId: '' });
+
+  const CRIBBAGE_ROOM: Room = makeRoom('CribbageRoom', hexesWithinRadius(1), [{ q: 1, r: 0 }], 0, [], {
+    lensId: 'cribbage',
+    secondLensId: '',
+  });
+  const POKER_ROOM: Room = makeRoom('PokerRoom', hexesWithinRadius(1), [{ q: 1, r: 0 }], 0, [], {
+    lensId: 'poker',
+    secondLensId: '',
+  });
+  const COMBO_ROOM: Room = makeRoom('ComboRoom', hexesWithinRadius(1), [{ q: 1, r: 0 }], 0, [], {
+    lensId: 'cribbage',
+    secondLensId: 'poker',
+  });
+  const PLAIN_ROOM: Room = makeRoom('PlainRoom', hexesWithinRadius(1), [{ q: 1, r: 0 }], 0);
+
+  it("a room's own counters override the run's Config for scoring", () => {
+    // Same seed, same room shape — the only difference is CRIBBAGE_ROOM
+    // fixing lensId to cribbage regardless of runCfg's own 'poker'.
+    const underRoom = placeInRoom(newExpedition('exp-1', [CRIBBAGE_ROOM], runCfg), 0, ORIGIN, runCfg);
+    const underRunCfg = placeInRoom(newExpedition('exp-1', [PLAIN_ROOM], runCfg), 0, ORIGIN, runCfg);
+    const explicitCribbage = placeInRoom(
+      newExpedition('exp-1', [PLAIN_ROOM], cfg({ ...runCfg, lensId: 'cribbage' })),
+      0,
+      ORIGIN,
+      cfg({ ...runCfg, lensId: 'cribbage' }),
+    );
+    expect(underRoom.score).toBe(explicitCribbage.score);
+    expect(underRoom.log[0].card).toEqual(underRunCfg.log[0].card); // same seed, same draw
+  });
+
+  it('a room with no counters override is a pure passthrough of the run cfg', () => {
+    const viaPlainRoom = placeInRoom(newExpedition('exp-1', [PLAIN_ROOM], runCfg), 0, ORIGIN, runCfg);
+    const viaExplicitPokerRoom = placeInRoom(newExpedition('exp-1', [POKER_ROOM], runCfg), 0, ORIGIN, runCfg);
+    expect(viaPlainRoom.score).toBe(viaExplicitPokerRoom.score);
+  });
+
+  it("a room's combo counters score strictly more than either counter alone, same as item 15's carried second counter", () => {
+    const single = placeInRoom(newExpedition('exp-1', [CRIBBAGE_ROOM], runCfg), 0, ORIGIN, runCfg);
+    const combo = placeInRoom(newExpedition('exp-1', [COMBO_ROOM], runCfg), 0, ORIGIN, runCfg);
+    expect(combo.log[0].card).toEqual(single.log[0].card); // identical seed and draw
+    expect(combo.score).toBeGreaterThan(single.score);
+  });
+
+  it("a carried second-counter item still layers on top of the room's own baseline counter", () => {
+    const bare = placeInRoom(newExpedition('exp-1', [CRIBBAGE_ROOM], runCfg), 0, ORIGIN, runCfg);
+    const withItem = placeInRoom(
+      addItem(newExpedition('exp-1', [CRIBBAGE_ROOM], runCfg), { kind: 'secondCounter', lensId: 'poker' }),
+      0,
+      ORIGIN,
+      runCfg,
+    );
+    expect(withItem.score).toBeGreaterThan(bare.score);
+  });
+
+  it("CRIBBAGE_VAULT_ROOM scores its opening placement under cribbage, matching an explicit-cribbage cfg", () => {
+    const viaArchetype = placeInRoom(newExpedition('exp-1', [CRIBBAGE_VAULT_ROOM], runCfg), 0, ORIGIN, runCfg);
+    const cribbageCfg = { ...runCfg, lensId: 'cribbage', secondLensId: '' };
+    const viaExplicitCfg = placeInRoom(newExpedition('exp-1', [PLAIN_ROOM], cribbageCfg), 0, ORIGIN, cribbageCfg);
+    expect(viaArchetype.score).toBe(viaExplicitCfg.score);
+  });
+
+  it('COMBO_BAZAAR_ROOM scores an untiled cell strictly more than cribbage alone — its combo counters at work', () => {
+    // (2,-1) carries no bonus tile (see shapes.ts), so this isolates the
+    // counter difference from any tile effect.
+    const UNTILED_CELL: Hex = { q: 2, r: -1 };
+    const cribbageOnlyBig = makeRoom(
+      'CribbageOnlyBig',
+      hexesWithinRadius(2),
+      [{ q: 2, r: 0 }, { q: -2, r: 0 }],
+      0,
+      [],
+      { lensId: 'cribbage', secondLensId: '' },
+    );
+    const single = placeInRoom(newExpedition('exp-1', [cribbageOnlyBig], runCfg), 0, UNTILED_CELL, runCfg);
+    const combo = placeInRoom(newExpedition('exp-1', [COMBO_BAZAAR_ROOM], runCfg), 0, UNTILED_CELL, runCfg);
+    expect(combo.log[0].card).toEqual(single.log[0].card); // identical seed and draw
+    expect(combo.score).toBeGreaterThan(single.score);
   });
 });

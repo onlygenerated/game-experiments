@@ -490,6 +490,37 @@ ok(
   (await p.locator('[data-expedition-items]').innerText()) === 'Items: Sight (reveals traps)',
 );
 
+// Item 19: room archetypes — a room's own active counters (and tile density,
+// and threshold) overriding whatever the run's own Config carries. The
+// default run above is entirely CONFIG's own poker; "Dev: load archetype
+// rooms" swaps in ARCHETYPE_ROOMS (shapes.ts), starting fresh in the
+// Cribbage Vault — a 7-cell room with cribbage-only counters and a sparse
+// (~14%) tile density, the opposite end of both axes from the dense,
+// combo-countered Combo Bazaar that follows it. hand[0] onto (0,0) scoring
+// exactly 9 — cribbage's flat "3 points/card, no count" on a lone 3S across
+// all three lines — is a deterministic path verified offline the same way
+// the Round Room sequence above was (a throwaway script against
+// `expedition.ts`, run and discarded, not committed): CONFIG's own lensId is
+// 'poker', so this score is only reachable if the room's counters actually
+// won.
+await p.locator('[data-load-archetypes]').click();
+await p.waitForTimeout(400);
+ok('the archetype-rooms run opens in the Cribbage Vault', (await text()).includes('Room 1 / 2 — Cribbage Vault'));
+ok('the vault renders its 7 cells', (await p.locator('[data-room="Cribbage Vault"] [data-room-cell]').count()) === 7);
+ok(
+  'the vault panel reports its own cribbage counter, not the run cfg\'s poker',
+  (await p.locator('[data-room-archetype]').innerText()).includes('Cribbage'),
+);
+ok(
+  'the vault reports a sparser tile density than the Combo Bazaar will',
+  (await p.locator('[data-room-archetype]').innerText()).includes('14% tiled'),
+);
+await placeHand0('0,0');
+ok(
+  'the opening placement scored under the vault\'s own cribbage counter, not CONFIG\'s poker default',
+  (await text()).includes('scored 9'),
+);
+
 await p.locator('button:has-text("Back to the board")').click();
 await p.waitForTimeout(300);
 

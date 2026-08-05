@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Config } from '../config';
 import { hexesWithinRadius, hexKey, hexNeighbors, ORIGIN } from '../hex/coords';
 import {
   artifactCellsNear,
@@ -8,14 +9,22 @@ import {
   makeRoom,
   roomBorder,
   roomCells,
+  roomConfig,
   roomEndState,
   roomExits,
   roomInterior,
   roomTraps,
   structureReachesExit,
+  tileDensity,
   trapCellsNear,
 } from '../rooms/room';
-import { HOURGLASS_ROOM, ROOM_SHAPES, ROUND_ROOM } from '../rooms/shapes';
+import {
+  COMBO_BAZAAR_ROOM,
+  CRIBBAGE_VAULT_ROOM,
+  HOURGLASS_ROOM,
+  ROOM_SHAPES,
+  ROUND_ROOM,
+} from '../rooms/shapes';
 
 describe('makeRoom / roomCells / isInRoom', () => {
   it('round-trips the coordinates it was given', () => {
@@ -382,5 +391,92 @@ describe('roomTraps (item 16)', () => {
     const trapCell = { q: 0, r: -1 };
     const room = makeRoom('Test', hexesWithinRadius(1), [{ q: 1, r: 0 }], 0, [[trapCell, { kind: 'trap' }]]);
     expect(roomTraps(room)).toEqual(roomTraps(room));
+  });
+});
+
+describe('makeRoom counters validation (item 19)', () => {
+  it('accepts a known single lens id', () => {
+    const room = makeRoom('Test', [ORIGIN], [], 0, [], { lensId: 'cribbage', secondLensId: '' });
+    expect(room.counters).toEqual({ lensId: 'cribbage', secondLensId: '' });
+  });
+
+  it('accepts a known combo of two lens ids', () => {
+    const room = makeRoom('Test', [ORIGIN], [], 0, [], { lensId: 'cribbage', secondLensId: 'poker' });
+    expect(room.counters).toEqual({ lensId: 'cribbage', secondLensId: 'poker' });
+  });
+
+  it('throws on an unknown primary lens id', () => {
+    expect(() => makeRoom('Test', [ORIGIN], [], 0, [], { lensId: 'nonsense', secondLensId: '' })).toThrow();
+  });
+
+  it('throws on an unknown second lens id', () => {
+    expect(() =>
+      makeRoom('Test', [ORIGIN], [], 0, [], { lensId: 'cribbage', secondLensId: 'nonsense' }),
+    ).toThrow();
+  });
+
+  it('leaves counters unset (not undefined-but-present in a way that matters) when not given', () => {
+    const room = makeRoom('Test', [ORIGIN]);
+    expect(room.counters).toBeUndefined();
+  });
+});
+
+describe('roomConfig (item 19)', () => {
+  const baseCfg = { lensId: 'poker', secondLensId: '', mechanics: { requireAdjacency: true } } as Config;
+
+  it('returns the same cfg reference when the room sets no counters', () => {
+    const room = makeRoom('Test', [ORIGIN]);
+    expect(roomConfig(room, baseCfg)).toBe(baseCfg);
+  });
+
+  it("overrides lensId/secondLensId with the room's own when it sets counters", () => {
+    const room = makeRoom('Test', [ORIGIN], [], 0, [], { lensId: 'cribbage', secondLensId: 'poker' });
+    const cfg = roomConfig(room, baseCfg);
+    expect(cfg.lensId).toBe('cribbage');
+    expect(cfg.secondLensId).toBe('poker');
+  });
+
+  it('leaves every other cfg field untouched', () => {
+    const room = makeRoom('Test', [ORIGIN], [], 0, [], { lensId: 'cribbage', secondLensId: '' });
+    expect(roomConfig(room, baseCfg).mechanics).toBe(baseCfg.mechanics);
+  });
+
+  it("CRIBBAGE_VAULT_ROOM and COMBO_BAZAAR_ROOM each override the run's counters", () => {
+    expect(roomConfig(CRIBBAGE_VAULT_ROOM, baseCfg)).toEqual({
+      ...baseCfg,
+      lensId: 'cribbage',
+      secondLensId: '',
+    });
+    expect(roomConfig(COMBO_BAZAAR_ROOM, baseCfg)).toEqual({
+      ...baseCfg,
+      lensId: 'cribbage',
+      secondLensId: 'poker',
+    });
+  });
+});
+
+describe('tileDensity (item 19)', () => {
+  it('is 0 for a room with no tiles', () => {
+    const room = makeRoom('Test', hexesWithinRadius(1));
+    expect(tileDensity(room)).toBe(0);
+  });
+
+  it('is 1 when every cell carries a tile', () => {
+    const room = makeRoom('Test', [ORIGIN, { q: 1, r: 0 }], [], 0, [
+      [ORIGIN, { kind: 'marker', label: 'a' }],
+      [{ q: 1, r: 0 }, { kind: 'marker', label: 'b' }],
+    ]);
+    expect(tileDensity(room)).toBe(1);
+  });
+
+  it('is the fraction of cells tiled for a partial room', () => {
+    const room = makeRoom('Test', [ORIGIN, { q: 1, r: 0 }, { q: -1, r: 0 }], [], 0, [
+      [ORIGIN, { kind: 'marker', label: 'a' }],
+    ]);
+    expect(tileDensity(room)).toBeCloseTo(1 / 3);
+  });
+
+  it("CRIBBAGE_VAULT_ROOM is sparser than COMBO_BAZAAR_ROOM — the density axis the two archetypes demonstrate", () => {
+    expect(tileDensity(CRIBBAGE_VAULT_ROOM)).toBeLessThan(tileDensity(COMBO_BAZAAR_ROOM));
   });
 });

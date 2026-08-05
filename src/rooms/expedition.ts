@@ -92,6 +92,16 @@
  * untouched here, matching item 14's own "inventory is not per-room" test —
  * so this only ever drops an item explicitly carrying `duration: 'room'`,
  * which nothing before item 18 could construct.
+ *
+ * Item 19: `placeInRoom` now runs the passed-in `cfg` through `room.ts`'s
+ * `roomConfig(room, cfg)` before `applyItemEffects`, so a room that sets its
+ * own `counters` scores under those regardless of what the expedition's own
+ * `Config.lensId`/`secondLensId` say — and a carried item (item 15's second
+ * counter) still layers on top of that room baseline rather than being
+ * overridden by it, since `applyItemEffects` runs second. Legality is
+ * unaffected: `isLegalRoomPlacement`'s adjacency check only ever reads
+ * `effectiveCfg.mechanics.requireAdjacency`, which a room's counters never
+ * touch, so it keeps taking the plain `cfg` it always has.
  */
 import { CONFIG, type Config } from '../config';
 import { draw, shuffledDeck, type Card } from '../deck';
@@ -117,6 +127,7 @@ import {
   artifactCellsNear,
   isInRoom,
   roomCells,
+  roomConfig,
   roomEndState,
   roomTraps,
   trapCellsNear,
@@ -307,7 +318,7 @@ export function placeInRoom(
   if (!isLegalRoomPlacement(state, h, cfg)) return state;
 
   const room = currentRoom(state);
-  const effectiveCfg = applyItemEffects(cfg, state.items);
+  const effectiveCfg = applyItemEffects(roomConfig(room, cfg), state.items);
   const result = scoreRoomPlacement(state.board, h, card, room.tiles, effectiveCfg);
   const board = withHexCard(state.board, h, card);
   const score = state.score + result.score;

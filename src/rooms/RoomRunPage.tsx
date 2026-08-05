@@ -3,6 +3,7 @@ import { CardFace } from '../components/CardFace';
 import { CONFIG } from '../config';
 import { cardLabel } from '../deck';
 import { hexKey, type Hex } from '../hex/coords';
+import { activeLensIds, getLens } from '../lens';
 import {
   addItem,
   currentEndState,
@@ -15,10 +16,20 @@ import {
 } from './expedition';
 import { itemLabel, type Item } from './item';
 import { RoomBoardView } from './RoomBoardView';
-import { roomExits } from './room';
-import { ROOM_SHAPES } from './shapes';
+import { roomConfig, roomExits, tileDensity, type Room } from './room';
+import { ARCHETYPE_ROOMS, ROOM_SHAPES } from './shapes';
 
 const DEFAULT_SEED = 'rooms-1';
+
+/** Item 19: the counters actually in force inside `room` — its own
+ * `counters` override if it has one, otherwise the run's own `Config`, read
+ * back through the same `activeLensIds`/`getScoringLens` machinery item 2
+ * built rather than a second way of naming "which counters are active". */
+function roomCounterNames(room: Room): string {
+  return activeLensIds(roomConfig(room, CONFIG))
+    .map((id) => getLens(id).name)
+    .join(' + ');
+}
 
 /**
  * Item 7: the first real room-to-room run — real cards, a real deck, a
@@ -42,6 +53,18 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
 
   function restart() {
     setState(newExpedition(`${DEFAULT_SEED}-${state.roomIndex}-${state.log.length}`, ROOM_SHAPES, CONFIG));
+    setSelected(null);
+  }
+
+  // Item 19: no in-run way to choose a room graph exists yet (that's item 21)
+  // — the fixed `ROOM_SHAPES` sequence is what `restart` above always loads.
+  // This is the same kind of dev stand-in items 15-18 used for a mechanic
+  // with no real trigger yet, so the two new archetype rooms (differing
+  // counters, tile density and threshold — see `shapes.ts`) are actually
+  // reachable and screenshot-able in the running app rather than provable
+  // only in a test file.
+  function loadArchetypeRooms() {
+    setState(newExpedition(`${DEFAULT_SEED}-archetypes-${state.log.length}`, ARCHETYPE_ROOMS, CONFIG));
     setSelected(null);
   }
 
@@ -159,6 +182,13 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
           New expedition
         </button>
         <button
+          data-load-archetypes
+          onClick={loadArchetypeRooms}
+          className="rounded border border-neutral-700 px-3 py-1.5 text-sm font-semibold text-neutral-300 active:bg-neutral-800 min-[1280px]:hover:bg-neutral-800"
+        >
+          Dev: load archetype rooms
+        </button>
+        <button
           onClick={onClose}
           className="ml-auto rounded border border-neutral-700 px-3 py-1.5 text-sm font-semibold text-neutral-300 active:bg-neutral-800 min-[1280px]:hover:bg-neutral-800"
         >
@@ -189,9 +219,10 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
         />
 
         <div className="flex flex-col gap-1" data-room-panel={room.name}>
-          <p className="text-[11px] text-neutral-500">
+          <p data-room-archetype className="text-[11px] text-neutral-500">
             {room.cells.size} cells · {roomExits(room).length} exits · threshold {room.threshold} ·
-            placements left {state.placementsLeft}
+            placements left {state.placementsLeft} · {Math.round(tileDensity(room) * 100)}% tiled ·{' '}
+            {roomCounterNames(room)}
           </p>
           <p
             data-room-reach={end.reached}

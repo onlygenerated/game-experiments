@@ -245,7 +245,7 @@ a shallow one — it still never walks to the door.
 
 ### E. Variety and calibration
 
-- [ ] **19. Room archetypes.** Rooms that differ in active counters, tile
+- [x] **19. Room archetypes.** Rooms that differ in active counters, tile
       density and threshold. This is where "Hearts world" style variety lives —
       as a room property, not a separate build.
 - [ ] **20. Seeded room generation.** Shapes, tiles and exits from a seed, with
@@ -2797,3 +2797,115 @@ a lifecycle question `leaveRoom` answers, orthogonal to what an item's
 effect on legality/scoring is (or isn't), so item 15's `secondCounter` arm,
 16's `sight` arm and 17's `reachAnchor` arm in `applyItemEffects` needed
 zero changes.
+
+**Item 19.** The backlog item names three axes — active counters, tile
+density, threshold — and two of those three already existed as ordinary
+room properties (`threshold` since item 6; tile *count*, if not a named
+"density", since item 8's `TileMap`). The one genuinely new piece of
+machinery is active counters as a room property, since every counter
+decision before this item lived on `Config` (`lensId`/`secondLensId`,
+global to a run) or on a carried item (item 15's `secondCounter`, which
+only ever *adds* a second counter on top of whatever `Config` already
+says) — nothing let a room *replace* the run's own counters outright.
+`Room` gained a fifth, optional field, `counters?: { lensId: string;
+secondLensId: string }` (`room.ts`), and a new pure function, `roomConfig(
+room, cfg)`, returning `cfg` unchanged (same reference, `toBe`-tested) when
+the room sets nothing, or `cfg` with `lensId`/`secondLensId` overwritten by
+the room's own when it does. `makeRoom` validates a given `counters` at
+construction time exactly like it already validates exits and tile
+placement — `getLens` throws on an unknown id, so a typo in an archetype's
+counters fails loudly when the room is defined, not silently at the first
+placement scored inside it.
+
+The one real design question was *order*: does a room's own counters apply
+before or after a carried item's effect? `expedition.ts`'s `placeInRoom`
+now computes `effectiveCfg` as `applyItemEffects(roomConfig(room, cfg),
+state.items)` — room counters first, item effects second — so item 15's
+`secondCounter` still *adds* on top of whatever baseline the room sets,
+the same "layers on, never overridden" behaviour it already had against a
+run's own `Config`. Tested directly: a room fixed to cribbage-only still
+scores strictly more once a carried poker second-counter item is added,
+exactly mirroring the existing run-level test for the same item. Legality
+(`isLegalRoomPlacement`'s adjacency check) was deliberately left reading
+the plain `cfg` it always has — a room's counters only ever touch
+`lensId`/`secondLensId`, never `mechanics.requireAdjacency`, so routing it
+through `roomConfig` too would be a no-op dressed up as consistency.
+
+Tile density needed no new state, only a name and a formula: `tileDensity
+(room) = room.tiles.size / room.cells.size`, a fraction in `[0, 1]`, purely
+descriptive — nothing reads it for legality or scoring, matching the
+backlog item's own framing of density as an axis a room *differs along*,
+not a rule. Surfaced in `RoomRunPage`'s existing info line (which already
+printed cell/exit/threshold/budget counts) as `NN% tiled`, and the active
+counters as a plain joined name list (`activeLensIds` + `getLens(id).name`,
+item 2's own machinery, not a second way of asking the question) — both
+now visible for any room, not just the two new ones.
+
+Two new hand-authored rooms in `shapes.ts`, `CRIBBAGE_VAULT_ROOM` and
+`COMBO_BAZAAR_ROOM`, exist to make the three axes a genuine demonstration
+rather than an unexercised code path: the vault is the smallest room shape
+in the game (`hexesWithinRadius(1)`, 7 cells) with cribbage-only counters
+and one sparse tile (14% density); the bazaar reuses the Round Room's own
+19-cell disc but with combo cribbage+poker counters and nine tiles (47%
+density) — deliberately the opposite end of the density axis from the
+vault, and denser than the Round Room's own 32% (6/19). Neither threshold
+(30, 80) is calibrated — the same round-placeholder status every room's
+threshold has carried since item 6, per the standing "never tune a room by
+eye" rule; item 22 is where all of them become real numbers together.
+
+Deliberately did **not** append either archetype to `ROOM_SHAPES` — that
+array is the fixed sequence both `RoomRunPage`'s default run and the
+smoke test's whole established sequence (item 7 through item 18's checks)
+already drive move-by-move, and lengthening it would mean re-deriving
+every downstream "Room 1 / 2" / "Room 2 / 2" text assertion for no gain
+this item asks for (item 21's room graph is where "which room comes next"
+becomes a real, chosen question — not this one). Instead, `shapes.ts`
+exports both individually and as `ARCHETYPE_ROOMS`, and `RoomRunPage`
+gained one more dev-only stand-in control, "Dev: load archetype rooms" —
+the same pattern items 15-18 used for a mechanic with no in-run
+acquisition/trigger path yet, here standing in for item 21's not-yet-built
+room choice. Clicking it starts a fresh expedition through
+`[CRIBBAGE_VAULT_ROOM, COMBO_BAZAAR_ROOM]` instead of the default rooms.
+
+Extended `tools/smoke.mjs` with a new segment after the existing reach-
+anchor sequence: click the new control, confirm the vault renders its 7
+cells with `14% tiled` and `Cribbage` shown (not the run's own poker), then
+place hand[0] at the origin and confirm it scores exactly 9 — cribbage's
+flat "3 points/card, no count" on a lone low card across all three lines,
+a deterministic figure verified offline the same way the original Round
+Room sequence was (a throwaway script against `expedition.ts`, run and
+discarded, not committed) — only reachable if the room's own counters
+actually won over `CONFIG.lensId`'s `'poker'`. `npm test` 411/411 (was
+392 — 13 new in `room.test.ts`: 5 covering `makeRoom`'s counters
+validation, including two that throw on an unknown lens id;
+4 for `roomConfig` including reference-equality when a room sets nothing
+and untouched-`mechanics` when it does; 4 for `tileDensity` including the
+two real archetypes' relative ordering; 6 new in `expedition.test.ts`
+covering `placeInRoom` end-to-end — a room's counters overriding the run
+cfg, a no-op passthrough when unset, combo-beats-single scoring through a
+real room object, a carried second-counter item still layering on top of
+a room's own baseline, and both new archetype rooms scoring correctly
+through the real `shapes.ts` exports rather than only through synthetic
+test rooms). `npx tsc -b --noEmit` clean. `npm run smoke` 97/97 (was 92 —
+5 new: the archetype run opens in the Cribbage Vault, the vault renders
+its 7 cells, the panel reports `Cribbage` rather than the run's own poker,
+the panel reports `14% tiled`, and the opening placement scores exactly 9
+under the vault's own counter).
+
+Drove it live in headless Chromium via `tools/browser.mjs` (throwaway
+script, same server-then-screenshot pattern as `smoke.mjs`, run and
+discarded, not committed): loaded the archetype rooms, placed three cards
+in the Cribbage Vault (screenshots `archetype-1-cribbage-vault.png` before
+any placement — 7 cells, `14% tiled · Cribbage` — and
+`archetype-2-cribbage-vault-placed.png` after two, showing `Reached` and
+"you got there but were short" at score 22/30), then a third placement
+crossed the threshold (score 35/30) and leaving carried the running total
+into `archetype-3-combo-bazaar.png` — `Room 2 / 2 — Combo Bazaar`,
+`19 cells · 2 exits · threshold 80 · placements left 12 · 47% tiled ·
+Cribbage + Poker`, `Running total 35`, and the board visibly denser with
+`×2`/`L×2` badges than the vault's single tile. The three screenshots
+together are the whole point of this item: two rooms, back to back in one
+run, differing visibly along every axis the backlog item named, with the
+running total proving the expedition — not just the room — survives the
+switch. No video: this item is about room *identity*, not movement or
+feel.

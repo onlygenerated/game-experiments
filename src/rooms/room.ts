@@ -50,8 +50,24 @@
  * ones near a given cell. The sight item (`item.ts`) uses it to reveal a
  * room's traps ahead of any of them triggering; see `expedition.ts`'s
  * `visibleTraps` for how that stays a rendering-only fact.
+ *
+ * Item 19 adds `counters`, an optional override of the expedition's own
+ * `Config.lensId`/`secondLensId` for scoring inside this room specifically —
+ * the "active counters" axis of a room archetype. Undefined (the default for
+ * every room shipped before this item, and for either hand-authored room
+ * unless given one) means "use whatever the run's `Config` already carries",
+ * so `roomConfig` is a pure passthrough for them. A room that sets it can
+ * make a specific archetype's identity be its counter — a cribbage-only
+ * vault, a poker+cribbage combo chamber — independent of whatever the rest
+ * of the expedition (or the old open-board modes, untouched by this) uses.
+ * `makeRoom` validates it the same way it already validates exits and tile
+ * placement: throws at construction time if either id names an unknown
+ * lens, rather than deferring that failure to the first placement scored
+ * inside the room.
  */
 import { hexKey, hexNeighbors, parseHex, type Hex } from '../hex/coords';
+import { getLens } from '../lens';
+import type { Config } from '../config';
 import { emptyTileMap, tileAt, tileMapFrom, type Tile, type TileMap } from './tile';
 
 export interface Room {
@@ -64,6 +80,9 @@ export interface Room {
   threshold: number;
   /** Tiles the room's cells sit on. No effects read this yet — see `tile.ts`. */
   tiles: TileMap;
+  /** This room's own active counters (item 19), overriding the run's `Config`
+   * for scoring while inside it. Absent means "use the run's own counters". */
+  counters?: { lensId: string; secondLensId: string };
 }
 
 export function makeRoom(
@@ -72,6 +91,7 @@ export function makeRoom(
   exits: readonly Hex[] = [],
   threshold = 0,
   tileEntries: readonly (readonly [Hex, Tile])[] = [],
+  counters?: { lensId: string; secondLensId: string },
 ): Room {
   const cells = new Set(coords.map(hexKey));
   const room: Room = { name, cells, exits: new Set(), threshold, tiles: emptyTileMap() };
@@ -88,7 +108,36 @@ export function makeRoom(
     }
   }
 
-  return { ...room, exits: new Set(exits.map(hexKey)), tiles: tileMapFrom(tileEntries) };
+  if (counters) {
+    getLens(counters.lensId); // throws on an unknown id
+    if (counters.secondLensId) getLens(counters.secondLensId);
+  }
+
+  const built: Room = { ...room, exits: new Set(exits.map(hexKey)), tiles: tileMapFrom(tileEntries) };
+  return counters ? { ...built, counters } : built;
+}
+
+/**
+ * The `Config` in force for scoring inside `room`: the run's own `cfg`
+ * unchanged (same reference) if the room doesn't override its counters, or
+ * `cfg` with `lensId`/`secondLensId` replaced by the room's own if it does.
+ * Item effects (`item.ts`'s `applyItemEffects`, e.g. a carried second
+ * counter) apply on top of this result, not before it — `expedition.ts`'s
+ * `placeInRoom` calls this first so a room's own baseline can still be
+ * augmented mid-run by whatever the player is carrying.
+ */
+export function roomConfig(room: Room, cfg: Config): Config {
+  if (!room.counters) return cfg;
+  return { ...cfg, lensId: room.counters.lensId, secondLensId: room.counters.secondLensId };
+}
+
+/** Fraction of a room's own cells that carry a tile, in [0, 1] — the "tile
+ * density" axis of a room archetype (item 19). Purely descriptive; nothing
+ * reads this for legality or scoring, it exists so a room's density is a
+ * measurable, displayable fact rather than something only visible by
+ * counting badges on the board. */
+export function tileDensity(room: Room): number {
+  return room.tiles.size / room.cells.size;
 }
 
 export function roomCells(room: Room): Hex[] {

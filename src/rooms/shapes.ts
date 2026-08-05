@@ -32,6 +32,20 @@
  * `id` (`artifact-AS`) is deliberately not the same id `freshDeck` gives its
  * own ace of spades, so the two stay distinguishable if both ever end up in
  * the same deck or hand at once.
+ *
+ * Item 19 adds two further hand-authored rooms, `CRIBBAGE_VAULT_ROOM` and
+ * `COMBO_BAZAAR_ROOM`, deliberately not appended to `ROOM_SHAPES` — that
+ * array is the fixed sequence `RoomRunPage`'s default run and the smoke test
+ * both drive, and this item is about a room being able to differ along three
+ * axes (active counters, tile density, threshold), not about lengthening the
+ * default run (item 21's room graph is where "which room comes next" becomes
+ * a real question). Both are exported individually and via `ARCHETYPE_ROOMS`
+ * so `RoomRunPage`'s new "Dev: load archetype rooms" control can drive them
+ * the same way items 15-18's dev-pickup buttons stand in for mechanics with
+ * no in-run acquisition path yet. Neither threshold is calibrated — same
+ * round-placeholder status as `ROUND_ROOM`/`HOURGLASS_ROOM`'s own 50s, per
+ * the standing "never tune a room by eye" rule; item 22 is where all four
+ * become real numbers.
  */
 import { hexesWithinRadius, type Hex } from '../hex/coords';
 import { makeRoom, type Room } from './room';
@@ -91,3 +105,58 @@ export const HOURGLASS_ROOM: Room = makeRoom(
 );
 
 export const ROOM_SHAPES: readonly Room[] = [ROUND_ROOM, HOURGLASS_ROOM];
+
+/**
+ * A tight radius-1 vault (7 cells — the smallest room shape in the game) with
+ * one sparse `cardMultiplier` tile (1/7 cells, ~14% density) and its own
+ * counters: cribbage alone, rather than whatever the run's own `Config`
+ * carries. Where the Round Room demonstrates the substrate, this demonstrates
+ * that a room's *identity* can be its counter — small, cribbage-only, and
+ * (deliberately) sparse, the opposite end of the density axis from
+ * `COMBO_BAZAAR_ROOM` below.
+ */
+export const CRIBBAGE_VAULT_ROOM: Room = makeRoom(
+  'Cribbage Vault',
+  hexesWithinRadius(1),
+  [
+    { q: 1, r: 0 },
+    { q: -1, r: 0 },
+  ],
+  30,
+  [[{ q: 0, r: -1 }, { kind: 'cardMultiplier', multiplier: 2 }]],
+  { lensId: 'cribbage', secondLensId: '' },
+);
+
+/**
+ * The same 19-cell disc `ROUND_ROOM` uses, but nearly half its cells (9/19,
+ * ~47% density against the Round Room's own ~32%) carry a multiplier tile,
+ * and its counters are the combo — cribbage *and* poker at once, item 2's
+ * `combineLenses` machinery, summing both on every scored line — rather than
+ * a single counter. Tiles avoid both exits so reach is never blocked by a
+ * tile placement choice.
+ */
+export const COMBO_BAZAAR_ROOM: Room = makeRoom(
+  'Combo Bazaar',
+  hexesWithinRadius(2),
+  [
+    { q: 2, r: 0 },
+    { q: -2, r: 0 },
+  ],
+  80,
+  [
+    [{ q: -1, r: -1 }, { kind: 'cardMultiplier', multiplier: 2 }],
+    [{ q: 0, r: -2 }, { kind: 'cardMultiplier', multiplier: 2 }],
+    [{ q: 0, r: 0 }, { kind: 'cardMultiplier', multiplier: 2 }],
+    [{ q: 1, r: 1 }, { kind: 'cardMultiplier', multiplier: 2 }],
+    [{ q: 2, r: -2 }, { kind: 'cardMultiplier', multiplier: 2 }],
+    [{ q: -1, r: 1 }, { kind: 'lineMultiplier', multiplier: 2 }],
+    [{ q: 0, r: 2 }, { kind: 'lineMultiplier', multiplier: 2 }],
+    [{ q: 1, r: -2 }, { kind: 'lineMultiplier', multiplier: 2 }],
+    [{ q: -2, r: 2 }, { kind: 'lineMultiplier', multiplier: 2 }],
+  ],
+  { lensId: 'cribbage', secondLensId: 'poker' },
+);
+
+/** Item 19's two counter/density/threshold archetypes, kept out of the
+ * default `ROOM_SHAPES` sequence — see the file header for why. */
+export const ARCHETYPE_ROOMS: readonly Room[] = [CRIBBAGE_VAULT_ROOM, COMBO_BAZAAR_ROOM];
