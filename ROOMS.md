@@ -3567,3 +3567,16 @@ a new artifact build this firing since nothing changed to build. Stopping
 per the standing instruction; the backlog stays fully ticked and the open
 design questions in the summary above still need a human, not another
 firing guessing at them.
+
+**Firing of 2026-08-05, post-completion (4).** Same result a fourth time:
+`git reset --hard origin/rooms` then `git merge origin/main` was already up
+to date (no new commits on `main` or `rooms` since the prior firing).
+`node_modules` was absent again (fresh container) — restored with `npm
+install`, infrastructure only. Re-ran the full suite: `npm test` 490/490,
+`npx tsc -b --noEmit` clean, `npm run smoke` 123/123 (`all checks passed`) —
+identical to all three prior post-completion firings, no regressions. No
+source file changed (`git status --short` empty before this edit). Not
+publishing a new artifact build this firing since nothing changed to
+build. Stopping per the standing instruction; the backlog stays fully
+ticked and the open design questions in the summary above still need a
+human, not another firing guessing at them.
