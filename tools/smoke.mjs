@@ -521,6 +521,51 @@ ok(
   (await text()).includes('scored 9'),
 );
 
+// Item 20: seeded room generation (`generate.ts`). "Dev: load generated
+// room" starts a fresh single-room expedition built from a fixed seed
+// ('rooms-1-generated') so this room's exact shape is a known quantity,
+// worked out offline against `generate.ts` directly (a throwaway
+// `vite-node` script, same convention items 9/15/19 used, run and
+// discarded, not committed): 19 cells, exits at (0,2) and (0,-2), threshold
+// 60, a hidden trap at the origin (0,0), and two always-visible tiles —
+// lineMultiplier at (-2,2), cardMultiplier at (-1,2). Checking a placement
+// actually triggers the trap (not just that the tile substrate renders)
+// proves a generated room is playable, not merely well-formed data.
+await p.locator('[data-load-generated]').click();
+await p.waitForTimeout(400);
+ok(
+  'the generated-room run opens in its own single-room expedition',
+  (await text()).includes('Room 1 / 1 — Generated (rooms-1-generated)'),
+);
+ok(
+  'the generated room renders all 19 of its cells',
+  (await p.locator('[data-room="Generated (rooms-1-generated)"] [data-room-cell]').count()) === 19,
+);
+ok('the generated room reports its offline-computed threshold', (await text()).includes('threshold 60'));
+ok(
+  'both generated exits render as exits',
+  (await p.locator('[data-room-cell="0,2"]').getAttribute('data-room-exit')) === 'true' &&
+    (await p.locator('[data-room-cell="0,-2"]').getAttribute('data-room-exit')) === 'true',
+);
+ok(
+  'the generated line-multiplier tile renders before anything is placed',
+  (await p.locator('[data-room-cell="-2,2"]').getAttribute('data-room-tile')) === 'lineMultiplier',
+);
+ok(
+  'the generated card-multiplier tile renders before anything is placed',
+  (await p.locator('[data-room-cell="-1,2"]').getAttribute('data-room-tile')) === 'cardMultiplier',
+);
+ok(
+  'the generated trap stays hidden until triggered',
+  (await p.locator('[data-room-cell="0,0"]').getAttribute('data-room-tile')) === null,
+);
+await placeHand0('0,0');
+ok(
+  'placing on the hidden trap springs it, the same mechanic item 12 built for the hand-authored rooms',
+  (await p.locator('[data-room-cell="0,0"]').getAttribute('data-room-tile')) === 'trap',
+);
+ok('the sprung trap cost a card, logged the same way as any hand-authored room', (await text()).includes('a trap sprang'));
+
 await p.locator('button:has-text("Back to the board")').click();
 await p.waitForTimeout(300);
 

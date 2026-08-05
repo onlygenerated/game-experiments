@@ -14,12 +14,19 @@ import {
   visibleTraps,
   type ExpeditionState,
 } from './expedition';
+import { generateRoom } from './generate';
 import { itemLabel, type Item } from './item';
 import { RoomBoardView } from './RoomBoardView';
 import { roomConfig, roomExits, tileDensity, type Room } from './room';
 import { ARCHETYPE_ROOMS, ROOM_SHAPES } from './shapes';
 
 const DEFAULT_SEED = 'rooms-1';
+/** Item 20: a fixed seed for the dev "load generated room" control, not a
+ * random one per click — the smoke test asserts on this room's exact cell
+ * count, exits and tile placements (worked out offline against `generate.ts`
+ * directly, the same convention items 9/15/19 used), which only stays
+ * meaningful if the seed driving it never changes underneath the assertion. */
+const GENERATED_SEED = 'rooms-1-generated';
 
 /** Item 19: the counters actually in force inside `room` — its own
  * `counters` override if it has one, otherwise the run's own `Config`, read
@@ -65,6 +72,17 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
   // only in a test file.
   function loadArchetypeRooms() {
     setState(newExpedition(`${DEFAULT_SEED}-archetypes-${state.log.length}`, ARCHETYPE_ROOMS, CONFIG));
+    setSelected(null);
+  }
+
+  // Item 20: seeded generation (`generate.ts`) as a room source alongside the
+  // hand-authored ones above — same dev-stand-in reasoning item 19's own
+  // button used, since item 21's room graph is still what will eventually
+  // decide when a generated room actually gets played. `GENERATED_SEED` is
+  // fixed rather than reseeded per click so the room this button loads is the
+  // same one the smoke test checks by name.
+  function loadGeneratedRoom() {
+    setState(newExpedition(GENERATED_SEED, [generateRoom(GENERATED_SEED)], CONFIG));
     setSelected(null);
   }
 
@@ -187,6 +205,13 @@ export function RoomRunPage({ onClose }: { onClose: () => void }) {
           className="rounded border border-neutral-700 px-3 py-1.5 text-sm font-semibold text-neutral-300 active:bg-neutral-800 min-[1280px]:hover:bg-neutral-800"
         >
           Dev: load archetype rooms
+        </button>
+        <button
+          data-load-generated
+          onClick={loadGeneratedRoom}
+          className="rounded border border-neutral-700 px-3 py-1.5 text-sm font-semibold text-neutral-300 active:bg-neutral-800 min-[1280px]:hover:bg-neutral-800"
+        >
+          Dev: load generated room
         </button>
         <button
           onClick={onClose}

@@ -248,7 +248,7 @@ a shallow one — it still never walks to the door.
 - [x] **19. Room archetypes.** Rooms that differ in active counters, tile
       density and threshold. This is where "Hearts world" style variety lives —
       as a room property, not a separate build.
-- [ ] **20. Seeded room generation.** Shapes, tiles and exits from a seed, with
+- [x] **20. Seeded room generation.** Shapes, tiles and exits from a seed, with
       the hand-authored rooms kept as fixtures so failures stay reproducible.
 - [ ] **21. Room graph and route choice.** More than one exit, leading to
       different next rooms, with something known about each before you commit.
@@ -2909,3 +2909,151 @@ run, differing visibly along every axis the backlog item named, with the
 running total proving the expedition — not just the room — survives the
 switch. No video: this item is about room *identity*, not movement or
 feel.
+
+**Item 20.** New file, `src/rooms/generate.ts`, rather than touching
+`shapes.ts` at all — the item's own text ("hand-authored rooms kept as
+fixtures") and the standing architecture note ("Room shape: data, not
+procedural, until item 19" — now item 20) both point at generation being a
+second room *source*, not a rewrite of the first. `ROOM_SHAPES` and
+`ARCHETYPE_ROOMS` are byte-identical to before this item; `room.test.ts`'s
+existing assertions on both (exact cell counts, exact border sets, exact
+exit coordinates) are the regression guard that proves it, and none of them
+needed touching.
+
+Three separate design questions, one per ingredient the item names:
+
+*Shape.* Considered picking a random subset of a large disc, but rejected it
+— nothing guarantees a random subset is connected, and "is it connected"
+would then need its own check-and-retry loop. Flood growth from the origin
+sidesteps the problem entirely: every claimed cell is, by construction, a
+former neighbour of an already-claimed cell, so the result is connected with
+no verification code needed at all — the same property `HOURGLASS_ROOM`'s
+own hand-author had to reason about by hand (see item 4's decisions log:
+"designed the hourglass's exact coordinates with a throwaway node script...
+needed because a first attempt... came back with zero interior cells"),
+produced automatically here instead. `generate.test.ts` still checks
+connectivity directly for 15 seeds regardless — an invariant worth
+asserting, not just structurally implying, given how the project's own
+history (item 4's own near-miss) shows a shape can look fine and not be.
+
+*Exits.* A room needs its border cells to include at least two suitable
+doorways, and picking two at random risks two neighbours — a room where
+"reach an exit" is nearly automatic, the opposite of every hand-authored
+room's deliberate opposite-doorway choice (item 5's decisions log: "so
+'reach an exit' is a real directional choice"). `pickExits` shuffles the
+border with `deck.ts`'s own `shuffle` (already generic over any array, not
+just cards — no new shuffle implementation needed) and then greedily takes
+the sampled cell farthest from the first pick. Not a true max-distance
+search over all pairs (`O(n²)` over a border that can run into the dozens,
+for a property that doesn't need to be optimal, only *not degenerate*) —
+"farthest from a random anchor" is enough to reliably avoid two adjacent
+doors without justifying the quadratic cost. `generate.test.ts` checks a
+large (19-cell) room's two exits come back more than 1 hex apart, and that
+a small-border room degrading to 0/1/2 exits (rather than throwing) is
+itself covered.
+
+*Tiles.* The one genuinely new risk this item introduces that the
+hand-authored rooms never had to face: `'blocked'` and `'artifact'` are
+both non-placeable cells (`expedition.ts`'s `isLegalRoomPlacement` rejects
+both outright, same as each other), and enough of them in the wrong spots
+could sever the room into pieces that can never rejoin — something no
+hand-authored room does, because a human laid each one out and would
+notice. `COMBO_BAZAAR_ROOM`'s own decisions log already names the danger by
+avoiding it manually ("tiles avoid both exits so reach is never blocked by
+a tile placement choice"); a generator has no human to notice for it, so it
+has to check. `placeableCellsStayConnected` runs a BFS over every cell
+minus whichever `blocked`/`artifact` cells have been committed so far, and
+`scatterTiles` only commits a `blocked`/`artifact` roll if that check still
+passes afterward — otherwise the roll for that one cell is simply dropped
+(no tile there), not retried against a different kind. Rejected a
+retry-with-a-different-kind approach on purpose: retrying would make every
+later rng draw depend on how many earlier cells got rejected and why, a
+subtler and harder-to-reason-about non-reproducibility than "this cell
+came up empty" — the seed still determines the exact outcome either way,
+but a retry loop's *sensitivity* to intermediate rejections is the kind of
+thing that quietly changes behaviour under an unrelated refactor.
+`generate.test.ts`'s `connectivity-0` through `connectivity-19` block
+checks this invariant directly against 20 different seeds — not just that
+it seems to hold, given the failure mode (a silently unsolvable generated
+room) is exactly the kind of measurement/design bug ROOMS.md's standing
+rules call out repeatedly as the project's recurring failure pattern.
+Exits themselves are excluded from tile candidates entirely (filtered
+before the weighted draw), so a generated room can never end up with a
+`blocked`/`artifact` tile sitting on its own doorway.
+
+Weighted tile-kind selection (3:3:2:1:1 for
+cardMultiplier:lineMultiplier:trap:blocked:artifact) rather than uniform —
+deliberately biases away from the two placement-removing kinds, since a
+generated room stuffed with rubble reads as a worse room, not a more
+interesting one; item 8's substrate-only `'marker'` kind is excluded from
+the pool outright, since it has no effect and exists only to prove the
+tile layer renders (item 8's own scope), not something a played room
+should contain.
+
+*Threshold and counters.* Left as the same category of round placeholder
+every hand-authored room's threshold already is — `Math.round(cells.length
+* 3 / 10) * 10`, a plain formula, not a number arrived at by watching a
+generated room played, which is exactly what the standing "never tune by
+eye" rule forbids. `counters` is left unset entirely (the room falls back
+to the run's own `Config`, via `roomConfig`'s existing passthrough) since
+the item's own text names only "shapes, tiles and exits" — extending
+`GenerateRoomOptions` to also roll a counters combination would be doing
+item 21/22-shaped design work this item doesn't ask for.
+
+Determinism itself needed one explicit test beyond "run it twice": that a
+generated room for one seed is unaffected by whatever generation happened
+for an *earlier*, unrelated seed first (`'is a pure function of the seed
+string'` in `generate.test.ts`) — worth stating directly rather than
+assumed, since `mulberry32`/`hashSeed` are each fresh per call
+(`generateRoom` builds its own rng from `hashSeed(seed)` every time, never
+threading a shared stream across calls) and a future refactor that pooled
+or memoized the rng could break it silently otherwise.
+
+`npm test` 472/472 (was 411 — 61 new, all in a new `generate.test.ts`:
+determinism (byte-identical output for a repeated seed, and seed-purity
+against prior unrelated generation), variety (20 seeds produce more than
+one distinct size and cell set), shape validity (15 seeds each checked for
+connectivity, plus explicit `minSize`/`maxSize` bound tests), exits (15
+seeds checked for border-cell validity and an exit-count cap of 2, plus a
+large-room far-apart check), tiles (no tile ever lands on an exit across 15
+seeds, a rough density bound, a zero-density room having no tiles at all,
+and the 20-seed placeable-connectivity invariant), threshold (positive,
+round, size-scaled across 10 seeds), and one fixture-preservation check
+that `ROOM_SHAPES`/`ARCHETYPE_ROOMS` still report their original lengths).
+`npx tsc -b --noEmit` clean. `npm run smoke` 106/106 (was 97 — 9 new: a new
+"Dev: load generated room" control, the same kind of dev stand-in items
+15-19 used for a mechanic with no in-run trigger yet, mirroring "Dev: load
+archetype rooms" but for a single procedurally-built room instead of a
+fixed pair. Loads `generateRoom('rooms-1-generated')` — a *fixed* seed
+rather than reseeded per click, chosen deliberately so the smoke test can
+assert on this specific room's exact, offline-computed shape (worked out
+with a throwaway `vite-node` script against `generate.ts` directly, same
+convention items 9/15/19 used, run and discarded, not committed): 19
+cells, exits at `(0,2)`/`(0,-2)`, threshold 60, a hidden trap at the
+origin, and two always-visible tiles (`lineMultiplier` at `(-2,2)`,
+`cardMultiplier` at `(-1,2)`). The new checks cover the room opening as its
+own single-room expedition, all 19 cells rendering, the threshold and both
+exits matching the offline numbers, the two multiplier tiles rendering
+before anything is placed, the trap staying hidden until triggered, and —
+the one check that proves a generated room is actually playable, not just
+well-formed data — placing on the hidden trap cell actually springs it and
+logs the same "a trap sprang" cost message the hand-authored rooms'
+own item 12 machinery already produces).
+
+Drove `RoomRunPage` in headless Chromium via `tools/browser.mjs` (throwaway
+script, same server-then-screenshot pattern as `smoke.mjs`, run and
+discarded, not committed): opened Rooms, clicked "Dev: load generated
+room", and screenshotted the fresh room (`gen-1-fresh.png`) — an
+irregular, clearly non-disc silhouette (unlike either hand-authored room's
+symmetric shape), two green `EXIT` hexes, an `Lx2`/`x2` tile pair visible,
+and the info line reading `19 cells · 2 exits · threshold 60 · placements
+left 12 · 21% tiled · Poker` (the room sets no counters, so it correctly
+falls back to the run's own `CONFIG.lensId`). Then placed hand[0] on the
+hidden trap cell and screenshotted again (`gen-2-trap-sprung.png`) — the
+trap's skull-badged tile now visible on the board, and the log line "Last
+placement: 2♣ at 0,0 scored 6 — a trap sprang, costing 1 card". The two
+screenshots together are the point: a procedurally-built room that not
+only renders correctly but plays correctly, its hand-authored-room
+machinery (traps, tiles, exits, reach) working unmodified against a shape
+nobody typed by hand. No video — this item is about generation producing
+valid, playable data, not movement or feel.
