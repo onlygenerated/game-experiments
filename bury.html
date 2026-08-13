@@ -548,6 +548,24 @@ function currentCap() { return capFor(playedCount()); }
 function overCap() { return playedPips() > currentCap(); }
 function canCommit() { return filledCount() === CONFIG.POSITION_COUNT && !overCap(); }
 
+/* --- reachability --------------------------------------------------------
+   About 1 deal in 6 cannot fill all 7 positions under a cap of 55 — the
+   cheapest seven cards in hand already bust it. Burying is the way out, but a
+   player who doesn't know that just sees a dead Commit button. These answer
+   "how many buries does this hand need" so the UI can say so, up front.
+------------------------------------------------------------------------- */
+function cheapestSum(k) {
+  return state.hand.slice().sort((a, b) => a.value - b.value)
+    .slice(0, k).reduce((t, c) => t + c.value, 0);
+}
+function minBuriesNeeded() {
+  for (let b = 0; b <= CONFIG.MAX_BURIES; b++) {
+    const k = CONFIG.POSITION_COUNT - b;
+    if (cheapestSum(k) <= capFor(k)) return b;
+  }
+  return null;                       // no legal line at any allowed bury count
+}
+
 /* Positions where the ghost buried — the player takes these uncontested,
    which is what makes a surfaced note tactically live rather than sentimental. */
 function ghostHoles() {
@@ -796,20 +814,37 @@ function renderBuild(stage) {
 
   const bar = el('div', 'commitbar');
   const cap = currentCap();
+  const need = minBuriesNeeded();
+  const over = playedPips() - cap;
   const pips = el('div', 'pips' + (overCap() ? ' over' : ''));
   const strong = el('b', null, `${playedPips()} / ${cap}`);
   pips.append('Pips: ', strong);
-  const sub = el('span', 'sub',
-    CONFIG.PIP_CAP_MODE === 'per-card'
-      ? `per-card cap · ${playedCount()} played`
-      : `${filledCount()}/${CONFIG.POSITION_COUNT} positions set`);
-  pips.appendChild(sub);
+
+  // Say why Commit is dead. A disabled button with no reason reads as a bug.
+  let why;
+  if (need === null) {
+    why = 'No legal line in this hand — even at max buries. Re-deal.';
+  } else if (over > 0) {
+    why = `${over} over the cap — bury a position, or swap in a lower card.`;
+  } else if (filledCount() < CONFIG.POSITION_COUNT) {
+    why = `${filledCount()}/${CONFIG.POSITION_COUNT} positions set` +
+          (need > buriedCount() ? ` · this hand needs ${need === 1 ? 'a bury' : need + ' buries'} to fit` : '');
+  } else {
+    why = CONFIG.PIP_CAP_MODE === 'per-card' ? `per-card cap · ${playedCount()} played` : 'ready';
+  }
+  pips.appendChild(el('span', 'sub', why));
   bar.appendChild(pips);
 
-  const btn = el('button', 'primary', 'Commit');
-  btn.disabled = !canCommit();
-  btn.onclick = commit;
-  bar.appendChild(btn);
+  if (need === null) {
+    const rd = el('button', 'primary', 'Re-deal');
+    rd.onclick = () => newRound(null);
+    bar.appendChild(rd);
+  } else {
+    const btn = el('button', 'primary', 'Commit');
+    btn.disabled = !canCommit();
+    btn.onclick = commit;
+    bar.appendChild(btn);
+  }
   stage.appendChild(bar);
 }
 
