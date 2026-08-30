@@ -12,7 +12,8 @@
     "typecheck": "tsc -b --noEmit",
     "probe": "vitest run --config vitest.probe.config.ts",
     "smoke": "vite build && node tools/smoke.mjs",
-    "smoke:kangaroo": "vite build && node tools/kangaroo-smoke.mjs"
+    "smoke:kangaroo": "vite build && node tools/kangaroo-smoke.mjs",
+    "artifact:kangaroo": "node tools/kangaroo-artifact.mjs"
   },
   "dependencies": {
     "react": "^19.1.0",

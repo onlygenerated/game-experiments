@@ -109,7 +109,7 @@ function SeedForm({ onSeed }: { onSeed: (word: string) => void }) {
  * no dictionary, does no spell check, and never tells anyone they are wrong —
  * that is a permanent product position, not an MVP cut. See KANGAROO.md.
  */
-export function KangarooPage({ onClose }: { onClose: () => void }) {
+export function KangarooPage({ onClose }: { onClose?: () => void }) {
   const { board, commit, undo, redo, canUndo, canRedo } = useBoardHistory();
   const [selected, setSelected] = useState<Selection>(null);
   const [copied, setCopied] = useState(false);
@@ -263,9 +263,12 @@ export function KangarooPage({ onClose }: { onClose: () => void }) {
           <button onClick={newTree} className={headerButton}>
             New tree
           </button>
-          <button onClick={onClose} className={headerButton}>
-            Close
-          </button>
+          {/* Absent in the standalone build, where there is nothing to go back to. */}
+          {onClose && (
+            <button onClick={onClose} className={headerButton}>
+              Close
+            </button>
+          )}
         </div>
       </header>
 
