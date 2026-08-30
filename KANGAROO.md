@@ -11,6 +11,10 @@ scoring. It is a set of game pieces and a surface to move them on. The judgement
 stays entirely with the person using it.
 
 > **Built.** Every *must have* below, plus all four *should haves*.
+> Live at https://claude.ai/code/artifact/37b2de1f-7822-43c4-a442-455ef86172ae
+> — republish it by passing that URL, so the link keeps working. Title
+> "Kangaroo Racks", favicon 🦘; keep both stable across redeploys. Build the
+> file it serves with `npm run artifact:kangaroo`.
 > `src/kangaroo/` — `rack.ts` is the domain, `KangarooPage.tsx` the screen,
 > `useTileDrag.ts` the pointer layer. `npm test` covers the model's invariants
 > (`src/__tests__/rack.test.ts`); `npm run smoke:kangaroo` drives the whole
