@@ -10,6 +10,13 @@ nothing.** No dictionary, no spell check, no synonym lookup, no validation, no
 scoring. It is a set of game pieces and a surface to move them on. The judgement
 stays entirely with the person using it.
 
+> **Built.** Every *must have* below, plus all four *should haves*.
+> `src/kangaroo/` — `rack.ts` is the domain, `KangarooPage.tsx` the screen,
+> `useTileDrag.ts` the pointer layer. `npm test` covers the model's invariants
+> (`src/__tests__/rack.test.ts`); `npm run smoke:kangaroo` drives the whole
+> flow in a real browser, mouse, finger and keyboard. Reached from the
+> **Kangaroo** button on the main screen.
+
 ## The one interaction, end to end
 
 1. Type `lager`. Five square tiles — `L A G E R` — appear on a rack.

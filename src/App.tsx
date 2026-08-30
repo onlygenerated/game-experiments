@@ -19,6 +19,7 @@ import { PreviewPanel } from './components/PreviewPanel';
 import { ScoreLog } from './components/ScoreLog';
 import { StatusBar } from './components/StatusBar';
 import { RunEndPanel } from './components/RunEndPanel';
+import { KangarooPage } from './kangaroo/KangarooPage';
 import { RoomRunPage } from './rooms/RoomRunPage';
 import type { Cascade, CascadeCell } from './components/cascade';
 import type { LinePunch } from './components/linePunch';
@@ -98,6 +99,7 @@ export default function App() {
   const [showScoring, setShowScoring] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [showRooms, setShowRooms] = useState(false);
+  const [showKangaroo, setShowKangaroo] = useState(false);
   const [showRoomMetrics, setShowRoomMetrics] = useState(false);
 
   const wide = useMediaQuery(WIDE_QUERY);
@@ -398,6 +400,7 @@ export default function App() {
   if (showMetrics) return <MetricsPage onClose={() => setShowMetrics(false)} />;
   if (showRoomMetrics) return <RoomsMetricsPage onClose={() => setShowRoomMetrics(false)} />;
   if (showRooms) return <RoomRunPage onClose={() => setShowRooms(false)} />;
+  if (showKangaroo) return <KangarooPage onClose={() => setShowKangaroo(false)} />;
   if (showSetup)
     return (
       <SetupPage
@@ -468,6 +471,12 @@ export default function App() {
             className="shrink-0 rounded border border-neutral-700 px-3 py-2 text-sm font-semibold text-neutral-300 active:bg-neutral-800 min-[1280px]:py-1 min-[1280px]:hover:bg-neutral-800"
           >
             Rooms
+          </button>
+          <button
+            onClick={() => setShowKangaroo(true)}
+            className="shrink-0 rounded border border-neutral-700 px-3 py-2 text-sm font-semibold text-neutral-300 active:bg-neutral-800 min-[1280px]:py-1 min-[1280px]:hover:bg-neutral-800"
+          >
+            Kangaroo
           </button>
           <button
             onClick={() => setShowRoomMetrics(true)}
