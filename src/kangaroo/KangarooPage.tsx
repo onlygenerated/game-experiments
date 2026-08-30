@@ -58,18 +58,23 @@ function RackTree({
   );
 }
 
+/**
+ * Seeding a root.
+ *
+ * Deliberately not a `<form>`: a sandboxed frame without `allow-forms` — which
+ * is how this page runs when it is published — blocks form submission outright,
+ * and the submit handler never fires. A button and an Enter key do the same job
+ * with nothing for a sandbox to withhold.
+ */
 function SeedForm({ onSeed }: { onSeed: (word: string) => void }) {
   const [text, setText] = useState('');
   const letters = normalizeWord(text);
   const ready = letters.length >= MIN_LETTERS;
+  const seed = () => {
+    if (ready) onSeed(letters);
+  };
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (ready) onSeed(letters);
-      }}
-      className="panel flex w-full max-w-md flex-col gap-3 rounded-xl p-4"
-    >
+    <div className="panel flex w-full max-w-md flex-col gap-3 rounded-xl p-4">
       <label htmlFor="seed" className="text-sm font-semibold text-neutral-200">
         Start with a word
       </label>
@@ -78,6 +83,9 @@ function SeedForm({ onSeed }: { onSeed: (word: string) => void }) {
         autoFocus
         value={text}
         onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') seed();
+        }}
         placeholder="lager"
         maxLength={40}
         autoCapitalize="none"
@@ -87,7 +95,8 @@ function SeedForm({ onSeed }: { onSeed: (word: string) => void }) {
       />
       <div className="flex items-center gap-3">
         <button
-          type="submit"
+          type="button"
+          onClick={seed}
           disabled={!ready}
           className="rounded border border-sky-700 bg-sky-950/60 px-3 py-1.5 text-sm font-bold text-sky-200 disabled:border-neutral-800 disabled:bg-transparent disabled:text-neutral-600 min-[900px]:hover:enabled:bg-sky-900"
         >
@@ -97,8 +106,39 @@ function SeedForm({ onSeed }: { onSeed: (word: string) => void }) {
           {letters.length ? `${letters.length} tile${letters.length === 1 ? '' : 's'}` : `${MIN_LETTERS}–${MAX_LETTERS} letters`}
         </span>
       </div>
-    </form>
+    </div>
   );
+}
+
+/**
+ * Put text on the clipboard, or report that it could not.
+ *
+ * `navigator.clipboard` needs a secure context and a permission the embedding
+ * frame may not grant, so the old `execCommand` path is kept as the fallback
+ * rather than a native `prompt()` — a sandboxed frame ignores that outright and
+ * the outline would vanish with no way to reach it.
+ */
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    /* fall through */
+  }
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+  document.body.appendChild(area);
+  area.select();
+  let ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch {
+    ok = false;
+  }
+  area.remove();
+  return ok;
 }
 
 /**
@@ -113,6 +153,12 @@ export function KangarooPage({ onClose }: { onClose?: () => void }) {
   const { board, commit, undo, redo, canUndo, canRedo } = useBoardHistory();
   const [selected, setSelected] = useState<Selection>(null);
   const [copied, setCopied] = useState(false);
+  /** Shown only when the clipboard is unavailable, so the outline is still
+   *  reachable — select-and-copy by hand. */
+  const [outline, setOutline] = useState<string | null>(null);
+  /** "New tree" asks in the page rather than through `confirm()`, which a
+   *  sandboxed frame ignores — it returned false and the button did nothing. */
+  const [confirmNew, setConfirmNew] = useState(false);
   /** A keyboard move rebuilds the tile, so focus has to be put back by id. */
   const refocus = useRef<string | null>(null);
 
@@ -222,18 +268,18 @@ export function KangarooPage({ onClose }: { onClose?: () => void }) {
 
   const copyOutline = async () => {
     const text = toOutline(board);
-    try {
-      await navigator.clipboard.writeText(text);
+    if (await copyToClipboard(text)) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1400);
-    } catch {
-      window.prompt('Copy the outline:', text);
+    } else {
+      setOutline(text);
     }
   };
 
   const newTree = () => {
-    if (board.root && !window.confirm('Clear the board and start a new word?')) return;
     setSelected(null);
+    setConfirmNew(false);
+    setOutline(null);
     clearSaved();
     commit(() => emptyBoard());
   };
@@ -260,9 +306,28 @@ export function KangarooPage({ onClose }: { onClose?: () => void }) {
           <button onClick={copyOutline} disabled={!board.root} className={headerButton}>
             {copied ? 'Copied' : 'Copy outline'}
           </button>
-          <button onClick={newTree} className={headerButton}>
-            New tree
-          </button>
+          {confirmNew ? (
+            <>
+              <button
+                onClick={newTree}
+                autoFocus
+                className={`${headerButton} border-rose-800 text-rose-200`}
+              >
+                Clear everything
+              </button>
+              <button onClick={() => setConfirmNew(false)} className={headerButton}>
+                Keep it
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setConfirmNew(true)}
+              disabled={!board.root}
+              className={headerButton}
+            >
+              New tree
+            </button>
+          )}
           {/* Absent in the standalone build, where there is nothing to go back to. */}
           {onClose && (
             <button onClick={onClose} className={headerButton}>
@@ -271,6 +336,26 @@ export function KangarooPage({ onClose }: { onClose?: () => void }) {
           )}
         </div>
       </header>
+
+      {outline !== null && (
+        <div className="panel flex flex-col gap-2 rounded-xl p-3">
+          <p className="text-xs text-neutral-400">
+            This browser would not let the page reach the clipboard. Here is the outline — select
+            it and copy.
+          </p>
+          <textarea
+            readOnly
+            autoFocus
+            onFocus={(e) => e.currentTarget.select()}
+            value={outline}
+            rows={Math.min(12, outline.split('\n').length + 1)}
+            className="panel-inset w-full max-w-md rounded-lg p-2 font-mono text-xs outline-none"
+          />
+          <button onClick={() => setOutline(null)} className={`${headerButton} self-start`}>
+            Done
+          </button>
+        </div>
+      )}
 
       {board.root ? (
         <>

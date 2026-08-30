@@ -181,6 +181,26 @@ try {
   await page.locator('button[aria-expanded="true"]').first().click();
   check('collapsing hides the subtree', await racks(page).count(), 1);
 
+  // --- new tree: asks in the page, and the ask is refusable ----------------
+  // Never a native confirm() — a sandboxed frame ignores those, which is
+  // exactly how this page runs once published.
+  await page.getByRole('button', { name: 'New tree' }).click();
+  await page.getByRole('button', { name: 'Keep it' }).click();
+  check('backing out of New tree keeps the tree', await racks(page).count(), 1);
+
+  await page.getByRole('button', { name: 'New tree' }).click();
+  await page.getByRole('button', { name: 'Clear everything' }).click();
+  check('New tree clears the board', await racks(page).count(), 0);
+  check('and hands back the seed form', await page.getByLabel('Start with a word').isVisible(), true);
+  await page.reload();
+  await page.getByRole('button', { name: 'Kangaroo' }).click();
+  check('the cleared board stays cleared', await racks(page).count(), 0);
+
+  // Seeding works without submitting a form, and from the Enter key.
+  await page.getByLabel('Start with a word').fill('feasted');
+  await page.getByLabel('Start with a word').press('Enter');
+  check('Enter seeds a root', await spelled(racks(page).first()), 'FEASTED');
+
   check('no page errors', errors.join(' | '), '');
   await page.close();
 

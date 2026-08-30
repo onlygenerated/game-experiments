@@ -95,6 +95,7 @@ Taken so the MVP has no open questions blocking it. Any of these can be overridd
 | Word length | 2–15 tiles per root. Below 2 there is nothing to find; above 15 a rack stops fitting a phone. |
 | Multiple trees | One root per board in the MVP. Export, then start a new one. |
 | Persistence | Autosave the whole tree to `localStorage` on every change. Reload restores it. |
+| Native dialogs | **None.** `confirm()` and `prompt()` are ignored outright in a sandboxed frame, which is what the page is published into — a button guarded by one silently does nothing. Confirmations happen in the page; so does the clipboard fallback. For the same reason the seed input is not a `<form>`: submission is blocked without `allow-forms`. |
 | Backend | None. Single page, no network requests at runtime, works with the wifi off. |
 
 ## Requirements
