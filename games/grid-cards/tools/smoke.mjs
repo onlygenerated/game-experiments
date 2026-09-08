@@ -13,7 +13,7 @@
  * moves state between modules. Exits non-zero if anything fails.
  */
 import { spawn } from 'node:child_process';
-import { launch } from './browser.mjs';
+import { launch } from '../../../tools/browser.mjs';
 
 const PORT = Number(process.env.SMOKE_PORT || 4173);
 const ORIGIN = `http://localhost:${PORT}`;
