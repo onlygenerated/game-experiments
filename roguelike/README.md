@@ -1,0 +1,49 @@
+# Unfolding
+
+A roguelike that starts almost too simple — walls, rats, stairs, one HP number — and grows
+its own rulebook as you play. You draft which rules each world adopts at Rule Shrines, and
+every rule cuts both ways, so the right pick depends on your build and your loot.
+
+Design: [DESIGN.md](DESIGN.md).
+
+```bash
+npm install
+npm run dev      # http://localhost:5173
+npm test         # engine tests, including bot-driven fuzz runs under every rule
+npm run smoke    # build, serve, and play it in headless Chromium (desktop + phone)
+npm run single   # dist/unfolding.html — the whole game in one file
+npx vite-node tools/probe.ts 60   # balance probe: how deep a greedy bot gets
+```
+
+No framework: TypeScript, a canvas for the map and plain DOM for panels. Worlds and the
+run in progress are saved in `localStorage`.
+
+## Layout
+
+| Path | What |
+|---|---|
+| `src/rules/rules.ts` | Rule definitions, the rule graph, derived stats, shrine previews |
+| `src/engine/game.ts` | Turn loop, combat, shrines, rule adoption, death and graves |
+| `src/engine/dungeon.ts` | Floor layout — a pure function of world seed and depth |
+| `src/engine/content.ts` | Item and monster catalogues, floor population |
+| `src/engine/world.ts` | World creation, heir names, persistence |
+| `src/ui/` | Canvas renderer, sidebar/modals, app controller and input |
+
+## How rules hook in
+
+Every item and the player carry their full property set from the start (weight,
+durability, element, STR/AGI/VIT…). Rules decide what gets read:
+
+- `derive(player, ctx)` turns character + active rules into the numbers combat uses.
+  The shrine preview is `derive` with the candidate rule minus `derive` without it.
+- `Game.adopt(rule)` brings a rule in mid-run and reinterprets the current floor
+  (objects appear, the lights go out, glimmering stones awaken).
+- Content generation reads the active rules; floor geography never does, so heirs walk
+  the same halls and find graves where their predecessors fell.
+
+## Status
+
+MVP: ten rules (Things, Growth, Arms, Weight, Durability, Elements, Darkness, Hunger,
+Arcana, Bestiary), shrines with personal previews, mastery and milestone triggers, rolled
+world variants, new world / new heir with one repeal, graves and a chronicle, keyboard
+and touch controls. Balance is first-pass — see `tools/probe.ts`.
