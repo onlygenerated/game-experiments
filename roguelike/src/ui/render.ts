@@ -1,7 +1,7 @@
 import { itemGlyph, MONSTERS } from '../engine/content.ts';
 import { idx } from '../engine/dungeon.ts';
 import type { Game } from '../engine/game.ts';
-import { T_STAIRS, T_WALL, type Floor } from '../engine/types.ts';
+import { T_STAIRS, T_UP, T_WALL, type Floor } from '../engine/types.ts';
 
 export const COLORS = {
   void: '#07080c',
@@ -11,6 +11,7 @@ export const COLORS = {
   wallEdge: '#323b4c',
   player: '#ffe7a3',
   stairs: '#f2c46d',
+  stairsUp: '#b9a27a',
   shrine: '#c9a2ff',
   shrineUsed: '#4a4458',
   grave: '#cfd3dc',
@@ -193,6 +194,11 @@ export class Renderer {
       ctx.fillText(ch, sxOf(x) + c / 2, syOf(y) + c / 2 + 1);
     };
 
+    // Tiles with something standing on them skip their own glyph, so the two don't overprint.
+    const covered = new Set<number>([idx(f, p.x, p.y)]);
+    for (const m of run.monsters) if (game.visible.has(idx(f, m.x, m.y))) covered.add(idx(f, m.x, m.y));
+    for (const fi of run.items) if (game.visible.has(idx(f, fi.x, fi.y))) covered.add(idx(f, fi.x, fi.y));
+
     for (let y = y0; y < y1; y++) {
       for (let x = x0; x < x1; x++) {
         const i = idx(f, x, y);
@@ -217,7 +223,9 @@ export class Renderer {
         ctx.fillStyle = COLORS.floor;
         ctx.fillRect(sx, sy, c, c);
         const g = f.glimmer[i];
+        if (covered.has(i) && !(g && elements)) continue;
         if (t === T_STAIRS) glyph('>', x, y, COLORS.stairs, true, 0.8);
+        else if (t === T_UP) glyph('<', x, y, COLORS.stairsUp, true, 0.8);
         else if (g && elements) {
           ctx.fillStyle = g === 'ember' ? COLORS.emberDim : COLORS.frostDim;
           ctx.fillRect(sx + 1, sy + 1, c - 2, c - 2);

@@ -1,6 +1,7 @@
 import { DIRS, distanceMap, idx } from '../engine/dungeon.ts';
 import type { Action, Game } from '../engine/game.ts';
 import type { Rng } from '../engine/rng.ts';
+import { T_UP } from '../engine/types.ts';
 
 /**
  * A simple greedy player used by tests to drive real runs: fight what's near,
@@ -36,6 +37,8 @@ export function botAction(g: Game, rng: Rng): Action {
   }
   const f = run.floor;
   if (p.x === f.stairs.x && p.y === f.stairs.y && rng.chance(0.7)) return { type: 'descend' };
+  // Now and then, go back up — exercises remembered floors.
+  if (f.tiles[idx(f, p.x, p.y)] === T_UP && rng.chance(0.08)) return { type: 'ascend' };
 
   // Head for a target: an unused shrine, the nearest item, otherwise the stairs.
   const targets = [

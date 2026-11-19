@@ -1,7 +1,7 @@
 import { itemLabel, MONSTERS } from '../engine/content.ts';
 import { idx, inBounds } from '../engine/dungeon.ts';
 import type { Game } from '../engine/game.ts';
-import { T_STAIRS, T_WALL } from '../engine/types.ts';
+import { T_STAIRS, T_UP, T_WALL } from '../engine/types.ts';
 import { alt, hiddenProps, RULES } from '../rules/rules.ts';
 import { itemFacts } from './hud.ts';
 
@@ -75,9 +75,14 @@ export function describeTile(game: Game, x: number, y: number): TileInfo {
     terrain = 'Stairs down';
     lines.push(`Leads to depth ${run.depth + 1}.`);
   }
+  if (t === T_UP) {
+    terrain = 'Stairs up';
+    lines.push(`Leads back to depth ${run.depth - 1}, as you left it.`);
+  }
   if (sh && sh.pos.x === x && sh.pos.y === y) {
     terrain = 'Rule Shrine';
-    if (sh.used) lines.push('Spent: it has already changed this world.');
+    if (sh.dark) lines.push('Dark: you left this floor without answering it.');
+    else if (sh.used) lines.push('Spent: it has already changed this world.');
     else if (sh.offers?.length) lines.push(`Offers: ${sh.offers.map((r) => RULES[r].name).join(', ')}. Step onto it to choose.`);
     else lines.push('Step onto it to see what it offers.');
   }

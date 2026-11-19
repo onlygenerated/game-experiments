@@ -28,13 +28,14 @@ import {
 import { DIRS, distanceMap, generateLayout, idx, passable, soloRoom, type LayoutOpts } from './dungeon.ts';
 import { computeVisible, lineOfSight } from './fov.ts';
 import { hashSeed, Rng } from './rng.ts';
-import type { FloorItem, Grave, Item, Monster, Player, Pos, RuleId, RunState, Tone, World } from './types.ts';
+import { T_FLOOR, T_UP, type FloorItem, type Grave, type Item, type Monster, type Player, type Pos, type RuleId, type RunState, type Tone, type World } from './types.ts';
 import { heirName } from './world.ts';
 
 export type Action =
   | { type: 'move'; dx: number; dy: number }
   | { type: 'wait' }
   | { type: 'descend' }
+  | { type: 'ascend' }
   | { type: 'use'; id: number }
   | { type: 'equip'; id: number }
   | { type: 'unequip'; slot: 'weapon' | 'armor' }
@@ -48,7 +49,8 @@ export type Action =
 export type GameEvent =
   | { type: 'rule'; rule: RuleId; how: 'shrine' | 'mastery' | 'milestone' }
   | { type: 'death' }
-  | { type: 'descend'; depth: number };
+  /** The player moved to another floor (either direction). */
+  | { type: 'floor'; depth: number };
 
 export const INVENTORY_CAP = 12;
 
@@ -197,19 +199,83 @@ export class Game {
     return { rng, ctx: this.ctx, nextId: () => this.run.nextId++ };
   }
 
-  private enterFloor(depth: number) {
+  /**
+   * Arrive on a floor: `down` puts you on its stairs up (where you start),
+   * `up` on its stairs down. A floor you've been to comes back as you left
+   * it, then catches up on any rules the world adopted since.
+   */
+  private enterFloor(depth: number, via: 'down' | 'up' = 'down') {
     const run = this.run;
     run.depth = depth;
-    run.floor = generateLayout(this.world.seed, depth, layoutOpts(this.world));
-    const { monsters, items } = populate(run.floor, this.genCtx('populate'));
-    run.monsters = monsters;
-    run.items = items;
-    run.player.x = run.floor.start.x;
-    run.player.y = run.floor.start.y;
+    const stored = run.visited?.[depth];
+    const arrive = () => {
+      const at = via === 'down' ? run.floor.start : run.floor.stairs;
+      run.player.x = at.x;
+      run.player.y = at.y;
+    };
+    if (stored) {
+      delete run.visited![depth];
+      run.floor = stored.floor;
+      run.monsters = stored.monsters;
+      run.items = stored.items;
+      arrive();
+      const missed = RULE_ORDER.filter((r) => this.has(r) && !stored.rules.includes(r));
+      for (const r of missed) this.reinterpretFloor(r);
+      if (missed.length) this.log('This floor has changed since you were last here.', 'dim');
+    } else {
+      run.floor = generateLayout(this.world.seed, depth, layoutOpts(this.world));
+      const { monsters, items } = populate(run.floor, this.genCtx('populate'));
+      run.monsters = monsters;
+      run.items = items;
+    }
+    arrive();
+    this.clearArrival();
     this.world.deepest = Math.max(this.world.deepest, depth);
     this.refreshVision();
+    if (stored) return;
     const graves = this.floorGraves().filter((g) => !g.looted);
     if (graves.length) this.log(`You sense ${graves.length === 1 ? 'a grave' : `${graves.length} graves`} on this floor.`, 'dim');
+  }
+
+  /** Nothing may be standing where the player arrives: shoo it to the nearest open tile. */
+  private clearArrival() {
+    const { player: p, floor: f } = this.run;
+    const m = this.monsterAt(p.x, p.y);
+    if (!m) return;
+    const dist = distanceMap(f, p);
+    let best = -1;
+    for (let i = 0; i < dist.length; i++) {
+      if (dist[i] <= 0) continue;
+      const x = i % f.w;
+      const y = (i - x) / f.w;
+      if (this.monsterAt(x, y)) continue;
+      if (best < 0 || dist[i] < dist[best]) best = i;
+    }
+    if (best >= 0) {
+      m.x = best % f.w;
+      m.y = (best - m.x) / f.w;
+    }
+  }
+
+  /** Would this floor's shrine offer anything if you stepped on it now? */
+  shrineWouldOffer(): boolean {
+    const sh = this.run.floor.shrine;
+    if (!sh || sh.used) return false;
+    if (sh.offers?.length) return true;
+    return frontier(new Set(this.world.rules), { depth: this.run.depth, emergence: this.world.emergence ?? {} }).length > 0;
+  }
+
+  /** Taking any stairs: an unanswered shrine goes dark, and the floor is kept for your return. */
+  private leaveFloor() {
+    const run = this.run;
+    const sh = run.floor.shrine;
+    if (sh && !sh.used) {
+      if (this.shrineWouldOffer()) this.log('Behind you, the unanswered shrine goes dark.', 'dim');
+      sh.used = true;
+      sh.dark = true;
+    }
+    run.visited = run.visited ?? {};
+    run.visited[run.depth] = { floor: run.floor, monsters: run.monsters, items: run.items, rules: [...this.world.rules] };
   }
 
   // -------------------------------------------------------------------------
@@ -235,6 +301,8 @@ export class Game {
         break;
       case 'descend':
         return this.descend();
+      case 'ascend':
+        return this.ascend();
       case 'use':
         cost = this.use(a.id);
         break;
@@ -308,6 +376,7 @@ export class Game {
       }
     }
     if (p.x === floor.stairs.x && p.y === floor.stairs.y) this.log('Stairs lead down. Press > to descend.', 'info');
+    if (floor.tiles[idx(floor, p.x, p.y)] === T_UP) this.log(`Stairs lead up to depth ${this.run.depth - 1}. Press < to climb.`, 'info');
     const sh = floor.shrine;
     if (sh && !sh.used && sh.pos.x === p.x && sh.pos.y === p.y) this.openShrine();
     const grave = this.graveAt(p.x, p.y);
@@ -321,9 +390,7 @@ export class Game {
       this.log('There are no stairs here.', 'dim');
       return false;
     }
-    if (floor.shrine && !floor.shrine.used && floor.shrine.offers !== null) {
-      this.log('Behind you, the unanswered shrine goes dark.', 'dim');
-    }
+    this.leaveFloor();
     const depth = this.run.depth + 1;
     // Imposed rules arrive by themselves once they've emerged and can stand.
     for (const id of RULE_ORDER) {
@@ -331,9 +398,23 @@ export class Game {
       if (!def.imposed || this.has(id) || emergenceOf(this.world, id) > depth) continue;
       if (def.prereqs.every((r) => this.has(r))) this.adopt(id, 'milestone');
     }
-    this.enterFloor(depth);
-    this.events.push({ type: 'descend', depth });
+    this.enterFloor(depth, 'down');
+    this.events.push({ type: 'floor', depth });
     this.log(`You descend to depth ${depth}.`, 'info');
+    return true;
+  }
+
+  private ascend(): boolean {
+    const { player: p, floor } = this.run;
+    if (this.run.depth <= 1 || floor.tiles[idx(floor, p.x, p.y)] !== T_UP) {
+      this.log('There are no stairs up here.', 'dim');
+      return false;
+    }
+    this.leaveFloor();
+    const depth = this.run.depth - 1;
+    this.enterFloor(depth, 'up');
+    this.events.push({ type: 'floor', depth });
+    this.log(`You climb back up to depth ${depth}.`, 'info');
     return true;
   }
 
@@ -508,42 +589,19 @@ export class Game {
     const def = RULES[rule];
     this.log(`NEW RULE — ${def.name}: ${def.tagline}`, 'rule');
     const p = this.run.player;
-    const taken = (x: number, y: number) =>
-      (x === p.x && y === p.y) || this.run.items.some((fi) => fi.x === x && fi.y === y);
-    const spawn = (r: RuleId) => {
-      const items = itemsForRule(r, this.run.floor, this.genCtx(`adopt-${r}`));
-      this.run.items.push(...scatter(items, this.run.floor, this.genCtx(`scatter-${r}`), taken));
-    };
+    this.reinterpretFloor(rule);
     switch (rule) {
-      case 'halls':
-        this.expandFloor();
-        break;
-      case 'peril': {
-        const f = this.run.floor;
-        const count = Math.max(2, Math.ceil(monsterCount(f, this.ctx) * 0.6));
-        const sh = f.shrine?.pos;
-        this.run.monsters.push(
-          ...spawnMonsters(f, this.genCtx('adopt-peril'), count, (x, y) =>
-            cheb({ x, y }, p) < 3 || (!!sh && sh.x === x && sh.y === y),
-          ),
-        );
+      case 'peril':
         this.log('Rats skitter out of the walls.', 'bad');
         break;
-      }
       case 'things':
-        spawn('things');
         this.log('Objects shimmer into existence around you.', 'dim');
-        break;
-      case 'arms':
-        spawn('arms');
         break;
       case 'hunger':
         p.satiety = MAX_SATIETY;
-        spawn('hunger');
         break;
       case 'darkness':
         this.run.floor.explored.fill(0);
-        for (const m of this.run.monsters) m.aware = false;
         break;
       case 'arcana':
         p.mana = this.stats.maxMana;
@@ -561,6 +619,47 @@ export class Game {
   }
 
   /**
+   * What a rule does to the current floor when it arrives: the same whether it
+   * arrives while you stand here or while you're on another floor.
+   */
+  private reinterpretFloor(rule: RuleId) {
+    const run = this.run;
+    const p = run.player;
+    const taken = (x: number, y: number) =>
+      (x === p.x && y === p.y) || run.items.some((fi) => fi.x === x && fi.y === y);
+    const spawn = (r: RuleId) => {
+      const items = itemsForRule(r, run.floor, this.genCtx(`adopt-${r}`));
+      run.items.push(...scatter(items, run.floor, this.genCtx(`scatter-${r}`), taken));
+    };
+    switch (rule) {
+      case 'halls':
+        this.expandFloor();
+        break;
+      case 'peril': {
+        const f = run.floor;
+        const count = Math.max(2, Math.ceil(monsterCount(f, this.ctx) * 0.6));
+        const sh = f.shrine?.pos;
+        run.monsters.push(
+          ...spawnMonsters(f, this.genCtx('adopt-peril'), count, (x, y) =>
+            cheb({ x, y }, p) < 3 || (!!sh && sh.x === x && sh.y === y),
+          ),
+        );
+        break;
+      }
+      case 'things':
+      case 'arms':
+      case 'hunger':
+        spawn(rule);
+        break;
+      case 'darkness':
+        for (const m of run.monsters) m.aware = false;
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
    * Halls arriving mid-floor: the single room becomes the largest room of the
    * full floor. What you've seen and the shrine you used stay; the stairs move,
    * and the new rooms fill with whatever the active rules put there.
@@ -572,6 +671,15 @@ export class Game {
     const full = generateLayout(this.world.seed, run.depth, layoutOpts(this.world));
     full.shrine = old.shrine;
     if (old.shrine) delete full.glimmer[idx(full, old.shrine.pos.x, old.shrine.pos.y)];
+    // The stairs up stay where you came in; the down stairs move to the full floor's.
+    if (run.depth >= 2) {
+      const fs = full.start;
+      if (full.tiles[idx(full, fs.x, fs.y)] === T_UP) full.tiles[idx(full, fs.x, fs.y)] = T_FLOOR;
+      const os = old.start;
+      if (!(os.x === full.stairs.x && os.y === full.stairs.y)) full.tiles[idx(full, os.x, os.y)] = T_UP;
+      delete full.glimmer[idx(full, os.x, os.y)];
+    }
+    full.start = old.start;
     for (let i = 0; i < old.explored.length; i++) if (old.explored[i]) full.explored[i] = 1;
     run.floor = full;
     const room = soloRoom(full);

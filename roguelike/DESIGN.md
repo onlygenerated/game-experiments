@@ -165,6 +165,10 @@ arrives, a banner announces it and its panel fades in.
 - Fresh seed; the rulebook starts empty: one room, a shrine, the stairs.
 - The seed rolls when each basic rule **emerges** (§2.4) and a **variant** for each rule (e.g. *Iron World: all weights +1*,
   *Moonless: sight radius 3*). Variants are shown at the shrine, so they feed the draft.
+- Every floor below the first has **stairs up** where you arrive. Floors you leave are
+  remembered for the rest of the run (dead foes stay dead, taken loot stays taken), and a
+  remembered floor catches up on rules the world adopted while you were elsewhere. Leaving
+  a floor by either stairs darkens its unanswered shrine.
 - Floor layouts are deterministic from the world seed and depth — the world has a fixed
   geography that heirs will walk again. Without Halls a floor is just its largest room;
   when Halls arrives mid-floor, that room opens into the rest of the floor and the stairs

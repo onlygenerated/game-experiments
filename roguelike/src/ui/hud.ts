@@ -312,7 +312,7 @@ export function helpHTML(): string {
     <dl class="keys">
       <div><dt>Arrows · hjkl yubn · numpad</dt><dd>Move / attack (walk into a foe)</dd></div>
       <div><dt>. · 5 · Space</dt><dd>Wait a turn</dd></div>
-      <div><dt>&gt; · Enter</dt><dd>Descend stairs</dd></div>
+      <div><dt>&gt; · &lt; · Enter</dt><dd>Go down / up stairs (Enter takes whichever you're on)</dd></div>
       <div><dt>q / e</dt><dd>Drink a potion / eat</dd></div>
       <div><dt>z / x</dt><dd>Cleave / Mend (with Arcana)</dd></div>
       <div><dt>g · ,</dt><dd>Pick up what's here</dd></div>
@@ -323,7 +323,7 @@ export function helpHTML(): string {
       <div><dt>Drag the map</dt><dd>Look around; your next move recenters</dd></div>
       <div><dt>Press and hold the map</dt><dd>Walk there; stops if a foe appears or you're hurt. Any key or tap stops it</dd></div>
     </dl>
-    <p class="muted small">Legend: <b>@</b> you · <b>&gt;</b> stairs · <b>Ω</b> rule shrine · <b>†</b> grave · <b>!</b> potion · <b>$</b> gold · <b>)</b> weapon · <b>[</b> armour · <b>%</b> food · ◇ a property you can't perceive yet</p>
+    <p class="muted small">Legend: <b>@</b> you · <b>&gt;</b> stairs down · <b>&lt;</b> stairs up · <b>Ω</b> rule shrine · <b>†</b> grave · <b>!</b> potion · <b>$</b> gold · <b>)</b> weapon · <b>[</b> armour · <b>%</b> food · ◇ a property you can't perceive yet</p>
     <footer><button data-cmd="dismiss" class="primary"><kbd>Esc</kbd> Close</button></footer>
   </div>`;
 }
@@ -364,14 +364,14 @@ export function optionsHTML(o: Options): string {
   </div>`;
 }
 
-export function confirmDescendHTML(game: Game): string {
+export function confirmDescendHTML(game: Game, dir: 'up' | 'down'): string {
   const sh = game.run.floor.shrine!;
   const offered = sh.offers?.length ? ` It offered ${sh.offers.map((r) => RULES[r].name).join(', ')}.` : ' You haven’t seen what it offers.';
   return `<div class="modal confirm" role="dialog" aria-label="Leave the shrine behind?">
     <header class="modal-head"><span class="eyebrow">Depth ${game.run.depth}</span><h1>Leave this floor’s shrine behind?</h1>
     <p class="muted">Once you take the stairs, this shrine is gone.${offered}</p></header>
     <footer class="confirm-btns">
-      <button class="primary" data-cmd="descend-confirmed"><kbd>Enter</kbd> Descend anyway</button>
+      <button class="primary" data-cmd="stairs-confirmed"><kbd>Enter</kbd> ${dir === 'up' ? 'Climb up anyway' : 'Descend anyway'}</button>
       <button class="ghost" data-cmd="dismiss"><kbd>Esc</kbd> Stay</button>
     </footer>
     <p class="muted small">You can turn this warning off in Options.</p>

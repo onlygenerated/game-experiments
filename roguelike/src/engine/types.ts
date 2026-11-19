@@ -29,12 +29,16 @@ export interface Rect {
 export const T_WALL = 0;
 export const T_FLOOR = 1;
 export const T_STAIRS = 2;
+/** Stairs up: where you arrive on every floor below the first. */
+export const T_UP = 3;
 
 export interface Shrine {
   pos: Pos;
   /** Filled in the first time the player steps on it, from the frontier at that moment. */
   offers: RuleId[] | null;
   used: boolean;
+  /** Left unanswered when its floor was left behind; it offers nothing now. */
+  dark?: boolean;
 }
 
 export interface Floor {
@@ -175,6 +179,15 @@ export interface LogLine {
   turn: number;
 }
 
+/** A floor you've left, kept as it was so you can come back to it. */
+export interface StoredFloor {
+  floor: Floor;
+  monsters: Monster[];
+  items: FloorItem[];
+  /** The world's rules when you left, so rules adopted since can catch the floor up. */
+  rules: RuleId[];
+}
+
 export type Pending =
   | { kind: 'shrine' }
   | { kind: 'levelup' }
@@ -196,4 +209,6 @@ export interface RunState {
   pendingLevelUps: number;
   over: boolean;
   cause: string | null;
+  /** Floors you've left this run, by depth. Absent in runs saved before stairs up existed. */
+  visited?: Record<number, StoredFloor>;
 }

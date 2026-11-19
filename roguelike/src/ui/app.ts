@@ -1,10 +1,10 @@
 import { MONSTERS } from '../engine/content.ts';
 import { article, Game, type Action, type GameEvent } from '../engine/game.ts';
 import { canTravelTo, nearbyThreats, travelStep } from '../engine/travel.ts';
-import type { Pos } from '../engine/types.ts';
+import { T_UP, type Pos } from '../engine/types.ts';
 import type { RuleId, World } from '../engine/types.ts';
 import { defaultKV, heirName, newWorld, randomSeed, Store } from '../engine/world.ts';
-import { frontier, repealable, RULE_ORDER, RULES } from '../rules/rules.ts';
+import { repealable, RULE_ORDER, RULES } from '../rules/rules.ts';
 import { describeTile } from './describe.ts';
 import {
   bannerHTML,
@@ -28,7 +28,7 @@ type Overlay =
   | { kind: 'codex' }
   | { kind: 'help' }
   | { kind: 'options' }
-  | { kind: 'confirm-descend' };
+  | { kind: 'confirm-stairs'; dir: 'up' | 'down' };
 
 const KEY_DIRS: Record<string, [number, number]> = {
   ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
@@ -186,7 +186,7 @@ export class App {
             .join('')}
         </div>
         <div class="pad-actions">
-          <button data-cmd="descend">Descend</button>
+          <button data-cmd="stairs" class="pad-stairs">Descend</button>
           <button data-cmd="wait">Wait</button>
           <button data-cmd="pickup" class="pad-pickup" disabled>Pick up</button>
           <button data-cmd="look" class="pad-look" aria-pressed="false">Look</button>
@@ -325,22 +325,31 @@ export class App {
   }
 
   /** Descend, unless that would leave an unanswered shrine behind and the player wants a warning. */
-  private tryDescend() {
+  /** Which stairs the player is standing on, if any. */
+  private stairsHere(): 'up' | 'down' | null {
+    const g = this.game;
+    if (!g) return null;
+    const { floor: f, player: p } = g.run;
+    if (p.x === f.stairs.x && p.y === f.stairs.y) return 'down';
+    if (f.tiles[p.y * f.w + p.x] === T_UP) return 'up';
+    return null;
+  }
+
+  /**
+   * Take the stairs (`dir`, or whichever are underfoot), unless that would leave
+   * an unanswered shrine behind and the player wants a warning first.
+   */
+  private tryStairs(dir?: 'up' | 'down') {
     const game = this.game;
     if (!game) return;
-    const { floor: f, player: p } = game.run;
-    const onStairs = p.x === f.stairs.x && p.y === f.stairs.y;
-    const sh = f.shrine;
-    const wouldOffer =
-      !!sh && !sh.used &&
-      ((sh.offers?.length ?? 0) > 0 ||
-        frontier(new Set(game.world.rules), { depth: game.run.depth, emergence: game.world.emergence ?? {} }).length > 0);
-    if (onStairs && wouldOffer && this.options.confirmShrine) {
+    const here = this.stairsHere();
+    const want = dir ?? here ?? 'down';
+    if (here === want && game.shrineWouldOffer() && this.options.confirmShrine) {
       this.stopTravel(null);
-      this.openOverlay({ kind: 'confirm-descend' });
+      this.openOverlay({ kind: 'confirm-stairs', dir: want });
       return;
     }
-    this.act({ type: 'descend' });
+    this.act({ type: want === 'up' ? 'ascend' : 'descend' });
   }
 
   // -------------------------------------------------------------------------
@@ -378,6 +387,8 @@ export class App {
     if (!game) return;
     const q = (s: string) => this.root.querySelector<HTMLElement>(s);
     q('.topbar')!.innerHTML = topbarHTML(game, !!this.look);
+    const stairsBtn = q('.pad-stairs');
+    if (stairsBtn) stairsBtn.textContent = this.stairsHere() === 'up' ? 'Climb up' : 'Descend';
     const pickup = q('.pad-pickup') as HTMLButtonElement | null;
     if (pickup) pickup.disabled = game.itemsHere().length === 0;
     const lookBtn = q('.pad-look');
@@ -405,7 +416,7 @@ export class App {
     else if (!game) html = '';
     else if (top?.kind === 'banner') html = bannerHTML(top.rule, top.how, game.world);
     else if (top?.kind === 'codex') html = codexHTML(game.world);
-    else if (top?.kind === 'confirm-descend') html = confirmDescendHTML(game);
+    else if (top?.kind === 'confirm-stairs') html = confirmDescendHTML(game, top.dir);
     else if (game.run.pending?.kind === 'shrine') html = shrineHTML(game);
     else if (game.run.pending?.kind === 'levelup') html = levelupHTML(game);
     el.hidden = !html;
@@ -462,7 +473,7 @@ export class App {
         this.overlays.push({ kind: 'banner', rule: e.rule, how: e.how });
         this.fresh.add(e.rule);
       }
-      if (e.type === 'descend') this.layout();
+      if (e.type === 'floor') this.layout();
     }
   }
 
@@ -501,11 +512,11 @@ export class App {
     const pending = game.run.pending;
     const handled = () => e.preventDefault();
 
-    if (top?.kind === 'confirm-descend') {
-      if (k === 'Enter' || k === '>') {
+    if (top?.kind === 'confirm-stairs') {
+      if (k === 'Enter' || k === (top.dir === 'up' ? '<' : '>')) {
         handled();
         this.overlays.shift();
-        this.act({ type: 'descend' });
+        this.act({ type: top.dir === 'up' ? 'ascend' : 'descend' });
       } else if (k === 'Escape') {
         handled();
         this.dismissOverlay();
@@ -588,9 +599,16 @@ export class App {
         }
         break;
       case '>':
+        handled();
+        this.tryStairs('down');
+        break;
+      case '<':
+        handled();
+        this.tryStairs('up');
+        break;
       case 'Enter':
         handled();
-        this.tryDescend();
+        this.tryStairs();
         break;
       case 'g':
       case ',':
@@ -797,7 +815,7 @@ export class App {
     const dx = Math.sign(t.x - p.x);
     const dy = Math.sign(t.y - p.y);
     if (dx === 0 && dy === 0) {
-      if (p.x === f.stairs.x && p.y === f.stairs.y) this.tryDescend();
+      if (this.stairsHere()) this.tryStairs();
       else this.act({ type: 'wait' });
     } else this.act({ type: 'move', dx, dy });
   }
@@ -855,12 +873,16 @@ export class App {
         this.act({ type: 'wait' });
         break;
       case 'descend':
-        this.tryDescend();
+        this.tryStairs('down');
         break;
-      case 'descend-confirmed':
-        this.overlays.shift();
-        this.act({ type: 'descend' });
+      case 'stairs':
+        this.tryStairs();
         break;
+      case 'stairs-confirmed': {
+        const top = this.overlays.shift();
+        this.act({ type: top?.kind === 'confirm-stairs' && top.dir === 'up' ? 'ascend' : 'descend' });
+        break;
+      }
       case 'pickup':
         this.act({ type: 'pickup', id: d.id ? Number(d.id) : undefined });
         break;

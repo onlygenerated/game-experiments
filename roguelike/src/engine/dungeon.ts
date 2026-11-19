@@ -1,5 +1,5 @@
 import { hashSeed, Rng } from './rng.ts';
-import { T_FLOOR, T_STAIRS, T_WALL, type Element, type Floor, type Pos, type Rect } from './types.ts';
+import { T_FLOOR, T_STAIRS, T_UP, T_WALL, type Element, type Floor, type Pos, type Rect } from './types.ts';
 
 export const MAP_W = 48;
 export const MAP_H = 28;
@@ -103,6 +103,7 @@ function soloLayout(full: Floor): Floor {
   const start = { x: room.x, y: room.y + Math.floor(room.h / 2) };
   const stairs = { x: room.x + room.w - 1, y: room.y + room.h - 1 };
   tiles[stairs.y * MAP_W + stairs.x] = T_STAIRS;
+  if (full.depth >= 2) tiles[start.y * MAP_W + start.x] = T_UP;
   let shrinePos = { x: room.x + Math.floor(room.w / 2), y: room.y };
   if ((shrinePos.x === start.x && shrinePos.y === start.y) || (shrinePos.x === stairs.x && shrinePos.y === stairs.y)) {
     shrinePos = { x: room.x + room.w - 1, y: room.y };
@@ -184,6 +185,8 @@ function fullLayout(worldSeed: number, depth: number, sprawl: boolean): Floor {
   }
   floor.stairs = best;
   tiles[idx(floor, best.x, best.y)] = T_STAIRS;
+  // You arrive by stairs on every floor but the first.
+  if (depth >= 2) tiles[idx(floor, start.x, start.y)] = T_UP;
 
   // Glimmering stones are planted from depth 1, long before Elements can exist.
   const nGlimmer = rng.int(4, 8);

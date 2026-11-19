@@ -352,16 +352,39 @@ try {
       a.refresh();
     });
     const depthBefore = await page.evaluate(() => window.unfolding.game.run.depth);
-    if (vp.isMobile) await page.click('.pad-actions [data-cmd="descend"]');
+    if (vp.isMobile) await page.click('.pad-stairs');
     else await page.keyboard.press('>');
     ok(`${vp.name}: descending past a live shrine asks first`, await page.isVisible('.modal.confirm'));
     await shot(page, `${vp.name}-2h-confirm`);
     await page.click('.modal.confirm [data-cmd="dismiss"]');
     ok(`${vp.name}: Stay keeps you here`, (await page.evaluate(() => window.unfolding.game.run.depth)) === depthBefore);
-    if (vp.isMobile) await page.click('.pad-actions [data-cmd="descend"]');
+    if (vp.isMobile) await page.click('.pad-stairs');
     else await page.keyboard.press('>');
-    await page.click('[data-cmd="descend-confirmed"]');
+    await page.click('[data-cmd="stairs-confirmed"]');
     ok(`${vp.name}: Descend anyway descends`, (await page.evaluate(() => window.unfolding.game.run.depth)) === depthBefore + 1);
+
+    // Stairs up: you arrived on them. Climbing asks about this floor's shrine, then
+    // returns you to the floor above at its stairs down; going down lands you back here.
+    const onUp = await page.evaluate(() => {
+      const a = window.unfolding, g = a.game, f = g.run.floor, p = g.run.player;
+      if (f.shrine) { f.shrine.used = false; f.shrine.offers = ['things']; }
+      a.refresh();
+      return f.tiles[p.y * f.w + p.x] === 3;
+    });
+    ok(`${vp.name}: you arrive on stairs up`, onUp);
+    if (vp.isMobile) {
+      ok(`${vp.name}: the stairs button says Climb up`, (await page.textContent('.pad-stairs')) === 'Climb up');
+      await page.click('.pad-stairs');
+    } else await page.keyboard.press('<');
+    ok(`${vp.name}: climbing past a live shrine asks first`, /Climb up anyway/.test((await page.textContent('.modal.confirm')) ?? ''));
+    await page.click('[data-cmd="stairs-confirmed"]');
+    const up = await page.evaluate(() => { const g = window.unfolding.game, f = g.run.floor, p = g.run.player; return { depth: g.run.depth, onDown: p.x === f.stairs.x && p.y === f.stairs.y }; });
+    ok(`${vp.name}: climbing returns to the floor above, on its stairs down`, up.depth === depthBefore && up.onDown);
+    await shot(page, `${vp.name}-2i-climbed`);
+    if (vp.isMobile) await page.click('.pad-stairs');
+    else await page.keyboard.press('>');
+    const down = await page.evaluate(() => { const g = window.unfolding.game, f = g.run.floor, p = g.run.player; return { depth: g.run.depth, onUp: f.tiles[p.y * f.w + p.x] === 3, dark: !!f.shrine?.dark }; });
+    ok(`${vp.name}: back down lands on the stairs up, and that floor's shrine went dark`, down.depth === depthBefore + 1 && down.onUp && down.dark);
 
     // Force the moment the game is built around: a Greatsword in hand, a shrine offering Weight.
     await page.evaluate(() => {
