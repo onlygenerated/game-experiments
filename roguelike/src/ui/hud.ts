@@ -289,6 +289,7 @@ export function helpHTML(): string {
       <div><dt>c</dt><dd>Codex</dd></div>
       <div><dt>Tap the map</dt><dd>Step toward that spot; tap yourself to wait</dd></div>
       <div><dt>Drag the map</dt><dd>Look around; your next move recenters</dd></div>
+      <div><dt>Press and hold the map</dt><dd>Walk there; stops if a foe appears or you're hurt. Any key or tap stops it</dd></div>
     </dl>
     <p class="muted small">Legend: <b>@</b> you · <b>&gt;</b> stairs · <b>Ω</b> rule shrine · <b>†</b> grave · <b>!</b> potion · <b>$</b> gold · <b>)</b> weapon · <b>[</b> armour · <b>%</b> food · ◇ a property you can't perceive yet</p>
     <footer><button data-cmd="dismiss" class="primary"><kbd>Esc</kbd> Close</button></footer>

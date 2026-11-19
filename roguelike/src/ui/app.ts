@@ -1,4 +1,7 @@
+import { MONSTERS } from '../engine/content.ts';
 import { Game, type Action, type GameEvent } from '../engine/game.ts';
+import { canTravelTo, nearbyThreats, travelStep } from '../engine/travel.ts';
+import type { Pos } from '../engine/types.ts';
 import type { RuleId, World } from '../engine/types.ts';
 import { defaultKV, heirName, newWorld, randomSeed, Store } from '../engine/world.ts';
 import { repealable, RULE_ORDER, RULES } from '../rules/rules.ts';
@@ -28,7 +31,21 @@ export class App {
   private resizeObs: ResizeObserver | null = null;
   private deathTimer = 0;
   private drawQueued = false;
-  private drag: { id: number; x: number; y: number; sx: number; sy: number; moved: boolean } | null = null;
+  private drag: {
+    id: number;
+    x: number;
+    y: number;
+    sx: number;
+    sy: number;
+    moved: boolean;
+    /** Long-press timer; when it fires the press becomes a travel order instead of a tap. */
+    hold: number;
+    held: boolean;
+    /** This press only stopped a journey in progress; it shouldn't also act. */
+    stopper: boolean;
+  } | null = null;
+  /** Auto-travel in progress: where to, and which nearby foes we've already accounted for. */
+  private travel: { target: Pos; timer: number; known: Set<number> } | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -187,6 +204,7 @@ export class App {
     this.resizeObs = null;
     this.renderer = null;
     window.clearTimeout(this.deathTimer);
+    this.stopTravel(null);
   }
 
   // -------------------------------------------------------------------------
@@ -259,8 +277,10 @@ export class App {
     else this.store.saveRun(game.snapshot());
   }
 
-  private act(a: Action) {
+  /** Apply a player action. Anything the player does directly cancels auto-travel. */
+  private act(a: Action, fromTravel = false) {
     const game = this.game;
+    if (!fromTravel) this.stopTravel(null);
     if (!game || game.run.over) return;
     const p = game.run.player;
     const before = { hp: p.hp, x: p.x, y: p.y };
@@ -309,6 +329,11 @@ export class App {
   private onKey(e: KeyboardEvent) {
     const game = this.game;
     if (!game || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (this.travel) {
+      e.preventDefault();
+      this.stopTravel('You stop.');
+      return;
+    }
     const k = e.key;
     const top = this.overlays[0];
     const pending = game.run.pending;
@@ -400,22 +425,118 @@ export class App {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Auto-travel (press and hold a spot on the map)
+  // -------------------------------------------------------------------------
+
+  private startTravel(target: Pos) {
+    const game = this.game;
+    if (!game || game.run.over || game.run.pending || this.overlays.length) return;
+    this.stopTravel(null);
+    const p = game.run.player;
+    if (target.x === p.x && target.y === p.y) return;
+    if (!canTravelTo(game, target)) {
+      game.log(game.has('darkness') ? 'You don’t know a way there.' : 'You can’t get there from here.', 'dim');
+      this.refresh();
+      return;
+    }
+    const adjacent = game.run.monsters.find((m) => Math.max(Math.abs(m.x - p.x), Math.abs(m.y - p.y)) === 1);
+    if (adjacent) {
+      game.log(`Not with a ${game.monsterName(adjacent)} beside you.`, 'dim');
+      this.refresh();
+      return;
+    }
+    // Foes already nearby when you set off don't stop you — new arrivals do.
+    this.travel = { target, timer: 0, known: new Set(nearbyThreats(game).map((m) => m.id)) };
+    if (this.renderer) this.renderer.travelTarget = target;
+    this.travelTick();
+  }
+
+  /** End a journey; `why` (if any) is logged so the stop never looks like a bug. */
+  private stopTravel(why: string | null) {
+    if (!this.travel) return;
+    window.clearTimeout(this.travel.timer);
+    this.travel = null;
+    if (this.renderer) this.renderer.travelTarget = null;
+    if (why && this.game) {
+      this.game.log(why, 'info');
+      this.refresh();
+    } else this.draw();
+  }
+
+  private travelTick() {
+    const game = this.game;
+    const t = this.travel;
+    if (!game || !t) return;
+    const p = game.run.player;
+    const step = travelStep(game, t.target);
+    if (!step) return this.stopTravel('The way is blocked. You stop.');
+    const hp = p.hp;
+    const from = { x: p.x, y: p.y };
+    this.act({ type: 'move', dx: step.x, dy: step.y }, true);
+    if (this.travel !== t) return;
+
+    if (game.run.over || game.run.pending || this.overlays.length) return this.stopTravel(null);
+    if (p.x === from.x && p.y === from.y) return this.stopTravel('Something is in the way. You stop.');
+    if (p.hp < hp) return this.stopTravel('You’re hurt! You stop.');
+    if (p.x === t.target.x && p.y === t.target.y) return this.stopTravel(null);
+    const threats = nearbyThreats(game);
+    const arrived = threats.find((m) => !t.known.has(m.id));
+    const adjacent = threats.find((m) => Math.max(Math.abs(m.x - p.x), Math.abs(m.y - p.y)) === 1);
+    const stopFor = adjacent ?? arrived;
+    if (stopFor) {
+      const name = game.monsterName(stopFor);
+      return this.stopTravel(adjacent ? `A ${name} is upon you! You stop.` : `You spot a ${name} (${MONSTERS[stopFor.kind].glyph}). You stop.`);
+    }
+    t.timer = window.setTimeout(() => this.travelTick(), 70);
+  }
+
   /**
    * Drag the map to look around; a press that barely moves is a tap, which
-   * steps toward the tapped spot. One pointer at a time.
+   * steps toward the tapped spot; press and hold to travel there. One pointer
+   * at a time.
    */
   private bindMapGestures(canvas: HTMLCanvasElement, board: HTMLElement) {
     const SLOP = 8;
+    const HOLD_MS = 380;
+    const tileFor = (e: PointerEvent) => {
+      const f = this.game?.run.floor;
+      if (!f || !this.renderer) return null;
+      const rect = canvas.getBoundingClientRect();
+      return this.renderer.tileAt(e.clientX - rect.left, e.clientY - rect.top, f.w, f.h);
+    };
+    // Long-press on touch would otherwise open the browser's own context menu.
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     canvas.addEventListener('pointerdown', (e) => {
       if (this.drag || (e.pointerType === 'mouse' && e.button !== 0)) return;
-      this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false };
+      const stopper = !!this.travel;
+      if (stopper) this.stopTravel('You stop.');
+      const d = {
+        id: e.pointerId, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY,
+        moved: false, hold: 0, held: false, stopper,
+      };
+      const tile = tileFor(e);
+      if (!stopper && tile) {
+        d.hold = window.setTimeout(() => {
+          if (this.drag !== d || d.moved) return;
+          d.held = true;
+          try {
+            navigator.vibrate?.(12);
+          } catch {
+            /* not allowed here; the target marker is feedback enough */
+          }
+          this.startTravel(tile);
+        }, HOLD_MS);
+      }
+      this.drag = d;
       canvas.setPointerCapture?.(e.pointerId);
     });
     canvas.addEventListener('pointermove', (e) => {
       const d = this.drag;
       if (!d || d.id !== e.pointerId || !this.renderer) return;
-      if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < SLOP) return;
+      if (d.held || (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < SLOP)) return;
       d.moved = true;
+      window.clearTimeout(d.hold);
       board.classList.add('dragging');
       this.renderer.panBy(e.clientX - d.x, e.clientY - d.y);
       d.x = e.clientX;
@@ -426,8 +547,9 @@ export class App {
       const d = this.drag;
       if (!d || d.id !== e.pointerId) return;
       this.drag = null;
+      window.clearTimeout(d.hold);
       board.classList.remove('dragging');
-      if (!cancelled && !d.moved) this.onTap(e, canvas);
+      if (!cancelled && !d.moved && !d.held && !d.stopper) this.onTap(e, canvas);
     };
     canvas.addEventListener('pointerup', (e) => end(e, false));
     canvas.addEventListener('pointercancel', (e) => end(e, true));

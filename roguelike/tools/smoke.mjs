@@ -122,6 +122,91 @@ try {
       ok('phone: a tap still moves', (await cam())[1] > turnsBeforeTap);
     }
 
+    // Press and hold to auto-travel (phones, real touch events).
+    if (vp.isMobile) {
+      const box = await page.locator('.board canvas').boundingBox();
+      const cdp = await page.context().newCDPSession(page);
+      const touch = (type, x, y) =>
+        cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+      // A shortest route from the player, found in the page (8-way BFS over open tiles).
+      const route = (minLen) =>
+        page.evaluate((minLen) => {
+          const a = window.unfolding;
+          const { player: p, floor: f } = a.game.run;
+          const prev = new Map([[p.y * f.w + p.x, -1]]);
+          const q = [p.y * f.w + p.x];
+          let end = -1;
+          for (let qi = 0; qi < q.length; qi++) {
+            const i = q[qi];
+            let len = 0;
+            for (let k = i; prev.get(k) !== -1; k = prev.get(k)) len++;
+            if (len >= minLen) { end = i; break; }
+            for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]) {
+              const x = (i % f.w) + dx, y = Math.floor(i / f.w) + dy, n = y * f.w + x;
+              if (x < 0 || y < 0 || x >= f.w || y >= f.h || f.tiles[n] === 0 || prev.has(n)) continue;
+              prev.set(n, i);
+              q.push(n);
+            }
+          }
+          const path = [];
+          for (let k = end; k !== -1 && prev.get(k) !== -1; k = prev.get(k)) path.unshift({ x: k % f.w, y: Math.floor(k / f.w) });
+          return path;
+        }, minLen);
+      const screenOf = (t) =>
+        page.evaluate((t) => {
+          const v = window.unfolding.renderer.view;
+          return { x: t.x * v.cell - v.camX + v.cell / 2, y: t.y * v.cell - v.camY + v.cell / 2 };
+        }, t);
+      const state = () =>
+        page.evaluate(() => {
+          const a = window.unfolding;
+          const p = a.game.run.player;
+          return { x: p.x, y: p.y, turn: a.game.run.turn, travelling: !!a.travel, log: a.game.run.log.at(-1)?.text ?? '' };
+        });
+      const settle = async () => {
+        for (let i = 0; i < 80 && (await state()).travelling; i++) await page.waitForTimeout(50);
+      };
+      await page.evaluate(() => { const a = window.unfolding; a.game.run.monsters = []; a.game.run.pending = null; a.refresh(); });
+
+      // 1. Hold on a tile four steps away: the player walks there.
+      const short = await route(4);
+      const goal = short.at(-1);
+      const at = await screenOf(goal);
+      const s0 = await state();
+      await touch('touchStart', box.x + at.x, box.y + at.y);
+      await page.waitForTimeout(520);
+      await touch('touchEnd');
+      await settle();
+      const s1 = await state();
+      ok(`phone: press-and-hold walks to the spot (${s1.x},${s1.y} → goal ${goal.x},${goal.y})`, s1.x === goal.x && s1.y === goal.y);
+      ok(`phone: the walk took one turn per step (${s1.turn - s0.turn})`, s1.turn - s0.turn === short.length);
+
+      // 2. A foe coming within range stops the walk.
+      const long = await route(14);
+      await page.evaluate(([rat, target]) => {
+        const a = window.unfolding;
+        a.game.run.monsters = [{ id: 777, kind: 'rat', x: rat.x, y: rat.y, hp: 3, maxHp: 3, atk: 1, def: 0, xp: 2, aware: false, stun: 999, element: null }];
+        a.refresh();
+        a.startTravel(target);
+      }, [long[11], long[13]]);
+      await settle();
+      const s2 = await state();
+      ok(`phone: a foe coming into range stops the walk ("${s2.log}")`, /You spot a rat/.test(s2.log) && !(s2.x === long[13].x && s2.y === long[13].y));
+      await shot(page, 'phone-2c-travel-stopped');
+
+      // 3. A tap mid-walk stops it without taking another step.
+      await page.evaluate(() => { const a = window.unfolding; a.game.run.monsters = []; a.refresh(); });
+      const far = await route(12);
+      await page.evaluate((t) => window.unfolding.startTravel(t), far.at(-1));
+      await page.waitForTimeout(160);
+      await touch('touchStart', box.x + 20, box.y + 20);
+      await touch('touchEnd');
+      const s3 = await state();
+      await page.waitForTimeout(250);
+      const s4 = await state();
+      ok('phone: a tap stops the walk', !s4.travelling && s4.turn === s3.turn && !(s4.x === far.at(-1).x && s4.y === far.at(-1).y));
+    }
+
     // Force the moment the game is built around: a Greatsword in hand, a shrine offering Weight.
     await page.evaluate(() => {
       const app = window.unfolding;
@@ -165,6 +250,9 @@ try {
       const g = window.unfolding.game;
       g.run.player.hp = 1;
       g.run.player.armor = null;
+      if (!g.run.monsters.length) {
+        g.run.monsters.push({ id: 9100, kind: 'rat', x: 0, y: 0, hp: 3, maxHp: 3, atk: 1, def: 0, xp: 2, aware: true, stun: 0, element: null });
+      }
       for (const m of g.run.monsters) m.atk = 50;
       const m = g.run.monsters[0];
       for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {

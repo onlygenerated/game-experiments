@@ -374,6 +374,9 @@ button.chip:hover {
   display: block;
   /* The map handles its own drags; the browser must not scroll or zoom from it. */
   touch-action: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
   cursor: crosshair;
 }
 .board.dragging canvas {

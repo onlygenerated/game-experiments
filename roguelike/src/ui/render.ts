@@ -52,6 +52,8 @@ export class Renderer {
    */
   private panX = 0;
   private panY = 0;
+  /** Where auto-travel is headed, drawn as a marker. */
+  travelTarget: { x: number; y: number } | null = null;
   /** Tile index → time it should stop flashing (hit feedback). */
   private flashes = new Map<string, number>();
 
@@ -222,6 +224,15 @@ export class Renderer {
         ctx.fillStyle = '#8b8f9c';
         ctx.fillText('?', sx + c - 4, sy + 6);
       }
+    }
+    if (this.travelTarget) {
+      const t = this.travelTarget;
+      ctx.save();
+      ctx.strokeStyle = COLORS.shrine;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(sxOf(t.x) + 2, syOf(t.y) + 2, c - 4, c - 4);
+      ctx.restore();
     }
     glyph('@', p.x, p.y, COLORS.player, true, 0.82);
 
