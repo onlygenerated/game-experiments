@@ -15,3 +15,17 @@ html = html.replace(/<script type="module"[^>]*src="\.\/(assets\/[^"]+\.js)"[^>]
 if (/src="\.\/assets|href="\.\/assets/.test(html)) throw new Error('an asset was not inlined');
 writeFileSync(new URL('unfolding.html', dir), html);
 console.log(`dist/unfolding.html — ${(html.length / 1024).toFixed(1)} KB`);
+
+// The claude.ai artifact host supplies its own doctype/head/body skeleton, so the
+// artifact build is the same page with that skeleton stripped.
+const pick = (re) => (html.match(re) ?? [''])[0];
+const artifact = [
+  pick(/<title>[\s\S]*?<\/title>/),
+  pick(/<meta name="theme-color"[^>]*>/),
+  ...(html.match(/<link [^>]*fonts[^>]*>/g) ?? []),
+  pick(/<style>[\s\S]*?<\/style>/),
+  '<div id="app"></div>',
+  pick(/<script type="module">[\s\S]*?<\/script>/),
+].join('\n');
+writeFileSync(new URL('artifact.html', dir), artifact);
+console.log(`dist/artifact.html — ${(artifact.length / 1024).toFixed(1)} KB`);

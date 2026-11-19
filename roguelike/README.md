@@ -4,14 +4,15 @@ A roguelike that starts almost too simple — walls, rats, stairs, one HP number
 its own rulebook as you play. You draft which rules each world adopts at Rule Shrines, and
 every rule cuts both ways, so the right pick depends on your build and your loot.
 
-Design: [DESIGN.md](DESIGN.md).
+Design: [DESIGN.md](DESIGN.md). Playable build: https://claude.ai/artifact/NyhdTzivmYsKK66g5xS9N3
+(republish with `npm run single`, then publish `dist/artifact.html` to that URL).
 
 ```bash
 npm install
 npm run dev      # http://localhost:5173
 npm test         # engine tests, including bot-driven fuzz runs under every rule
 npm run smoke    # build, serve, and play it in headless Chromium (desktop + phone)
-npm run single   # dist/unfolding.html — the whole game in one file
+npm run single   # dist/unfolding.html — the whole game in one file (+ dist/artifact.html)
 npx vite-node tools/probe.ts 60   # balance probe: how deep a greedy bot gets
 ```
 

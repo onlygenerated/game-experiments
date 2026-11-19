@@ -425,9 +425,15 @@ export class App {
         break;
       }
       case 'delete-world':
-        if (world && window.confirm(`Forget ${world.name}? Its rules, graves and chronicle will be lost.`)) {
+        // Two-step in the page itself: embedded viewers suppress confirm() dialogs.
+        if (!world) break;
+        if (btn.dataset.armed) {
           this.store.deleteWorld(world.id);
           this.title();
+        } else {
+          btn.dataset.armed = '1';
+          btn.textContent = `Forget ${world.name} for good?`;
+          btn.classList.add('armed');
         }
         break;
       case 'title':

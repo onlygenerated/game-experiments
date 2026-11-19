@@ -32,6 +32,12 @@
 }
 
 html,
+body,
+#app {
+  height: 100%;
+}
+
+html,
 body {
   margin: 0;
   background: var(--bg);
@@ -86,6 +92,10 @@ button.ghost {
 button.ghost:hover:not(:disabled) {
   color: var(--text);
 }
+button.danger.armed {
+  color: var(--bad);
+  border-color: var(--bad);
+}
 button.danger:hover:not(:disabled) {
   color: var(--bad);
   border-color: #6a3b37;
@@ -134,8 +144,8 @@ h3 {
 /* --------------------------------------------------------------- screens */
 
 .screen {
-  min-height: 100dvh;
-  padding: 32px 16px 48px;
+  min-height: 100%;
+  padding: 32px max(16px, env(safe-area-inset-right, 0px)) 48px max(16px, env(safe-area-inset-left, 0px));
   max-width: 1080px;
   margin: 0 auto;
 }
@@ -294,7 +304,7 @@ button.chip:hover {
 .play-screen {
   max-width: none;
   padding: 0;
-  height: 100dvh;
+  height: 100%;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 330px;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
@@ -311,7 +321,7 @@ button.chip:hover {
   align-items: center;
   flex-wrap: wrap;
   gap: 6px 14px;
-  padding: 8px 14px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--line);
   background: var(--bg-2);
   font-size: 14px;
@@ -370,7 +380,7 @@ button.chip:hover {
   grid-area: log;
   font-family: var(--mono);
   font-size: 13px;
-  padding: 8px 14px;
+  padding: 8px 16px;
   border-top: 1px solid var(--line);
   min-height: 6.4em;
   background: var(--bg-2);
@@ -651,7 +661,7 @@ button.chip:hover {
 @media (max-width: 860px) {
   .play-screen {
     height: auto;
-    min-height: 100dvh;
+    min-height: 100%;
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto 56dvh auto auto auto;
     grid-template-areas: 'top' 'board' 'log' 'pad' 'side';
