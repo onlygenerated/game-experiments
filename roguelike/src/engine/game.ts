@@ -4,16 +4,28 @@ import {
   ctxOf,
   derive,
   frontier,
+  emergenceOf,
   MASTERY_KILLS,
   MAX_SATIETY,
-  MILESTONE_DEPTH,
+  RULE_ORDER,
   RULES,
   weightOf,
   type Derived,
   type RuleCtx,
 } from '../rules/rules.ts';
-import { itemLabel, itemsForRule, makeItem, MONSTERS, populate, scatter, type GenCtx } from './content.ts';
-import { DIRS, distanceMap, generateLayout, idx, passable } from './dungeon.ts';
+import {
+  itemLabel,
+  itemsForRule,
+  lootFor,
+  makeItem,
+  monsterCount,
+  MONSTERS,
+  populate,
+  scatter,
+  spawnMonsters,
+  type GenCtx,
+} from './content.ts';
+import { DIRS, distanceMap, generateLayout, idx, passable, soloRoom, type LayoutOpts } from './dungeon.ts';
 import { computeVisible, lineOfSight } from './fov.ts';
 import { hashSeed, Rng } from './rng.ts';
 import type { Grave, Item, Monster, Player, Pos, RuleId, RunState, Tone, World } from './types.ts';
@@ -68,6 +80,9 @@ export function xpNeeded(level: number, ctx: RuleCtx): number {
   return Math.round(6 * level ** 1.5 * (alt(ctx, 'growth') ? 0.7 : 1));
 }
 
+/** "a" or "an" for a creature name. */
+export const article = (name: string) => (/^[aeiou]/i.test(name) ? 'an' : 'a');
+
 const cheb = (a: Pos, b: Pos) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 
 export class Game {
@@ -93,7 +108,7 @@ export class Game {
       gen,
       turn: 0,
       depth: 1,
-      floor: generateLayout(world.seed, 1),
+      floor: generateLayout(world.seed, 1, layoutOpts(world)),
       monsters: [],
       items: [],
       player: newPlayer(heirName(world, gen)),
@@ -112,8 +127,8 @@ export class Game {
     p.hp = d.maxHp;
     p.mana = d.maxMana;
     if (world.rules.length === 0) {
-      game.log('You wake on cold stone. Find the stairs down.', 'info');
-      game.log('Move with the arrow keys or by tapping the map. Hold a spot to walk there; drag to look around. Walk into a rat to fight it.', 'dim');
+      game.log('You wake in a quiet room. A shrine hums in the corner; stairs lead down.', 'info');
+      game.log('Move with the arrow keys or by tapping the map; hold a spot to walk there. Step onto the shrine (Ω) to change the world.', 'dim');
     } else {
       game.log(`${p.name} descends into ${world.name}, heir to ${world.rules.length} rules.`, 'info');
     }
@@ -152,8 +167,12 @@ export class Game {
   }
 
   /** Graves of earlier heirs on this floor. */
+  /** Graves of earlier heirs on this floor — only those in parts of it that exist under the current rules. */
   floorGraves(): Grave[] {
-    return this.world.graves.filter((g) => g.depth === this.run.depth && g.gen < this.run.gen);
+    const f = this.run.floor;
+    return this.world.graves.filter(
+      (g) => g.depth === this.run.depth && g.gen < this.run.gen && passable(f, g.x, g.y),
+    );
   }
 
   isVisible(x: number, y: number): boolean {
@@ -174,7 +193,7 @@ export class Game {
   private enterFloor(depth: number) {
     const run = this.run;
     run.depth = depth;
-    run.floor = generateLayout(this.world.seed, depth);
+    run.floor = generateLayout(this.world.seed, depth, layoutOpts(this.world));
     const { monsters, items } = populate(run.floor, this.genCtx('populate'));
     run.monsters = monsters;
     run.items = items;
@@ -299,7 +318,12 @@ export class Game {
       this.log('Behind you, the unanswered shrine goes dark.', 'dim');
     }
     const depth = this.run.depth + 1;
-    if (depth >= MILESTONE_DEPTH && !this.has('bestiary')) this.adopt('bestiary', 'milestone');
+    // Imposed rules arrive by themselves once they've emerged and can stand.
+    for (const id of RULE_ORDER) {
+      const def = RULES[id];
+      if (!def.imposed || this.has(id) || emergenceOf(this.world, id) > depth) continue;
+      if (def.prereqs.every((r) => this.has(r))) this.adopt(id, 'milestone');
+    }
     this.enterFloor(depth);
     this.events.push({ type: 'descend', depth });
     this.log(`You descend to depth ${depth}.`, 'info');
@@ -402,7 +426,7 @@ export class Game {
 
   private openShrine() {
     const sh = this.run.floor.shrine!;
-    const front = frontier(new Set(this.world.rules));
+    const front = frontier(new Set(this.world.rules), { depth: this.run.depth, emergence: this.world.emergence ?? {} });
     if (sh.offers) sh.offers = sh.offers.filter((r) => front.includes(r));
     if (!sh.offers || sh.offers.length === 0) {
       const rng = new Rng(hashSeed(this.world.seed, this.run.gen, this.run.depth, 'shrine', this.world.rules.length));
@@ -449,6 +473,21 @@ export class Game {
       this.run.items.push(...scatter(items, this.run.floor, this.genCtx(`scatter-${r}`), taken));
     };
     switch (rule) {
+      case 'halls':
+        this.expandFloor();
+        break;
+      case 'peril': {
+        const f = this.run.floor;
+        const count = Math.max(2, Math.ceil(monsterCount(f, this.ctx) * 0.6));
+        const sh = f.shrine?.pos;
+        this.run.monsters.push(
+          ...spawnMonsters(f, this.genCtx('adopt-peril'), count, (x, y) =>
+            cheb({ x, y }, p) < 3 || (!!sh && sh.x === x && sh.y === y),
+          ),
+        );
+        this.log('Rats skitter out of the walls.', 'bad');
+        break;
+      }
       case 'things':
         spawn('things');
         this.log('Objects shimmer into existence around you.', 'dim');
@@ -477,6 +516,32 @@ export class Game {
     }
     p.hp = Math.min(p.hp, this.stats.maxHp);
     this.refreshVision();
+  }
+
+  /**
+   * Halls arriving mid-floor: the single room becomes the largest room of the
+   * full floor. What you've seen and the shrine you used stay; the stairs move,
+   * and the new rooms fill with whatever the active rules put there.
+   */
+  private expandFloor() {
+    const run = this.run;
+    const old = run.floor;
+    if (!old.solo) return;
+    const full = generateLayout(this.world.seed, run.depth, layoutOpts(this.world));
+    full.shrine = old.shrine;
+    if (old.shrine) delete full.glimmer[idx(full, old.shrine.pos.x, old.shrine.pos.y)];
+    for (let i = 0; i < old.explored.length; i++) if (old.explored[i]) full.explored[i] = 1;
+    run.floor = full;
+    const room = soloRoom(full);
+    const p = run.player;
+    const inRoom = (x: number, y: number) => x >= room.x && x < room.x + room.w && y >= room.y && y < room.y + room.h;
+    const taken = (x: number, y: number) =>
+      inRoom(x, y) || this.run.items.some((fi) => fi.x === x && fi.y === y) || this.monsterAt(x, y) !== undefined;
+    const g = this.genCtx('expand');
+    if (this.has('peril')) run.monsters.push(...spawnMonsters(full, g, monsterCount(full, this.ctx), taken));
+    run.items.push(...scatter(lootFor(full, g), full, g, taken));
+    if (p.x === full.stairs.x && p.y === full.stairs.y) return;
+    this.log('The walls fall away. The stairs are somewhere else now.', 'dim');
   }
 
   private resolveLevelUp(stat: 'str' | 'agi' | 'vit'): boolean {
@@ -585,7 +650,7 @@ export class Game {
     }
     p.hp -= dmg;
     this.log(`The ${name} hits you for ${dmg}.`, 'bad');
-    if (p.hp <= 0) this.die(`slain by a ${name} on depth ${this.run.depth}`);
+    if (p.hp <= 0) this.die(`slain by ${article(name)} ${name} on depth ${this.run.depth}`);
   }
 
   monsterName(m: Monster): string {
@@ -779,4 +844,8 @@ export class Game {
     }
     return false;
   }
+}
+
+function layoutOpts(world: World): LayoutOpts {
+  return { halls: world.rules.includes('halls'), sprawl: world.rules.includes('halls') && world.variants.halls === 'alt' };
 }

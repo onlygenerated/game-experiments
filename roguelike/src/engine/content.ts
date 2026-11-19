@@ -153,25 +153,45 @@ export function scatter(items: Item[], floor: Floor, g: GenCtx, taken: (x: numbe
   return out;
 }
 
-export function populate(floor: Floor, g: GenCtx): { monsters: Monster[]; items: FloorItem[] } {
-  const d = floor.depth;
+/** How many foes a floor holds under Peril. A single room gets a smaller crowd. */
+export function monsterCount(floor: Floor, ctx: RuleCtx): number {
+  let count = Math.min(14, 4 + Math.ceil(floor.depth * 1.2));
+  if (alt(ctx, 'bestiary')) count += 2;
+  if (floor.solo) {
+    const r = floor.rooms[0];
+    count = Math.min(count, Math.max(2, Math.floor((r.w * r.h) / 9)));
+  }
+  return count;
+}
+
+/** Place `count` foes on open tiles that `avoid` doesn't rule out. */
+export function spawnMonsters(floor: Floor, g: GenCtx, count: number, avoid: (x: number, y: number) => boolean): Monster[] {
   const monsters: Monster[] = [];
-  const isStart = (x: number, y: number) => Math.abs(x - floor.start.x) <= 2 && Math.abs(y - floor.start.y) <= 2;
   const occupied = (x: number, y: number) =>
-    isStart(x, y) || monsters.some((m) => m.x === x && m.y === y) || floor.glimmer[idx(floor, x, y)] !== undefined;
-  let count = Math.min(14, 4 + Math.ceil(d * 1.2));
-  if (alt(g.ctx, 'bestiary')) count += 2;
+    avoid(x, y) || monsters.some((m) => m.x === x && m.y === y) || floor.glimmer[idx(floor, x, y)] !== undefined;
   for (let i = 0; i < count; i++) {
     const p = randomFloorTile(floor, g.rng, occupied);
     if (!p) continue;
-    monsters.push(makeMonster(monsterKindFor(d, g), d, g, p.x, p.y));
+    monsters.push(makeMonster(monsterKindFor(floor.depth, g), floor.depth, g, p.x, p.y));
   }
+  return monsters;
+}
+
+/** Loot from every active item-bearing rule. */
+export function lootFor(floor: Floor, g: GenCtx): Item[] {
   const loot: Item[] = [];
   for (const rule of ['things', 'arms', 'hunger'] as const) {
     if (has(g.ctx, rule)) loot.push(...itemsForRule(rule, floor, g));
   }
+  return loot;
+}
+
+export function populate(floor: Floor, g: GenCtx): { monsters: Monster[]; items: FloorItem[] } {
+  const near = floor.solo ? 1 : 2;
+  const isStart = (x: number, y: number) => Math.abs(x - floor.start.x) <= near && Math.abs(y - floor.start.y) <= near;
   const shrineAt = (x: number, y: number) => !!floor.shrine && floor.shrine.pos.x === x && floor.shrine.pos.y === y;
-  const items = scatter(loot, floor, g, (x, y) => (x === floor.start.x && y === floor.start.y) || shrineAt(x, y));
+  const monsters = has(g.ctx, 'peril') ? spawnMonsters(floor, g, monsterCount(floor, g.ctx), (x, y) => isStart(x, y) || shrineAt(x, y)) : [];
+  const items = scatter(lootFor(floor, g), floor, g, (x, y) => (x === floor.start.x && y === floor.start.y) || shrineAt(x, y));
   return { monsters, items };
 }
 

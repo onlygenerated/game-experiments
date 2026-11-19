@@ -62,7 +62,7 @@ depends on your current build:
 
 ### 2.3 The shrine preview
 
-Rules are chosen at **Rule Shrines** (one per floor from depth 2). A shrine offers up to
+Rules are chosen at **Rule Shrines** (one on every floor, including the first). A shrine offers up to
 three rules from the frontier of the rule graph. Each offer shows a **personal preview**
 computed from your exact current character:
 
@@ -77,36 +77,61 @@ WEIGHT — "Steel has heft."
 This is the decision the whole game is built around: *I just found a Greatsword. Do I
 take Weight now, or keep it out of this world for as long as I can?*
 
-Taking a rule also grants the shrine's boon (full heal). You may **step away** and come
+Taking a rule also grants the shrine's boon (a full heal, once there is HP to heal). You may **step away** and come
 back while you're on the same floor — perhaps after seeing what loot the floor holds —
 but descending without choosing leaves the shrine dark. Refusing is allowed; it costs
 you the boon and the chance to steer the world.
 
-### 2.4 Forced rules
+### 2.4 Emergence: when basic rules show up
 
-Not everything is chosen. Some rules arrive regardless, so complexity always rises:
+Each world rolls, once, the depth at which each **basic** rule first shows itself
+(Halls, Peril, Things, Growth, Darkness, Bestiary). Shrines only offer rules that have
+emerged by the current depth. The roll is skewed early with a long tail:
 
-- **Mastery** — the very first rule, *Things*, arrives after your fifth kill. This is the
-  tutorial moment: the dungeon gains objects.
-- **Milestones** — reaching depth 4 forces *Bestiary* (new monster types). The deep wakes
-  up whether you like it or not.
+| Emerges at depth | Chance |
+|---|---|
+| 1 | ~48% |
+| 2 | ~22% |
+| 3–4 | ~18% |
+| 5–12 (the long wait) | ~12% |
 
-### 2.5 The rule graph
+So most worlds offer Halls on the first floor or two — but about one world in eight
+keeps you in single rooms until depth 5–12, or never shows you Darkness until the
+deep. Exceptions keep the start playable:
+
+- **Peril** always emerges by depth 3: without it there is nothing to fight.
+- The **first shrine is always a choice**: at least two of Halls, Peril and Things
+  emerge on depth 1.
+- **Bestiary** emerges 2 floors later than a basic rule would (depth 3 at the earliest).
+
+Strategic rules (Arms, Weight, Durability, Elements, Hunger, Arcana) don't roll; their
+prerequisites pace them instead.
+
+### 2.5 Rules that arrive by themselves
+
+Not everything is chosen:
+
+- **Mastery** — *Things* also arrives on your fifth kill, even if it hasn't emerged yet.
+- **Imposed** — *Bestiary* is never offered at a shrine. Once it has emerged (and Peril
+  exists) it arrives when you descend. The deep wakes up whether you like it or not.
+
+### 2.6 The rule graph
 
 Rules have prerequisites, forming a graph rather than a ladder:
 
 ```
-          ┌── Growth ──── Arcana
-Core ─────┼── Darkness
-          └── Things ──┬── Arms ──┬── Weight
-                       │          ├── Durability
-                       │          └── Elements
-                       └── Hunger
-(Bestiary: forced at depth 4)
+Halls                      (no prerequisites)
+Things ───────────┐
+Peril ──┬─────────┴── Arms ──┬── Weight
+        │         └── Hunger ├── Durability
+        ├── Growth ── Arcana └── Elements
+        ├── Darkness
+        └── Bestiary  (imposed once emerged)
 ```
 
-The **frontier** is every inactive rule whose prerequisites are all active. Shrines draw
-from it. Declining a rule doesn't remove it from the frontier — it can come back.
+The **frontier** is every inactive rule whose prerequisites are all active and that has
+emerged by the current depth. Shrines draw from it. Declining a rule doesn't remove it
+from the frontier — it can come back.
 
 ---
 
@@ -116,8 +141,8 @@ The graph roughly maps to tiers, which pace how the game feels:
 
 | Tier | Feels like | Rules |
 |---|---|---|
-| 0 | A toy: move, bump, stairs, rats, one HP number | Core |
-| 1 | Objects exist | Things |
+| 0 | Barely a game: one quiet room, a shrine, stairs down. No foes, no HP | — |
+| 1 | The world takes shape: danger, space, objects | Peril, Halls, Things |
 | 2 | A character exists | Growth, Arms |
 | 3 | Gear has trade-offs | Weight, Durability, Elements, Hunger, Darkness |
 | 4 | Powers | Arcana |
@@ -127,7 +152,7 @@ The graph roughly maps to tiers, which pace how the game feels:
 
 ### The UI grows with the rules
 
-At Tier 0 the HUD is one line: HP and depth. A panel only exists once its system does —
+At Tier 0 the HUD has no HP at all — nothing can hurt you. A panel only exists once its system does —
 the inventory appears with Things, stats with Growth, satiety with Hunger. When a rule
 arrives, a banner announces it and its panel fades in.
 
@@ -137,11 +162,13 @@ arrives, a banner announces it and its panel fades in.
 
 ### 4.1 New World
 
-- Fresh seed; rulebook resets to Core.
-- The seed rolls a **variant** for each rule (e.g. *Iron World: all weights +1*,
+- Fresh seed; the rulebook starts empty: one room, a shrine, the stairs.
+- The seed rolls when each basic rule **emerges** (§2.4) and a **variant** for each rule (e.g. *Iron World: all weights +1*,
   *Moonless: sight radius 3*). Variants are shown at the shrine, so they feed the draft.
 - Floor layouts are deterministic from the world seed and depth — the world has a fixed
-  geography that heirs will walk again.
+  geography that heirs will walk again. Without Halls a floor is just its largest room;
+  when Halls arrives mid-floor, that room opens into the rest of the floor and the stairs
+  move somewhere you haven't been.
 
 ### 4.2 Continue World (new heir)
 
@@ -198,9 +225,10 @@ explore floor → fight, loot, find shrine → draft a rule (or refuse)
 
 ## 7. MVP scope (this branch)
 
-- [x] Core: rooms-and-corridors floors, bump combat, HP, stairs, rats
-- [x] Rules: Things, Growth, Arms, Weight, Durability, Elements, Darkness, Hunger, Arcana,
-      Bestiary (forced)
+- [x] Tier 0: a single quiet room with a shrine and stairs; no foes, no HP
+- [x] Rules: Halls, Peril, Things, Growth, Arms, Weight, Durability, Elements, Darkness,
+      Hunger, Arcana, Bestiary (imposed)
+- [x] Per-world emergence depths for basic rules: usually early, occasionally very late
 - [x] Latent properties on items and the player; dormant glimmer tiles
 - [x] Rule Shrines with personal previews; mastery and milestone triggers
 - [x] One rolled variant per rule per world

@@ -1,5 +1,5 @@
 import { MONSTERS } from '../engine/content.ts';
-import { Game, type Action, type GameEvent } from '../engine/game.ts';
+import { article, Game, type Action, type GameEvent } from '../engine/game.ts';
 import { canTravelTo, nearbyThreats, travelStep } from '../engine/travel.ts';
 import type { Pos } from '../engine/types.ts';
 import type { RuleId, World } from '../engine/types.ts';
@@ -215,7 +215,7 @@ export class App {
     const board = this.root.querySelector<HTMLElement>('.board');
     if (!board || !this.renderer || !this.game) return;
     const r = board.getBoundingClientRect();
-    this.renderer.resize(Math.max(100, r.width), Math.max(100, r.height), this.game.run.floor.w, this.game.run.floor.h);
+    this.renderer.resize(Math.max(100, r.width), Math.max(100, r.height));
     this.draw();
   }
 
@@ -442,7 +442,10 @@ export class App {
     }
     const adjacent = game.run.monsters.find((m) => Math.max(Math.abs(m.x - p.x), Math.abs(m.y - p.y)) === 1);
     if (adjacent) {
-      game.log(`Not with a ${game.monsterName(adjacent)} beside you.`, 'dim');
+      {
+        const n = game.monsterName(adjacent);
+        game.log(`Not with ${article(n)} ${n} beside you.`, 'dim');
+      }
       this.refresh();
       return;
     }
@@ -486,7 +489,7 @@ export class App {
     const stopFor = adjacent ?? arrived;
     if (stopFor) {
       const name = game.monsterName(stopFor);
-      return this.stopTravel(adjacent ? `A ${name} is upon you! You stop.` : `You spot a ${name} (${MONSTERS[stopFor.kind].glyph}). You stop.`);
+      return this.stopTravel(adjacent ? `${article(name) === 'an' ? 'An' : 'A'} ${name} is upon you! You stop.` : `You spot ${article(name)} ${name} (${MONSTERS[stopFor.kind].glyph}). You stop.`);
     }
     t.timer = window.setTimeout(() => this.travelTick(), 70);
   }

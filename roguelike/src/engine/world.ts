@@ -1,6 +1,37 @@
-import { RULE_ORDER } from '../rules/rules.ts';
+import { EMERGENT, RULE_ORDER } from '../rules/rules.ts';
 import { hashSeed, Rng } from './rng.ts';
-import type { RunState, World } from './types.ts';
+import type { RuleId, RunState, World } from './types.ts';
+
+export const WORLD_VERSION = 2;
+
+/**
+ * When a basic rule first shows itself: usually depth 1–2, sometimes 3–4, and
+ * about one world in eight makes you wait until somewhere between 5 and 12.
+ */
+export function rollEmergence(rng: Rng): number {
+  if (rng.chance(0.12)) return rng.int(5, 12);
+  let d = 1;
+  while (d < 4 && rng.chance(0.45)) d++;
+  return d;
+}
+
+function rollEmergenceTable(rng: Rng): World['emergence'] {
+  const e: World['emergence'] = {};
+  for (const id of EMERGENT) e[id] = rollEmergence(rng);
+  // Peril is the game; it never makes you wait more than a couple of floors.
+  e.peril = rng.weighted([[1, 5], [2, 3], [3, 2]]);
+  // The deep wakes up later than the shallows.
+  e.bestiary = 2 + rollEmergence(rng);
+  // The first shrine is a real choice: at least two of the rules that need
+  // nothing else are available on depth 1. Pull the earliest ones forward.
+  const roots: RuleId[] = ['halls', 'peril', 'things'];
+  const early = roots.filter((r) => e[r] === 1).length;
+  if (early < 2) {
+    const late = roots.filter((r) => e[r] !== 1).sort((a, b) => e[a]! - e[b]! || roots.indexOf(a) - roots.indexOf(b));
+    for (const r of late.slice(0, 2 - early)) e[r] = 1;
+  }
+  return e;
+}
 
 const ADJ = ['Hollow', 'Sunken', 'Ashen', 'Verdant', 'Silent', 'Gilded', 'Drowned', 'Hungry', 'Pale', 'Iron', 'Weeping', 'Crooked'];
 const NOUN = ['Deep', 'Warren', 'Vault', 'Barrow', 'Maw', 'Cistern', 'Labyrinth', 'Undercroft', 'Hive', 'Spire', 'Reach', 'Well'];
@@ -13,13 +44,16 @@ export function newWorld(seed: number): World {
   const rng = new Rng(hashSeed(seed, 'world'));
   const variants: World['variants'] = {};
   for (const id of RULE_ORDER) variants[id] = rng.chance(0.4) ? 'alt' : 'base';
+  const emergence = rollEmergenceTable(new Rng(hashSeed(seed, 'emergence')));
   return {
+    version: WORLD_VERSION,
     id: `w${seed.toString(36)}`,
     name: `The ${rng.pick(ADJ)} ${rng.pick(NOUN)}`,
     seed,
     created: Date.now(),
     rules: [],
     variants,
+    emergence,
     generation: 0,
     history: [],
     graves: [],
@@ -86,7 +120,7 @@ export class Store {
   }
 
   worlds(): World[] {
-    return safeParse<World[]>(this.kv.getItem(WORLDS_KEY)) ?? [];
+    return (safeParse<World[]>(this.kv.getItem(WORLDS_KEY)) ?? []).map(migrateWorld);
   }
 
   world(id: string): World | null {
@@ -123,4 +157,15 @@ export class Store {
       /* quota or blocked storage: the game keeps running, it just won't persist */
     }
   }
+}
+
+/**
+ * Worlds saved before Halls and Peril existed always had both — every floor had
+ * many rooms and rats. Keep them playing the way they were.
+ */
+export function migrateWorld(w: World): World {
+  if ((w.version ?? 1) >= WORLD_VERSION) return w;
+  const rules: RuleId[] = [...w.rules];
+  for (const r of ['peril', 'halls'] as RuleId[]) if (!rules.includes(r)) rules.unshift(r);
+  return { ...w, version: WORLD_VERSION, rules, emergence: { bestiary: 4, ...(w.emergence ?? {}) } };
 }

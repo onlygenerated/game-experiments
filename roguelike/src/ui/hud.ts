@@ -82,7 +82,10 @@ export function sidebarHTML(game: Game, fresh: ReadonlySet<string>): string {
   const s = game.stats;
   const out: string[] = [];
 
-  let vitals = bar('HP', p.hp, s.maxHp, 'hp');
+  // Before Peril there is nothing to measure: no HP, no way to be hurt.
+  let vitals = game.has('peril')
+    ? bar('HP', p.hp, s.maxHp, 'hp')
+    : '<p class="muted small">Nothing here can hurt you. Yet.</p>';
   if (game.has('arcana')) vitals += bar('Mana', p.mana, s.maxMana, 'mana');
   if (game.has('hunger'))
     vitals += bar('Satiety', p.satiety, MAX_SATIETY, p.satiety < 100 ? 'food low' : 'food', p.satiety <= 0 ? 'Starving' : p.satiety < MAX_SATIETY / 2 ? 'Hungry' : 'Fed');
@@ -152,7 +155,7 @@ export function sidebarHTML(game: Game, fresh: ReadonlySet<string>): string {
         ? `<div class="chips">${RULE_ORDER.filter((r) => rules.includes(r))
             .map((r) => `<button class="chip${fresh.has(r) ? ' fresh' : ''}" data-cmd="codex" title="${esc(RULES[r].tagline)}">${RULES[r].name}${game.world.variants[r] === 'alt' ? '<sup>✦</sup>' : ''}</button>`)
             .join('')}</div>`
-        : '<p class="muted">This world has no rules yet. Only walls, rats and stairs.</p>',
+        : '<p class="muted">This world has no rules yet: one room, a shrine, and stairs down.</p>',
       fresh,
     ),
   );
@@ -165,7 +168,7 @@ export function topbarHTML(game: Game): string {
     <span class="tb-world">${esc(game.world.name)}</span>
     <span class="tb-heir">${esc(run.player.name)} · heir ${run.gen}</span>
     <span class="tb-depth">Depth ${run.depth}</span>
-    <span class="tb-hp${run.player.hp <= game.stats.maxHp / 3 ? ' low' : ''}">HP ${Math.max(0, run.player.hp)}/${game.stats.maxHp}</span>
+    ${game.has('peril') ? `<span class="tb-hp${run.player.hp <= game.stats.maxHp / 3 ? ' low' : ''}">HP ${Math.max(0, run.player.hp)}/${game.stats.maxHp}</span>` : ''}
     <span class="spacer"></span>
     ${game.world.rules.length ? '<button data-cmd="codex" class="ghost">Codex <kbd>C</kbd></button>' : ''}
     <button data-cmd="help" class="ghost tb-keys">Keys <kbd>?</kbd></button>
@@ -212,7 +215,7 @@ export function shrineHTML(game: Game): string {
   return `<div class="modal shrine" role="dialog" aria-label="Rule Shrine">
     <header class="modal-head"><span class="eyebrow">Rule Shrine · depth ${game.run.depth}</span>
       <h1>Choose a rule for ${esc(game.world.name)}</h1>
-      <p class="muted">Adopting a rule changes this world for every heir who follows, and the shrine heals you fully. Rules you pass over may be offered again.</p></header>
+      <p class="muted">Adopting a rule changes this world for every heir who follows${game.has('peril') ? ', and the shrine heals you fully' : ''}. Rules you pass over may be offered again.</p></header>
     <div class="cards">${cards.join('')}</div>
     <footer><button data-cmd="shrine" data-rule="" class="ghost"><kbd>Esc</kbd> Step away — you can return while you’re on this floor</button></footer>
   </div>`;
@@ -260,7 +263,8 @@ export function bannerHTML(id: RuleId, how: 'shrine' | 'mastery' | 'milestone', 
 
 export function codexHTML(world: World): string {
   const active = RULE_ORDER.filter((r) => world.rules.includes(r));
-  const front = frontier(new Set(world.rules));
+  // Only name rules that have already shown themselves somewhere this world has reached.
+  const front = frontier(new Set(world.rules), { depth: Math.max(1, world.deepest), emergence: world.emergence ?? {} });
   const unknown = RULE_ORDER.length - active.length - front.length;
   return `<div class="modal codex" role="dialog" aria-label="Codex">
     <header class="modal-head"><span class="eyebrow">Codex of ${esc(world.name)}</span><h1>The rules of this world</h1></header>

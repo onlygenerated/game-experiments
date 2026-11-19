@@ -15,13 +15,37 @@ export interface RuleDef {
   summary: string;
   upside: string;
   downside: string;
-  /** Rules that arrive on their own rather than being drafted at a shrine. */
-  forced?: string;
+  /** Rules the world imposes on its own once they emerge, rather than being drafted. */
+  imposed?: string;
+  /** Another way the rule can arrive besides a shrine. */
+  earned?: string;
   /** The alternate form a world may roll for this rule. */
   variant: RuleVariant;
 }
 
 export const RULES: Record<RuleId, RuleDef> = {
+  halls: {
+    id: 'halls',
+    name: 'Halls',
+    tier: 1,
+    prereqs: [],
+    tagline: 'The walls fall away.',
+    summary: 'Floors grow from a single room into many rooms joined by corridors.',
+    upside: 'More floor holds more to find.',
+    downside: 'The stairs are no longer in plain sight.',
+    variant: { name: 'Sprawl', text: 'Floors have up to three more rooms.' },
+  },
+  peril: {
+    id: 'peril',
+    name: 'Peril',
+    tier: 1,
+    prereqs: [],
+    tagline: 'Something else is down here.',
+    summary: 'Rats appear. You have HP; walk into a rat to fight it. If you die, an heir carries on.',
+    upside: 'Foes open the way to Growth, Arms, Darkness and Hunger.',
+    downside: 'You can be hurt, and you can die.',
+    variant: { name: 'Frail', text: 'Max HP 16 instead of 20.' },
+  },
   things: {
     id: 'things',
     name: 'Things',
@@ -30,15 +54,15 @@ export const RULES: Record<RuleId, RuleDef> = {
     tagline: 'The dungeon begins to hold objects.',
     summary: 'Potions and gold appear. You carry what you find.',
     upside: 'Healing potions; foes drop coin.',
-    downside: 'None. This is the first gift.',
-    forced: 'Arrives on your fifth kill.',
+    downside: 'Nothing yet. This one is a gift.',
+    earned: 'Also arrives on your fifth kill.',
     variant: { name: 'Generous Springs', text: 'Potions heal half again as much.' },
   },
   growth: {
     id: 'growth',
     name: 'Growth',
     tier: 2,
-    prereqs: [],
+    prereqs: ['peril'],
     tagline: 'You become someone.',
     summary: 'XP and levels. STR adds damage, AGI aids hitting and dodging, VIT adds HP.',
     upside: 'Choose a stat each level; HP grows.',
@@ -49,7 +73,7 @@ export const RULES: Record<RuleId, RuleDef> = {
     id: 'arms',
     name: 'Arms',
     tier: 2,
-    prereqs: ['things'],
+    prereqs: ['things', 'peril'],
     tagline: 'Steel enters the world.',
     summary: 'Weapons and armour appear and can be equipped.',
     upside: 'Weapons add attack, armour subtracts damage taken.',
@@ -93,7 +117,7 @@ export const RULES: Record<RuleId, RuleDef> = {
     id: 'darkness',
     name: 'Darkness',
     tier: 3,
-    prereqs: [],
+    prereqs: ['peril'],
     tagline: 'The lights go out.',
     summary: 'You see only nearby. Foes notice you only up close.',
     upside: 'Unaware foes take double damage. Every foe loses track of you now.',
@@ -104,7 +128,7 @@ export const RULES: Record<RuleId, RuleDef> = {
     id: 'hunger',
     name: 'Hunger',
     tier: 3,
-    prereqs: ['things'],
+    prereqs: ['things', 'peril'],
     tagline: 'You must eat.',
     summary: 'Satiety drains each turn. Food appears.',
     upside: 'While more than half fed, regenerate 1 HP every 6 turns. Nothing else regenerates.',
@@ -126,18 +150,20 @@ export const RULES: Record<RuleId, RuleDef> = {
     id: 'bestiary',
     name: 'Bestiary',
     tier: 3,
-    prereqs: [],
+    prereqs: ['peril'],
     tagline: 'The deep stirs.',
     summary: 'Bats (fast, erratic), goblins (armoured) and slimes (slow, tough) join the rats.',
     upside: 'More XP and more drops.',
     downside: 'More dangerous foes.',
-    forced: 'Arrives when you reach depth 4.',
+    imposed: 'Never offered at shrines: it arrives on its own as you go deeper.',
     variant: { name: 'Swarming Deep', text: 'Two more foes per floor.' },
   },
 };
 
 /** Canonical order for applying rules: derived stats never depend on adoption order. */
 export const RULE_ORDER: RuleId[] = [
+  'halls',
+  'peril',
   'things',
   'growth',
   'arms',
@@ -150,8 +176,17 @@ export const RULE_ORDER: RuleId[] = [
   'bestiary',
 ];
 
-export const MILESTONE_DEPTH = 4;
 export const MASTERY_KILLS = 5;
+
+/**
+ * The basic rules whose arrival each world rolls. Strategic rules (Weight,
+ * Durability, Elements, Hunger, Arcana, Arms) are gated by prerequisites alone.
+ */
+export const EMERGENT: RuleId[] = ['halls', 'peril', 'things', 'growth', 'darkness', 'bestiary'];
+
+export function emergenceOf(world: Pick<World, 'emergence'>, id: RuleId): number {
+  return world.emergence?.[id] ?? 1;
+}
 
 export interface RuleCtx {
   rules: ReadonlySet<RuleId>;
@@ -175,10 +210,20 @@ export function withRule(ctx: RuleCtx, id: RuleId): RuleCtx {
   return { rules: new Set([...ctx.rules, id]), variants: ctx.variants };
 }
 
-/** Inactive, draftable rules whose prerequisites are all active. */
-export function frontier(active: ReadonlySet<RuleId>): RuleId[] {
+/**
+ * Inactive, draftable rules whose prerequisites are all active. With an
+ * emergence table and a depth, only rules that have shown themselves by then.
+ */
+export function frontier(
+  active: ReadonlySet<RuleId>,
+  at?: { depth: number; emergence: World['emergence'] },
+): RuleId[] {
   return RULE_ORDER.filter(
-    (id) => !active.has(id) && !RULES[id].forced && RULES[id].prereqs.every((p) => active.has(p)),
+    (id) =>
+      !active.has(id) &&
+      !RULES[id].imposed &&
+      RULES[id].prereqs.every((p) => active.has(p)) &&
+      (!at || (at.emergence[id] ?? 1) <= at.depth),
   );
 }
 
@@ -224,7 +269,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 
 export function derive(p: Player, ctx: RuleCtx): Derived {
   const d: Derived = {
-    maxHp: BASE_HP,
+    maxHp: ctx.variants.peril === 'alt' ? 16 : BASE_HP,
     attack: 2,
     defense: 0,
     hit: 1,
@@ -345,6 +390,12 @@ function ruleNotes(p: Player, ctx: RuleCtx, id: RuleId, info: PreviewInfo): stri
     (i): i is Item => !!i && (i.kind === 'weapon' || i.kind === 'armor'),
   );
   switch (id) {
+    case 'halls':
+      notes.push('This floor opens up right away — and its stairs move somewhere you haven’t been.');
+      break;
+    case 'peril':
+      notes.push('Rats will appear on this floor. Until now nothing here could touch you.');
+      break;
     case 'things':
       notes.push('Objects will appear on this floor and every floor after.');
       break;

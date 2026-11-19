@@ -1,4 +1,6 @@
 export type RuleId =
+  | 'halls'
+  | 'peril'
   | 'things'
   | 'growth'
   | 'arms'
@@ -48,6 +50,8 @@ export interface Floor {
   shrine: Shrine | null;
   /** 1 = the player has seen this tile. Only meaningful under Darkness. */
   explored: number[];
+  /** A single-room floor (no Halls yet): its one room is the largest room of the full layout. */
+  solo?: boolean;
 }
 
 export type ItemKind = 'potion' | 'gold' | 'weapon' | 'armor' | 'food';
@@ -141,6 +145,8 @@ export interface Chronicle {
 }
 
 export interface World {
+  /** Save format. 1 = before Halls/Peril existed (both were implicitly always on). */
+  version?: number;
   id: string;
   name: string;
   seed: number;
@@ -149,6 +155,12 @@ export interface World {
   rules: RuleId[];
   /** Rolled once at world creation; applies whenever the rule is active. */
   variants: Partial<Record<RuleId, 'base' | 'alt'>>;
+  /**
+   * The depth at which each rule first shows itself in this world (at shrines,
+   * or by imposing itself). Rolled once; mostly early, occasionally very late.
+   * Missing entries mean depth 1.
+   */
+  emergence: Partial<Record<RuleId, number>>;
   generation: number;
   history: Chronicle[];
   graves: Grave[];

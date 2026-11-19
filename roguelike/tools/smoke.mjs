@@ -52,7 +52,41 @@ try {
     await page.waitForTimeout(200);
     ok(`${vp.name}: play screen with canvas`, await page.isVisible('.board canvas'));
     ok(`${vp.name}: tier 0 shows no pack`, !(await page.isVisible('[data-rule="things"]')));
+    const tier0 = await page.evaluate(() => {
+      const g = window.unfolding.game;
+      return { monsters: g.run.monsters.length, solo: !!g.run.floor.solo, shrine: !!g.run.floor.shrine };
+    });
+    ok(`${vp.name}: tier 0 is one quiet room with a shrine`, tier0.monsters === 0 && tier0.solo && tier0.shrine);
+    ok(`${vp.name}: tier 0 shows no HP`, !(await page.isVisible('.tb-hp')));
     await shot(page, `${vp.name}-2-tier0`);
+
+    // Walk to the shrine and adopt whatever it offers first.
+    await page.evaluate(() => {
+      const a = window.unfolding;
+      a.startTravel(a.game.run.floor.shrine.pos);
+    });
+    for (let i = 0; i < 60 && !(await page.isVisible('.modal.shrine')); i++) await page.waitForTimeout(50);
+    const offers = await page.locator('.modal.shrine .rule-card').count();
+    ok(`${vp.name}: the first shrine offers a choice (${offers})`, offers >= 2);
+    await shot(page, `${vp.name}-2a-first-shrine`);
+    await page.click('.modal.shrine .rule-card >> nth=0 >> button.primary');
+    ok(`${vp.name}: first rule announced`, await page.isVisible('.modal.banner'));
+    await page.click('[data-cmd="dismiss"]');
+
+    // Bring in Peril and Halls (whichever is missing) the way a shrine would, mid-floor.
+    const opened = await page.evaluate(() => {
+      const a = window.unfolding;
+      const g = a.game;
+      for (const r of ['peril', 'halls']) if (!g.world.rules.includes(r)) g.adopt(r, 'shrine');
+      g.events.splice(0);
+      // Keep the test's character alive through its random walking: rats stay put.
+      for (const m of g.run.monsters) m.stun = 9999;
+      a.refresh();
+      return { solo: !!g.run.floor.solo, monsters: g.run.monsters.length };
+    });
+    ok(`${vp.name}: Halls opened the floor and Peril brought foes`, !opened.solo && opened.monsters > 0);
+    ok(`${vp.name}: HP appears with Peril`, await page.isVisible('.tb-hp'));
+    await shot(page, `${vp.name}-2b-opened`);
 
     // Walk around with keys (or the pad on phones) for a while.
     for (let i = 0; i < 40; i++) {
@@ -65,6 +99,29 @@ try {
 
     // Drag the map to look around (phones: real touch events through CDP).
     if (vp.isMobile) {
+      // Panning needs a floor wider than the screen; descend until there is one.
+      const wide = await page.evaluate(() => {
+        const a = window.unfolding;
+        for (let i = 0; i < 12; i++) {
+          const f = a.game.run.floor;
+          let x0 = f.w, x1 = 0;
+          f.tiles.forEach((t, k) => { if (t !== 0) { x0 = Math.min(x0, k % f.w); x1 = Math.max(x1, k % f.w); } });
+          a.refresh();
+          if ((x1 - x0 + 3) * a.renderer.view.cell > a.renderer.view.w) return true;
+          const p = a.game.run.player;
+          p.x = f.stairs.x;
+          p.y = f.stairs.y;
+          a.game.act({ type: 'descend' });
+          a.game.events.splice(0);
+          a.overlays = [];
+          for (const m of a.game.run.monsters) m.stun = 9999;
+        }
+        a.refresh();
+        return false;
+      });
+      ok('phone: found a floor wider than the screen', wide);
+      // Earlier clicks may have scrolled the page; touches are in viewport coordinates.
+      await page.evaluate(() => window.scrollTo(0, 0));
       const box = await page.locator('.board canvas').boundingBox();
       const cdp = await page.context().newCDPSession(page);
       const touch = (type, x, y) =>
@@ -83,7 +140,7 @@ try {
       ok(`phone: dragging pans the map (camX ${camBefore} → ${camAfter})`, camAfter !== camBefore);
       ok('phone: a drag is not a move', turnAfter === turnBefore);
       ok('phone: recenter button appears while panned', await page.isVisible('.recenter'));
-      await shot(page, 'phone-2b-panned');
+      await shot(page, 'phone-2c-panned');
       await page.click('.recenter');
       const camBack = (await cam())[0];
       const btnGone = !(await page.isVisible('.recenter'));
@@ -124,6 +181,8 @@ try {
 
     // Press and hold to auto-travel (phones, real touch events).
     if (vp.isMobile) {
+      // Earlier clicks may have scrolled the page; touches are in viewport coordinates.
+      await page.evaluate(() => window.scrollTo(0, 0));
       const box = await page.locator('.board canvas').boundingBox();
       const cdp = await page.context().newCDPSession(page);
       const touch = (type, x, y) =>
@@ -192,14 +251,14 @@ try {
       await settle();
       const s2 = await state();
       ok(`phone: a foe coming into range stops the walk ("${s2.log}")`, /You spot a rat/.test(s2.log) && !(s2.x === long[13].x && s2.y === long[13].y));
-      await shot(page, 'phone-2c-travel-stopped');
+      await shot(page, 'phone-2d-travel-stopped');
 
       // 3. A tap mid-walk stops it without taking another step.
       await page.evaluate(() => { const a = window.unfolding; a.game.run.monsters = []; a.refresh(); });
       const far = await route(12);
       await page.evaluate((t) => window.unfolding.startTravel(t), far.at(-1));
       await page.waitForTimeout(160);
-      await touch('touchStart', box.x + 20, box.y + 20);
+      await touch('touchStart', box.x + box.width / 2, box.y + box.height / 2);
       await touch('touchEnd');
       const s3 = await state();
       await page.waitForTimeout(250);
@@ -211,7 +270,7 @@ try {
     await page.evaluate(() => {
       const app = window.unfolding;
       const g = app.game;
-      g.world.rules = ['things', 'arms', 'growth'];
+      g.world.rules = ['peril', 'halls', 'things', 'arms', 'growth'];
       g.run.player.weapon = { id: 9001, kind: 'weapon', name: 'Greatsword', atk: 8, weight: 6, element: 'ember', dur: 45, maxDur: 45 };
       g.run.player.inventory.push({ id: 9002, kind: 'potion', name: 'Healing Potion', heal: 8, weight: 0, element: null, dur: 0, maxDur: 0 });
       g.run.floor.shrine = { pos: { x: g.run.player.x, y: g.run.player.y }, offers: ['weight', 'durability', 'elements'], used: false };
@@ -243,7 +302,7 @@ try {
     await page.click('text=Save & quit');
     ok(`${vp.name}: title lists the world with a resumable run`, await page.isVisible('text=Resume'));
     await page.click('text=Resume');
-    ok(`${vp.name}: resumed run keeps the rules`, (await page.evaluate(() => window.unfolding.game.world.rules.length)) === 4);
+    ok(`${vp.name}: resumed run keeps the rules`, (await page.evaluate(() => window.unfolding.game.world.rules.length)) === 6);
 
     // Die, then continue as an heir.
     await page.evaluate(() => {

@@ -1,7 +1,7 @@
 import { itemGlyph, MONSTERS } from '../engine/content.ts';
 import { idx } from '../engine/dungeon.ts';
 import type { Game } from '../engine/game.ts';
-import { T_STAIRS, T_WALL } from '../engine/types.ts';
+import { T_STAIRS, T_WALL, type Floor } from '../engine/types.ts';
 
 export const COLORS = {
   void: '#07080c',
@@ -54,6 +54,8 @@ export class Renderer {
   private panY = 0;
   /** Where auto-travel is headed, drawn as a marker. */
   travelTarget: { x: number; y: number } | null = null;
+  private boundsOf: Floor | null = null;
+  private boundsCache: { x0: number; y0: number; x1: number; y1: number } | null = null;
   /** Tile index → time it should stop flashing (hit feedback). */
   private flashes = new Map<string, number>();
 
@@ -66,18 +68,34 @@ export class Renderer {
     this.flashes.set(`${x},${y},${color}`, performance.now() + 180);
   }
 
-  resize(w: number, h: number, mapW: number, mapH: number) {
+  resize(w: number, h: number) {
     const dpr = window.devicePixelRatio || 1;
     this.canvas.width = Math.floor(w * dpr);
     this.canvas.height = Math.floor(h * dpr);
     this.canvas.style.width = `${w}px`;
     this.canvas.style.height = `${h}px`;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // Fit the whole floor when we can do it legibly; otherwise follow the player.
-    const fit = Math.floor(Math.min(w / mapW, h / mapH));
-    this.view.cell = Math.max(16, Math.min(30, fit));
     this.view.w = w;
     this.view.h = h;
+  }
+
+  /** The part of the floor that exists (open tiles plus their walls), cached per floor. */
+  private bounds(f: Floor): { x0: number; y0: number; x1: number; y1: number } {
+    if (this.boundsOf === f && this.boundsCache) return this.boundsCache;
+    let x0 = f.w, y0 = f.h, x1 = 0, y1 = 0;
+    for (let i = 0; i < f.tiles.length; i++) {
+      if (f.tiles[i] === T_WALL) continue;
+      const x = i % f.w;
+      const y = (i - x) / f.w;
+      x0 = Math.min(x0, x);
+      y0 = Math.min(y0, y);
+      x1 = Math.max(x1, x);
+      y1 = Math.max(y1, y);
+    }
+    const b = { x0: Math.max(0, x0 - 1), y0: Math.max(0, y0 - 1), x1: Math.min(f.w, x1 + 2), y1: Math.min(f.h, y1 + 2) };
+    this.boundsOf = f;
+    this.boundsCache = b;
+    return b;
   }
 
   /** Drag the map: content moves with the finger, so the camera moves the other way. */
@@ -109,9 +127,10 @@ export class Renderer {
    * One axis of the camera: centre the map if it fits, otherwise follow the
    * player plus the drag offset, clamped to the map. Returns [cam, clampedPan].
    */
-  private axis(size: number, mapPx: number, focus: number, pan: number): [number, number] {
-    if (mapPx <= size) return [-Math.floor((size - mapPx) / 2), 0];
-    const clamp = (v: number) => Math.max(0, Math.min(mapPx - size, v));
+  private axis(size: number, lo: number, hi: number, focus: number, pan: number): [number, number] {
+    const span = hi - lo;
+    if (span <= size) return [lo - Math.floor((size - span) / 2), 0];
+    const clamp = (v: number) => Math.max(lo, Math.min(hi - size, v));
     // Pan is measured from where the camera would rest, so a player near an
     // edge doesn't count as "panned", and over-dragging past an edge doesn't
     // build up slack that has to be dragged back first.
@@ -127,10 +146,14 @@ export class Renderer {
     const p = run.player;
     const dark = game.has('darkness');
     const elements = game.has('elements');
+    // Fit what exists of the floor when it can be shown legibly; otherwise follow the player.
+    const b = this.bounds(f);
+    const fit = Math.floor(Math.min(v.w / (b.x1 - b.x0), v.h / (b.y1 - b.y0)));
+    v.cell = Math.max(16, Math.min(32, fit));
     const c = v.cell;
 
-    [v.camX, this.panX] = this.axis(v.w, f.w * c, p.x * c + c / 2, this.panX);
-    [v.camY, this.panY] = this.axis(v.h, f.h * c, p.y * c + c / 2, this.panY);
+    [v.camX, this.panX] = this.axis(v.w, b.x0 * c, b.x1 * c, p.x * c + c / 2, this.panX);
+    [v.camY, this.panY] = this.axis(v.h, b.y0 * c, b.y1 * c, p.y * c + c / 2, this.panY);
 
     ctx.fillStyle = COLORS.void;
     ctx.fillRect(0, 0, v.w, v.h);

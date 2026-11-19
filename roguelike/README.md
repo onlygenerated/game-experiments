@@ -1,6 +1,7 @@
 # Unfolding
 
-A roguelike that starts almost too simple — walls, rats, stairs, one HP number — and grows
+A roguelike that starts almost too simple — one quiet room, a shrine, stairs down; no
+foes, not even HP — and grows
 its own rulebook as you play. You draft which rules each world adopts at Rule Shrines, and
 every rule cuts both ways, so the right pick depends on your build and your loot.
 
@@ -44,7 +45,8 @@ durability, element, STR/AGI/VIT…). Rules decide what gets read:
 
 ## Status
 
-MVP: ten rules (Things, Growth, Arms, Weight, Durability, Elements, Darkness, Hunger,
-Arcana, Bestiary), shrines with personal previews, mastery and milestone triggers, rolled
-world variants, new world / new heir with one repeal, graves and a chronicle, keyboard
+MVP: twelve rules (Halls, Peril, Things, Growth, Arms, Weight, Durability, Elements,
+Darkness, Hunger, Arcana, Bestiary), shrines with personal previews on every floor,
+per-world emergence depths (basic rules usually arrive early, occasionally very late),
+mastery and imposed arrivals, rolled world variants, new world / new heir with one repeal, graves and a chronicle, keyboard
 and touch controls. Balance is first-pass — see `tools/probe.ts`.

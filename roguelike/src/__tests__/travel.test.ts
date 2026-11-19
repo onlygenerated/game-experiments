@@ -39,7 +39,7 @@ describe('auto-travel', () => {
   });
 
   it('refuses walls, its own tile, and unexplored ground in the dark', () => {
-    const g = quietGame(3, ['darkness']);
+    const g = quietGame(3, ['peril', 'halls', 'darkness']);
     const f = g.run.floor;
     const p = g.run.player;
     expect(canTravelTo(g, { x: p.x, y: p.y })).toBe(false);

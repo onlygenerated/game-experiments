@@ -73,16 +73,68 @@ function carveCorridor(tiles: number[], a: Pos, b: Pos, rng: Rng) {
   }
 }
 
+export interface LayoutOpts {
+  /** Halls is active: the full floor. Otherwise just its largest room. */
+  halls: boolean;
+  /** The Sprawl variant of Halls: a few more rooms. */
+  sprawl: boolean;
+}
+
 /**
- * Floor geography is a function of the world seed and depth only, so every heir
- * walks the same halls — and graves stay where their owners fell.
+ * Floor geography is a function of the world seed, depth and the Halls rule
+ * only, so every heir walks the same halls — and graves stay where their owners
+ * fell. A single-room floor is the full floor's largest room, so when Halls
+ * arrives mid-floor the room you're standing in is already part of it.
  */
-export function generateLayout(worldSeed: number, depth: number): Floor {
+export function generateLayout(worldSeed: number, depth: number, opts: LayoutOpts = { halls: true, sprawl: false }): Floor {
+  const full = fullLayout(worldSeed, depth, opts.sprawl);
+  return opts.halls ? full : soloLayout(full);
+}
+
+/** The full floor's largest room (first on ties). */
+export function soloRoom(full: Pick<Floor, 'rooms'>): Rect {
+  return full.rooms.reduce((best, r) => (r.w * r.h > best.w * best.h ? r : best), full.rooms[0]);
+}
+
+function soloLayout(full: Floor): Floor {
+  const room = soloRoom(full);
+  const tiles = new Array<number>(MAP_W * MAP_H).fill(T_WALL);
+  carveRoom(tiles, room);
+  const start = { x: room.x, y: room.y + Math.floor(room.h / 2) };
+  const stairs = { x: room.x + room.w - 1, y: room.y + room.h - 1 };
+  tiles[stairs.y * MAP_W + stairs.x] = T_STAIRS;
+  let shrinePos = { x: room.x + Math.floor(room.w / 2), y: room.y };
+  if ((shrinePos.x === start.x && shrinePos.y === start.y) || (shrinePos.x === stairs.x && shrinePos.y === stairs.y)) {
+    shrinePos = { x: room.x + room.w - 1, y: room.y };
+  }
+  const glimmer: Floor['glimmer'] = {};
+  for (const [k, el] of Object.entries(full.glimmer)) {
+    const i = Number(k);
+    const x = i % MAP_W;
+    const y = (i - x) / MAP_W;
+    const inRoom = x >= room.x && x < room.x + room.w && y >= room.y && y < room.y + room.h;
+    const reserved = [start, stairs, shrinePos].some((p) => p.x === x && p.y === y);
+    if (inRoom && !reserved) glimmer[i] = el;
+  }
+  return {
+    ...full,
+    tiles,
+    glimmer,
+    rooms: [room],
+    start,
+    stairs,
+    shrine: { pos: shrinePos, offers: null, used: false },
+    explored: new Array<number>(MAP_W * MAP_H).fill(0),
+    solo: true,
+  };
+}
+
+function fullLayout(worldSeed: number, depth: number, sprawl: boolean): Floor {
   const rng = new Rng(hashSeed(worldSeed, 'layout', depth));
   const tiles = new Array<number>(MAP_W * MAP_H).fill(T_WALL);
   const rooms: Rect[] = [];
-  const target = rng.int(7, 10);
-  for (let tries = 0; tries < 200 && rooms.length < target; tries++) {
+  const target = rng.int(7, 10) + (sprawl ? 3 : 0);
+  for (let tries = 0; tries < 300 && rooms.length < target; tries++) {
     const w = rng.int(4, 10);
     const h = rng.int(3, 6);
     const r = { x: rng.int(1, MAP_W - w - 2), y: rng.int(1, MAP_H - h - 2), w, h };
@@ -144,8 +196,8 @@ export function generateLayout(worldSeed: number, depth: number): Floor {
     floor.glimmer[i] = rng.pick<Element>(['ember', 'frost']);
   }
 
-  // Shrine position is part of the geography; whether it exists is content.
-  if (depth >= 2) {
+  // Every floor has a Rule Shrine; where it stands is part of the geography.
+  {
     const candidates = rooms.filter((r) => {
       const c = center(r);
       return !(c.x === start.x && c.y === start.y) && !(c.x === best.x && c.y === best.y);
