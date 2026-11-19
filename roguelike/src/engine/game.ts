@@ -113,7 +113,7 @@ export class Game {
     p.mana = d.maxMana;
     if (world.rules.length === 0) {
       game.log('You wake on cold stone. Find the stairs down.', 'info');
-      game.log('Move with the arrow keys (or tap). Walk into a rat to fight it.', 'dim');
+      game.log('Move with the arrow keys, or tap the map (drag it to look around). Walk into a rat to fight it.', 'dim');
     } else {
       game.log(`${p.name} descends into ${world.name}, heir to ${world.rules.length} rules.`, 'info');
     }

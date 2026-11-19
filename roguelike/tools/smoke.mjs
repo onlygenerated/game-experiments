@@ -63,6 +63,65 @@ try {
     const turn = await page.evaluate(() => window.unfolding.game?.run.turn ?? -1);
     ok(`${vp.name}: turns pass when moving (${turn})`, turn > 5);
 
+    // Drag the map to look around (phones: real touch events through CDP).
+    if (vp.isMobile) {
+      const box = await page.locator('.board canvas').boundingBox();
+      const cdp = await page.context().newCDPSession(page);
+      const touch = (type, x, y) =>
+        cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+      const cam = () => page.evaluate(() => [window.unfolding.renderer.view.camX, window.unfolding.game.run.turn]);
+      const [camBefore, turnBefore] = await cam();
+      // Drag toward whichever side has more map to reveal.
+      const dir = camBefore > 200 ? 1 : -1;
+      const cx = box.x + box.width / 2;
+      const cy = box.y + box.height / 2;
+      await touch('touchStart', cx, cy);
+      for (let i = 1; i <= 10; i++) await touch('touchMove', cx + dir * i * 18, cy);
+      await touch('touchEnd');
+      await page.waitForTimeout(100);
+      const [camAfter, turnAfter] = await cam();
+      ok(`phone: dragging pans the map (camX ${camBefore} → ${camAfter})`, camAfter !== camBefore);
+      ok('phone: a drag is not a move', turnAfter === turnBefore);
+      ok('phone: recenter button appears while panned', await page.isVisible('.recenter'));
+      await shot(page, 'phone-2b-panned');
+      await page.click('.recenter');
+      const camBack = (await cam())[0];
+      const btnGone = !(await page.isVisible('.recenter'));
+      ok(`phone: recenter returns the camera (${camBack}, button hidden: ${btnGone})`, camBack === camBefore && btnGone);
+      // Standing at the map's edge clamps the camera; that must not count as panned.
+      const edgeHidden = await page.evaluate(() => {
+        const a = window.unfolding;
+        const f = a.game.run.floor;
+        let best = null;
+        for (let i = 0; i < f.tiles.length; i++) {
+          if (f.tiles[i] === 0 || a.game.run.monsters.some((m) => m.y * f.w + m.x === i)) continue;
+          if (!best || i % f.w < best % f.w) best = i;
+        }
+        a.game.run.player.x = best % f.w;
+        a.game.run.player.y = Math.floor(best / f.w);
+        a.refresh();
+        return document.querySelector('.recenter').hidden;
+      });
+      ok('phone: no recenter button at rest beside a map edge', edgeHidden);
+      // A short tap still steps toward the tapped spot.
+      // Aim at an open neighbouring tile so the step can't be blocked by a wall.
+      const spot = await page.evaluate(() => {
+        const a = window.unfolding;
+        const { player: p, floor: f, monsters } = a.game.run;
+        const v = a.renderer.view;
+        for (const [dx, dy] of [[1, 0], [0, 1], [0, -1], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+          const x = p.x + dx, y = p.y + dy;
+          if (f.tiles[y * f.w + x] === 0 || monsters.some((m) => m.x === x && m.y === y)) continue;
+          return { x: x * v.cell - v.camX + v.cell / 2, y: y * v.cell - v.camY + v.cell / 2 };
+        }
+      });
+      const turnsBeforeTap = (await cam())[1];
+      await touch('touchStart', box.x + spot.x, box.y + spot.y);
+      await touch('touchEnd');
+      await page.waitForTimeout(100);
+      ok('phone: a tap still moves', (await cam())[1] > turnsBeforeTap);
+    }
+
     // Force the moment the game is built around: a Greatsword in hand, a shrine offering Weight.
     await page.evaluate(() => {
       const app = window.unfolding;

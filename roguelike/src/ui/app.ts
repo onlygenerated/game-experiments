@@ -27,6 +27,8 @@ export class App {
   private lastKey = 0;
   private resizeObs: ResizeObserver | null = null;
   private deathTimer = 0;
+  private drawQueued = false;
+  private drag: { id: number; x: number; y: number; sx: number; sy: number; moved: boolean } | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -126,7 +128,8 @@ export class App {
     this.fresh.clear();
     this.root.innerHTML = `<div class="screen play-screen">
       <header class="topbar"></header>
-      <main class="board"><canvas aria-label="Dungeon map"></canvas></main>
+      <main class="board"><canvas aria-label="Dungeon map"></canvas>
+        <button class="recenter" data-cmd="recenter" hidden>⌖ Center on ${esc(game.run.player.name)}</button></main>
       <section class="log" aria-live="polite"></section>
       <nav class="pad" aria-label="Controls">
         <div class="dpad">
@@ -145,7 +148,7 @@ export class App {
     const board = this.root.querySelector<HTMLElement>('.board')!;
     const canvas = board.querySelector('canvas')!;
     this.renderer = new Renderer(canvas);
-    canvas.addEventListener('pointerdown', (e) => this.onTap(e));
+    this.bindMapGestures(canvas, board);
     this.resizeObs = new ResizeObserver(() => this.layout());
     this.resizeObs.observe(board);
     this.layout();
@@ -199,7 +202,20 @@ export class App {
   }
 
   private draw() {
-    if (this.game && this.renderer) this.renderer.draw(this.game);
+    if (!this.game || !this.renderer) return;
+    this.renderer.draw(this.game);
+    const btn = this.root.querySelector<HTMLElement>('.recenter');
+    if (btn) btn.hidden = !this.renderer.panned;
+  }
+
+  /** Coalesce redraws during a drag to one per frame. */
+  private scheduleDraw() {
+    if (this.drawQueued) return;
+    this.drawQueued = true;
+    requestAnimationFrame(() => {
+      this.drawQueued = false;
+      this.draw();
+    });
   }
 
   /** Redraw everything after state changed. */
@@ -249,6 +265,8 @@ export class App {
     const p = game.run.player;
     const before = { hp: p.hp, x: p.x, y: p.y };
     const target = a.type === 'move' ? game.monsterAt(p.x + a.dx, p.y + a.dy) : undefined;
+    // Acting snaps the camera back to the player after a look around.
+    this.renderer?.recenter();
     game.act(a);
     if (target && this.renderer) this.renderer.flash(target.x, target.y, COLORS.player);
     if (p.hp < before.hp && this.renderer) this.renderer.flash(p.x, p.y, COLORS.bad);
@@ -382,17 +400,50 @@ export class App {
     }
   }
 
-  private onTap(e: PointerEvent) {
+  /**
+   * Drag the map to look around; a press that barely moves is a tap, which
+   * steps toward the tapped spot. One pointer at a time.
+   */
+  private bindMapGestures(canvas: HTMLCanvasElement, board: HTMLElement) {
+    const SLOP = 8;
+    canvas.addEventListener('pointerdown', (e) => {
+      if (this.drag || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false };
+      canvas.setPointerCapture?.(e.pointerId);
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      const d = this.drag;
+      if (!d || d.id !== e.pointerId || !this.renderer) return;
+      if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < SLOP) return;
+      d.moved = true;
+      board.classList.add('dragging');
+      this.renderer.panBy(e.clientX - d.x, e.clientY - d.y);
+      d.x = e.clientX;
+      d.y = e.clientY;
+      this.scheduleDraw();
+    });
+    const end = (e: PointerEvent, cancelled: boolean) => {
+      const d = this.drag;
+      if (!d || d.id !== e.pointerId) return;
+      this.drag = null;
+      board.classList.remove('dragging');
+      if (!cancelled && !d.moved) this.onTap(e, canvas);
+    };
+    canvas.addEventListener('pointerup', (e) => end(e, false));
+    canvas.addEventListener('pointercancel', (e) => end(e, true));
+  }
+
+  private onTap(e: PointerEvent, canvas: HTMLCanvasElement) {
     const game = this.game;
     if (!game || !this.renderer || game.run.pending || this.overlays.length) return;
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
-    const t = this.renderer.tileAt(e.clientX - rect.left, e.clientY - rect.top);
+    const rect = canvas.getBoundingClientRect();
+    const f = game.run.floor;
+    const t = this.renderer.tileAt(e.clientX - rect.left, e.clientY - rect.top, f.w, f.h);
     if (!t) return;
     const p = game.run.player;
     const dx = Math.sign(t.x - p.x);
     const dy = Math.sign(t.y - p.y);
     if (dx === 0 && dy === 0) {
-      const f = game.run.floor;
       this.act(p.x === f.stairs.x && p.y === f.stairs.y ? { type: 'descend' } : { type: 'wait' });
     } else this.act({ type: 'move', dx, dy });
   }
@@ -483,6 +534,10 @@ export class App {
         break;
       case 'dismiss':
         this.dismissOverlay();
+        break;
+      case 'recenter':
+        this.renderer?.recenter();
+        this.draw();
         break;
     }
   }

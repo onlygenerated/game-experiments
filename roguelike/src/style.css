@@ -372,8 +372,23 @@ button.chip:hover {
 }
 .board canvas {
   display: block;
-  touch-action: manipulation;
+  /* The map handles its own drags; the browser must not scroll or zoom from it. */
+  touch-action: none;
   cursor: crosshair;
+}
+.board.dragging canvas {
+  cursor: grabbing;
+}
+.recenter {
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right, 0px));
+  bottom: 12px;
+  padding: 8px 14px;
+  font-size: 13px;
+  background: rgba(19, 23, 34, 0.92);
+  border-color: var(--accent-2);
+  color: #e6d9ff;
+  box-shadow: 0 6px 20px #0009;
 }
 
 .log {
