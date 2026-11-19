@@ -54,6 +54,13 @@ export class Renderer {
   private panY = 0;
   /** Where auto-travel is headed, drawn as a marker. */
   travelTarget: { x: number; y: number } | null = null;
+  /** Look mode's cursor, and the tile under a hovering mouse. */
+  lookCursor: { x: number; y: number } | null = null;
+  hoverCursor: { x: number; y: number } | null = null;
+  /** Smallest and largest tile size in CSS pixels (the Map tile size option). */
+  tileRange: readonly [number, number] = [16, 32];
+  /** Skip hit flashes. */
+  reduceMotion = false;
   private boundsOf: Floor | null = null;
   private boundsCache: { x0: number; y0: number; x1: number; y1: number } | null = null;
   /** Tile index → time it should stop flashing (hit feedback). */
@@ -65,6 +72,7 @@ export class Renderer {
   }
 
   flash(x: number, y: number, color: string) {
+    if (this.reduceMotion) return;
     this.flashes.set(`${x},${y},${color}`, performance.now() + 180);
   }
 
@@ -102,6 +110,18 @@ export class Renderer {
   panBy(dx: number, dy: number) {
     this.panX -= dx;
     this.panY -= dy;
+  }
+
+  /** Pan just enough that a tile (e.g. the Look cursor) is on screen with a one-tile margin. */
+  ensureVisible(x: number, y: number) {
+    const v = this.view;
+    const c = v.cell;
+    const left = x * c - v.camX;
+    const top = y * c - v.camY;
+    if (left < c) this.panX += left - c;
+    else if (left + 2 * c > v.w) this.panX += left + 2 * c - v.w;
+    if (top < c) this.panY += top - c;
+    else if (top + 2 * c > v.h) this.panY += top + 2 * c - v.h;
   }
 
   recenter() {
@@ -149,7 +169,7 @@ export class Renderer {
     // Fit what exists of the floor when it can be shown legibly; otherwise follow the player.
     const b = this.bounds(f);
     const fit = Math.floor(Math.min(v.w / (b.x1 - b.x0), v.h / (b.y1 - b.y0)));
-    v.cell = Math.max(16, Math.min(32, fit));
+    v.cell = Math.max(this.tileRange[0], Math.min(this.tileRange[1], fit));
     const c = v.cell;
 
     [v.camX, this.panX] = this.axis(v.w, b.x0 * c, b.x1 * c, p.x * c + c / 2, this.panX);
@@ -258,6 +278,25 @@ export class Renderer {
       ctx.restore();
     }
     glyph('@', p.x, p.y, COLORS.player, true, 0.82);
+    if (this.hoverCursor) {
+      const h = this.hoverCursor;
+      ctx.strokeStyle = 'rgba(232, 228, 216, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sxOf(h.x) + 0.5, syOf(h.y) + 0.5, c - 1, c - 1);
+    }
+    if (this.lookCursor) {
+      const l = this.lookCursor;
+      ctx.strokeStyle = COLORS.shrine;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sxOf(l.x) + 1, syOf(l.y) + 1, c - 2, c - 2);
+      // Corner ticks make the cursor read as a reticle, not a selection.
+      ctx.fillStyle = COLORS.shrine;
+      const k = Math.max(3, c * 0.22);
+      for (const [cx, cy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+        ctx.fillRect(sxOf(l.x) + cx * (c - k), syOf(l.y) + cy * (c - 2), k, 2);
+        ctx.fillRect(sxOf(l.x) + cx * (c - 2), syOf(l.y) + cy * (c - k), 2, k);
+      }
+    }
 
     const now = performance.now();
     for (const [k, until] of this.flashes) {

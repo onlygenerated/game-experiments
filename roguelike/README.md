@@ -20,6 +20,24 @@ npx vite-node tools/probe.ts 60   # balance probe: how deep a greedy bot gets
 No framework: TypeScript, a canvas for the map and plain DOM for panels. Worlds and the
 run in progress are saved in `localStorage`.
 
+## Controls and options
+
+Arrows / vi keys / numpad move; tap the map to step, hold a spot to walk there, drag to
+look around. `;` or `v` (or **Look**) inspects any tile without moving; `g` picks up
+what's underfoot. **Options** (`o`) is saved per browser:
+
+| Option | Choices |
+|---|---|
+| Auto pickup | Everything · Gold only · Off |
+| Warn before leaving a shrine behind | On · Off |
+| Walk speed (hold-to-walk) | Slow · Normal · Fast |
+| Hold to walk after | 0.25 s · 0.4 s · 0.6 s |
+| Describe tiles on hover (mouse) | On · Off |
+| On-screen controls | Auto · Always · Never |
+| Vibrate when a walk starts | On · Off |
+| Map tile size | Small · Normal · Large |
+| Reduce motion | On · Off |
+
 ## Layout
 
 | Path | What |
@@ -30,6 +48,8 @@ run in progress are saved in `localStorage`.
 | `src/engine/content.ts` | Item and monster catalogues, floor population |
 | `src/engine/world.ts` | World creation, heir names, persistence |
 | `src/ui/` | Canvas renderer, sidebar/modals, app controller and input |
+| `src/ui/describe.ts` | What Look mode / hover says about a tile |
+| `src/ui/options.ts` | Play options: definitions, defaults, storage |
 
 ## How rules hook in
 

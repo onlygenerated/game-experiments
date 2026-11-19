@@ -28,7 +28,7 @@ import {
 import { DIRS, distanceMap, generateLayout, idx, passable, soloRoom, type LayoutOpts } from './dungeon.ts';
 import { computeVisible, lineOfSight } from './fov.ts';
 import { hashSeed, Rng } from './rng.ts';
-import type { Grave, Item, Monster, Player, Pos, RuleId, RunState, Tone, World } from './types.ts';
+import type { FloorItem, Grave, Item, Monster, Player, Pos, RuleId, RunState, Tone, World } from './types.ts';
 import { heirName } from './world.ts';
 
 export type Action =
@@ -39,6 +39,8 @@ export type Action =
   | { type: 'equip'; id: number }
   | { type: 'unequip'; slot: 'weapon' | 'armor' }
   | { type: 'drop'; id: number }
+  /** Pick up one item here (by id), or everything here. */
+  | { type: 'pickup'; id?: number }
   | { type: 'ability'; ability: 'cleave' | 'mend' }
   | { type: 'shrine'; rule: RuleId | null }
   | { type: 'levelup'; stat: 'str' | 'agi' | 'vit' };
@@ -49,6 +51,9 @@ export type GameEvent =
   | { type: 'descend'; depth: number };
 
 export const INVENTORY_CAP = 12;
+
+/** What stepping onto items does: take everything, take only gold, or just tell you. */
+export type AutoPickup = 'all' | 'gold' | 'none';
 export const CLEAVE_COST = 2;
 export const MEND_COST = 3;
 
@@ -91,6 +96,8 @@ export class Game {
   rng: Rng;
   events: GameEvent[] = [];
   visible = new Set<number>();
+  /** A player preference, not part of the run: set by the UI from its options. */
+  autoPickup: AutoPickup = 'all';
 
   constructor(world: World, run: RunState) {
     this.world = world;
@@ -240,6 +247,9 @@ export class Game {
       case 'drop':
         cost = this.drop(a.id);
         break;
+      case 'pickup':
+        cost = this.pickup(a.id);
+        break;
       case 'ability':
         cost = this.ability(a.ability);
         break;
@@ -275,19 +285,16 @@ export class Game {
   private enterTile(): number {
     const { player: p, floor } = this.run;
     let extra = 0;
-    const here = this.run.items.filter((fi) => fi.x === p.x && fi.y === p.y);
-    for (const fi of here) {
-      if (fi.item.kind === 'gold') {
-        p.gold += fi.item.amount ?? 0;
-        this.log(`You pick up ${fi.item.amount} gold.`, 'good');
-      } else if (p.inventory.length >= INVENTORY_CAP) {
-        this.log(`Your pack is full; you leave the ${itemLabel(fi.item, this.ctx)}.`, 'dim');
-        continue;
-      } else {
-        p.inventory.push(fi.item);
-        this.log(`You pick up the ${itemLabel(fi.item, this.ctx)}.`, 'good');
-      }
-      this.run.items = this.run.items.filter((o) => o !== fi);
+    const left: string[] = [];
+    for (const fi of this.itemsHere()) {
+      const auto = this.autoPickup === 'all' || (this.autoPickup === 'gold' && fi.item.kind === 'gold');
+      if (auto && this.take(fi, true)) continue;
+      const label = itemLabel(fi.item, this.ctx);
+      left.push(fi.item.kind === 'gold' ? label : `${article(label)} ${label}`);
+    }
+    if (left.length) {
+      const what = left.length === 1 ? left[0] : `${left.slice(0, -1).join(', ')} and ${left[left.length - 1]}`;
+      this.log(`You see ${what} here. Press g to pick up.`, 'info');
     }
     const g = floor.glimmer[idx(floor, p.x, p.y)];
     if (g) {
@@ -382,6 +389,41 @@ export class Game {
     p.inventory.push(item);
     this.log(`You put away the ${itemLabel(item, this.ctx)}.`, 'info');
     return 1;
+  }
+
+  /** Items lying on the player's tile. */
+  itemsHere(): FloorItem[] {
+    const p = this.run.player;
+    return this.run.items.filter((fi) => fi.x === p.x && fi.y === p.y);
+  }
+
+  /** Move one floor item into the pack (gold into the purse). False if the pack is full. */
+  private take(fi: FloorItem, quietWhenFull: boolean): boolean {
+    const p = this.run.player;
+    if (fi.item.kind === 'gold') {
+      p.gold += fi.item.amount ?? 0;
+      this.log(`You pick up ${fi.item.amount} gold.`, 'good');
+    } else if (p.inventory.length >= INVENTORY_CAP) {
+      if (!quietWhenFull) this.log(`Your pack is full; you leave the ${itemLabel(fi.item, this.ctx)}.`, 'dim');
+      return false;
+    } else {
+      p.inventory.push(fi.item);
+      this.log(`You pick up the ${itemLabel(fi.item, this.ctx)}.`, 'good');
+    }
+    this.run.items = this.run.items.filter((o) => o !== fi);
+    return true;
+  }
+
+  /** Deliberate pickup costs a turn; walking past is free. */
+  private pickup(id?: number): number {
+    const here = this.itemsHere().filter((fi) => id === undefined || fi.item.id === id);
+    if (!here.length) {
+      this.log('There is nothing here to pick up.', 'dim');
+      return 0;
+    }
+    let took = 0;
+    for (const fi of here) if (this.take(fi, false)) took++;
+    return took ? 1 : 0;
   }
 
   private drop(id: number): number {

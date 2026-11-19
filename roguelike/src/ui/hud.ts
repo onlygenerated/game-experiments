@@ -1,4 +1,6 @@
 import { itemLabel } from '../engine/content.ts';
+import type { TileInfo } from './describe.ts';
+import { OPTION_DEFS, type OptionDef, type Options } from './options.ts';
 import { CLEAVE_COST, MEND_COST, xpNeeded, type Game } from '../engine/game.ts';
 import type { Item, RuleId, World } from '../engine/types.ts';
 import {
@@ -139,6 +141,27 @@ export function sidebarHTML(game: Game, fresh: ReadonlySet<string>): string {
     );
   }
 
+  // Whatever lies underfoot, when it wasn't picked up automatically.
+  const here = game.itemsHere();
+  if (here.length) {
+    const rows = here
+      .map((fi) => {
+        const facts = itemFacts(fi.item, game);
+        return `<li class="item kind-${fi.item.kind}"><div class="item-main"><span class="item-name">${esc(itemLabel(fi.item, game.ctx))}</span>${hiddenMark(fi.item, game.ctx)}
+          <span class="item-facts">${facts.map(esc).join(' · ')}</span></div>
+          <div class="item-btns"><button data-cmd="pickup" data-id="${fi.item.id}">Pick up</button></div></li>`;
+      })
+      .join('');
+    out.push(
+      section(
+        'things',
+        `Here <small>${here.length > 1 ? '<button class="linkish" data-cmd="pickup">Pick up all <kbd>G</kbd></button>' : 'press <kbd>G</kbd>'}</small>`,
+        `<ul class="items">${rows}</ul>`,
+        fresh,
+      ),
+    );
+  }
+
   if (game.has('things')) {
     const items = p.inventory.length
       ? `<ul class="items">${p.inventory.map((i) => itemRow(i, game)).join('')}</ul>`
@@ -162,7 +185,7 @@ export function sidebarHTML(game: Game, fresh: ReadonlySet<string>): string {
   return out.join('');
 }
 
-export function topbarHTML(game: Game): string {
+export function topbarHTML(game: Game, look: boolean): string {
   const run = game.run;
   return `<span class="brand">Unfolding</span>
     <span class="tb-world">${esc(game.world.name)}</span>
@@ -170,8 +193,10 @@ export function topbarHTML(game: Game): string {
     <span class="tb-depth">Depth ${run.depth}</span>
     ${game.has('peril') ? `<span class="tb-hp${run.player.hp <= game.stats.maxHp / 3 ? ' low' : ''}">HP ${Math.max(0, run.player.hp)}/${game.stats.maxHp}</span>` : ''}
     <span class="spacer"></span>
+    <button data-cmd="look" class="ghost tb-look${look ? ' on' : ''}" aria-pressed="${look}">Look <kbd>;</kbd></button>
     ${game.world.rules.length ? '<button data-cmd="codex" class="ghost">Codex <kbd>C</kbd></button>' : ''}
     <button data-cmd="help" class="ghost tb-keys">Keys <kbd>?</kbd></button>
+    <button data-cmd="options" class="ghost">Options <kbd>O</kbd></button>
     <button data-cmd="leave" class="ghost">Save &amp; quit</button>`;
 }
 
@@ -290,12 +315,65 @@ export function helpHTML(): string {
       <div><dt>&gt; · Enter</dt><dd>Descend stairs</dd></div>
       <div><dt>q / e</dt><dd>Drink a potion / eat</dd></div>
       <div><dt>z / x</dt><dd>Cleave / Mend (with Arcana)</dd></div>
+      <div><dt>g · ,</dt><dd>Pick up what's here</dd></div>
+      <div><dt>; · v</dt><dd>Look: inspect any tile (arrows move the cursor, Esc leaves)</dd></div>
       <div><dt>c</dt><dd>Codex</dd></div>
-      <div><dt>Tap the map</dt><dd>Step toward that spot; tap yourself to wait</dd></div>
+      <div><dt>o</dt><dd>Options</dd></div>
+      <div><dt>Tap the map</dt><dd>Step toward that spot; tap yourself to wait. In Look mode, inspect it</dd></div>
       <div><dt>Drag the map</dt><dd>Look around; your next move recenters</dd></div>
       <div><dt>Press and hold the map</dt><dd>Walk there; stops if a foe appears or you're hurt. Any key or tap stops it</dd></div>
     </dl>
     <p class="muted small">Legend: <b>@</b> you · <b>&gt;</b> stairs · <b>Ω</b> rule shrine · <b>†</b> grave · <b>!</b> potion · <b>$</b> gold · <b>)</b> weapon · <b>[</b> armour · <b>%</b> food · ◇ a property you can't perceive yet</p>
     <footer><button data-cmd="dismiss" class="primary"><kbd>Esc</kbd> Close</button></footer>
+  </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Look card, options, confirmations
+// ---------------------------------------------------------------------------
+
+export function lookCardHTML(info: TileInfo, mode: 'look' | 'hover'): string {
+  return `<div class="lookcard${mode === 'hover' ? ' hover' : ''}" role="status">
+    <p class="lc-title">${esc(info.title)}</p>
+    ${info.lines.map((l) => `<p class="lc-line">${esc(l)}</p>`).join('')}
+    ${mode === 'look'
+      ? `<div class="lc-btns">${info.walkable && info.known ? '<button data-cmd="look-walk">Walk here</button>' : ''}<button data-cmd="look" class="ghost">Done <kbd>Esc</kbd></button></div>`
+      : ''}
+  </div>`;
+}
+
+export function optionsHTML(o: Options): string {
+  const groups = ['Gameplay', 'Controls', 'Display'] as const;
+  const field = (d: OptionDef) => `<fieldset class="opt">
+      <legend>${esc(d.label)}</legend>
+      <div class="seg" role="radiogroup" aria-label="${esc(d.label)}">${d.choices
+        .map((c) => {
+          const id = `opt-${d.key}-${c.value}`;
+          const on = String(o[d.key]) === c.value;
+          return `<input type="radio" id="${id}" name="${d.key}" value="${c.value}" data-opt="${d.key}" ${on ? 'checked' : ''}><label for="${id}">${esc(c.label)}</label>`;
+        })
+        .join('')}</div>
+      <p class="muted small">${esc(d.help)}</p>
+    </fieldset>`;
+  return `<div class="modal options" role="dialog" aria-label="Options">
+    <header class="modal-head"><span class="eyebrow">Saved in this browser</span><h1>Options</h1></header>
+    ${groups
+      .map((g) => `<section class="opt-group"><h3>${g}</h3>${OPTION_DEFS.filter((d) => d.group === g).map(field).join('')}</section>`)
+      .join('')}
+    <footer><button data-cmd="dismiss" class="primary"><kbd>Esc</kbd> Done</button></footer>
+  </div>`;
+}
+
+export function confirmDescendHTML(game: Game): string {
+  const sh = game.run.floor.shrine!;
+  const offered = sh.offers?.length ? ` It offered ${sh.offers.map((r) => RULES[r].name).join(', ')}.` : ' You haven’t seen what it offers.';
+  return `<div class="modal confirm" role="dialog" aria-label="Leave the shrine behind?">
+    <header class="modal-head"><span class="eyebrow">Depth ${game.run.depth}</span><h1>Leave this floor’s shrine behind?</h1>
+    <p class="muted">Once you take the stairs, this shrine is gone.${offered}</p></header>
+    <footer class="confirm-btns">
+      <button class="primary" data-cmd="descend-confirmed"><kbd>Enter</kbd> Descend anyway</button>
+      <button class="ghost" data-cmd="dismiss"><kbd>Esc</kbd> Stay</button>
+    </footer>
+    <p class="muted small">You can turn this warning off in Options.</p>
   </div>`;
 }

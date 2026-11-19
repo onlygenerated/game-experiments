@@ -4,14 +4,31 @@ import { canTravelTo, nearbyThreats, travelStep } from '../engine/travel.ts';
 import type { Pos } from '../engine/types.ts';
 import type { RuleId, World } from '../engine/types.ts';
 import { defaultKV, heirName, newWorld, randomSeed, Store } from '../engine/world.ts';
-import { repealable, RULE_ORDER, RULES } from '../rules/rules.ts';
-import { bannerHTML, codexHTML, esc, helpHTML, levelupHTML, logHTML, shrineHTML, sidebarHTML, topbarHTML } from './hud.ts';
+import { frontier, repealable, RULE_ORDER, RULES } from '../rules/rules.ts';
+import { describeTile } from './describe.ts';
+import {
+  bannerHTML,
+  codexHTML,
+  confirmDescendHTML,
+  esc,
+  helpHTML,
+  levelupHTML,
+  logHTML,
+  lookCardHTML,
+  optionsHTML,
+  shrineHTML,
+  sidebarHTML,
+  topbarHTML,
+} from './hud.ts';
+import { HOLD_MS, loadOptions, parseOption, saveOptions, TILE_PX, TRAVEL_STEP_MS, type Options } from './options.ts';
 import { COLORS, Renderer } from './render.ts';
 
 type Overlay =
   | { kind: 'banner'; rule: RuleId; how: 'shrine' | 'mastery' | 'milestone' }
   | { kind: 'codex' }
-  | { kind: 'help' };
+  | { kind: 'help' }
+  | { kind: 'options' }
+  | { kind: 'confirm-descend' };
 
 const KEY_DIRS: Record<string, [number, number]> = {
   ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
@@ -46,11 +63,19 @@ export class App {
   } | null = null;
   /** Auto-travel in progress: where to, and which nearby foes we've already accounted for. */
   private travel: { target: Pos; timer: number; known: Set<number> } | null = null;
+  options: Options;
+  /** Look mode: the tile under the inspection cursor. */
+  look: Pos | null = null;
+  /** Mouse hover inspection (when Look mode is off). */
+  private hover: Pos | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root;
+    this.options = loadOptions(this.store.kv);
+    this.applyOptions();
     window.addEventListener('keydown', (e) => this.onKey(e));
     root.addEventListener('click', (e) => this.onClick(e));
+    root.addEventListener('change', (e) => this.onOptionChange(e));
     document.fonts?.ready.then(() => this.draw());
     this.title();
   }
@@ -84,14 +109,16 @@ export class App {
       <div class="title-cols">
         <section class="start-new">
           <h2>New world</h2>
-          <p class="muted">Start from nothing: walls, rats, stairs. The world rolls its own variants of every rule.</p>
+          <p class="muted">Start from nothing: one quiet room, a shrine, stairs down. The world rolls its own variants of every rule, and when each one first shows itself.</p>
           <button class="primary big" data-cmd="new-world">Begin a new world</button>
+          <button class="ghost" data-cmd="options">Options</button>
         </section>
         <section class="continue">
           <h2>Your worlds</h2>
-          ${worlds.length ? `<p class="muted">Send a new heir into a world you've shaped. They inherit every rule, may repeal one, and can find the graves of those before them.</p><ul class="worlds">${cards}</ul>` : '<p class="muted">None yet. Worlds you create are saved in this browser.</p>'}
+          ${worlds.length ? `<p class="muted">Send a new heir into a world you’ve shaped. They inherit every rule, may repeal one, and can find the graves of those before them.</p><ul class="worlds">${cards}</ul>` : '<p class="muted">None yet. Worlds you create are saved in this browser.</p>'}
         </section>
-      </div></div>`;
+      </div>
+      <div class="overlay" hidden></div></div>`;
   }
 
   /** Briefing for a new heir in an existing world: inherited rules, one optional repeal. */
@@ -143,10 +170,14 @@ export class App {
     this.game = game;
     this.overlays = [];
     this.fresh.clear();
+    this.look = null;
+    this.hover = null;
+    game.autoPickup = this.options.autoPickup;
     this.root.innerHTML = `<div class="screen play-screen">
       <header class="topbar"></header>
       <main class="board"><canvas aria-label="Dungeon map"></canvas>
-        <button class="recenter" data-cmd="recenter" hidden>⌖ Center on ${esc(game.run.player.name)}</button></main>
+        <button class="recenter" data-cmd="recenter" hidden>⌖ Center on ${esc(game.run.player.name)}</button>
+        <div class="lookslot"></div></main>
       <section class="log" aria-live="polite"></section>
       <nav class="pad" aria-label="Controls">
         <div class="dpad">
@@ -155,8 +186,10 @@ export class App {
             .join('')}
         </div>
         <div class="pad-actions">
-          <button data-cmd="descend">Descend ›</button>
+          <button data-cmd="descend">Descend</button>
           <button data-cmd="wait">Wait</button>
+          <button data-cmd="pickup" class="pad-pickup" disabled>Pick up</button>
+          <button data-cmd="look" class="pad-look" aria-pressed="false">Look</button>
         </div>
       </nav>
       <aside class="side"></aside>
@@ -168,6 +201,7 @@ export class App {
     this.bindMapGestures(canvas, board);
     this.resizeObs = new ResizeObserver(() => this.layout());
     this.resizeObs.observe(board);
+    this.applyOptions();
     this.layout();
     this.refresh();
   }
@@ -205,6 +239,108 @@ export class App {
     this.renderer = null;
     window.clearTimeout(this.deathTimer);
     this.stopTravel(null);
+    this.look = null;
+    this.hover = null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Options
+  // -------------------------------------------------------------------------
+
+  /** Push the current options into everything that reads them. */
+  private applyOptions() {
+    const o = this.options;
+    document.documentElement.classList.toggle('reduce-motion', o.reduceMotion);
+    const play = this.root.querySelector<HTMLElement>('.play-screen');
+    play?.classList.toggle('pad-always', o.dpad === 'always');
+    play?.classList.toggle('pad-never', o.dpad === 'never');
+    if (this.game) this.game.autoPickup = o.autoPickup;
+    if (this.renderer) {
+      this.renderer.tileRange = TILE_PX[o.tileSize];
+      this.renderer.reduceMotion = o.reduceMotion;
+    }
+    if (!o.hoverInspect) this.hover = null;
+  }
+
+  private onOptionChange(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const key = input.dataset.opt as keyof Options | undefined;
+    if (!key) return;
+    (this.options as unknown as Record<string, unknown>)[key] = parseOption(key, input.value);
+    saveOptions(this.store.kv, this.options);
+    this.applyOptions();
+    this.layout();
+    if (this.game) this.refresh();
+  }
+
+  private openOverlay(o: Overlay) {
+    this.overlays.unshift(o);
+    this.renderOverlay();
+  }
+
+  // -------------------------------------------------------------------------
+  // Look mode and hover inspection
+  // -------------------------------------------------------------------------
+
+  private setLook(pos: Pos | null) {
+    this.look = pos;
+    if (pos) {
+      this.hover = null;
+      this.stopTravel(null);
+      this.renderer?.ensureVisible(pos.x, pos.y);
+    }
+    this.refresh();
+  }
+
+  private toggleLook() {
+    const p = this.game?.run.player;
+    this.setLook(this.look || !p ? null : { x: p.x, y: p.y });
+  }
+
+  private moveLook(dx: number, dy: number) {
+    const game = this.game;
+    if (!game || !this.look) return;
+    const f = game.run.floor;
+    this.setLook({
+      x: Math.max(0, Math.min(f.w - 1, this.look.x + dx)),
+      y: Math.max(0, Math.min(f.h - 1, this.look.y + dy)),
+    });
+  }
+
+  /** The inspection card under the map: Look mode's cursor, or the hovered tile. */
+  private renderLook() {
+    const slot = this.root.querySelector<HTMLElement>('.lookslot');
+    const game = this.game;
+    if (!slot || !game) return;
+    const at = this.look ?? this.hover;
+    const html = at ? lookCardHTML(describeTile(game, at.x, at.y), this.look ? 'look' : 'hover') : '';
+    if (slot.dataset.html !== html) {
+      slot.innerHTML = html;
+      slot.dataset.html = html;
+    }
+    if (this.renderer) {
+      this.renderer.lookCursor = this.look;
+      this.renderer.hoverCursor = this.look ? null : this.hover;
+    }
+  }
+
+  /** Descend, unless that would leave an unanswered shrine behind and the player wants a warning. */
+  private tryDescend() {
+    const game = this.game;
+    if (!game) return;
+    const { floor: f, player: p } = game.run;
+    const onStairs = p.x === f.stairs.x && p.y === f.stairs.y;
+    const sh = f.shrine;
+    const wouldOffer =
+      !!sh && !sh.used &&
+      ((sh.offers?.length ?? 0) > 0 ||
+        frontier(new Set(game.world.rules), { depth: game.run.depth, emergence: game.world.emergence ?? {} }).length > 0);
+    if (onStairs && wouldOffer && this.options.confirmShrine) {
+      this.stopTravel(null);
+      this.openOverlay({ kind: 'confirm-descend' });
+      return;
+    }
+    this.act({ type: 'descend' });
   }
 
   // -------------------------------------------------------------------------
@@ -241,7 +377,15 @@ export class App {
     const game = this.game;
     if (!game) return;
     const q = (s: string) => this.root.querySelector<HTMLElement>(s);
-    q('.topbar')!.innerHTML = topbarHTML(game);
+    q('.topbar')!.innerHTML = topbarHTML(game, !!this.look);
+    const pickup = q('.pad-pickup') as HTMLButtonElement | null;
+    if (pickup) pickup.disabled = game.itemsHere().length === 0;
+    const lookBtn = q('.pad-look');
+    if (lookBtn) {
+      lookBtn.classList.toggle('on', !!this.look);
+      lookBtn.setAttribute('aria-pressed', String(!!this.look));
+    }
+    this.renderLook();
     q('.side')!.innerHTML = sidebarHTML(game, this.fresh);
     q('.log')!.innerHTML = logHTML(game);
     q('.play-screen')!.classList.toggle('has-arcana', game.has('arcana'));
@@ -253,12 +397,15 @@ export class App {
   private renderOverlay() {
     const game = this.game;
     const el = this.root.querySelector<HTMLElement>('.overlay');
-    if (!game || !el) return;
+    if (!el) return;
     const top = this.overlays[0];
     let html = '';
-    if (top?.kind === 'banner') html = bannerHTML(top.rule, top.how, game.world);
-    else if (top?.kind === 'codex') html = codexHTML(game.world);
+    if (top?.kind === 'options') html = optionsHTML(this.options);
     else if (top?.kind === 'help') html = helpHTML();
+    else if (!game) html = '';
+    else if (top?.kind === 'banner') html = bannerHTML(top.rule, top.how, game.world);
+    else if (top?.kind === 'codex') html = codexHTML(game.world);
+    else if (top?.kind === 'confirm-descend') html = confirmDescendHTML(game);
     else if (game.run.pending?.kind === 'shrine') html = shrineHTML(game);
     else if (game.run.pending?.kind === 'levelup') html = levelupHTML(game);
     el.hidden = !html;
@@ -285,8 +432,10 @@ export class App {
     const p = game.run.player;
     const before = { hp: p.hp, x: p.x, y: p.y };
     const target = a.type === 'move' ? game.monsterAt(p.x + a.dx, p.y + a.dy) : undefined;
-    // Acting snaps the camera back to the player after a look around.
+    // Acting snaps the camera back to the player after a look around, and ends Look mode.
     this.renderer?.recenter();
+    this.look = null;
+    game.autoPickup = this.options.autoPickup;
     game.act(a);
     if (target && this.renderer) this.renderer.flash(target.x, target.y, COLORS.player);
     if (p.hp < before.hp && this.renderer) this.renderer.flash(p.x, p.y, COLORS.bad);
@@ -327,8 +476,21 @@ export class App {
   // -------------------------------------------------------------------------
 
   private onKey(e: KeyboardEvent) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k0 = e.key;
+    // Options work from any screen.
+    if (this.overlays[0]?.kind === 'options') {
+      if (k0 === 'Escape' || k0 === 'o' || k0 === 'Enter') {
+        e.preventDefault();
+        this.dismissOverlay();
+      }
+      return;
+    }
     const game = this.game;
-    if (!game || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!game) {
+      if (k0 === 'o') this.openOverlay({ kind: 'options' });
+      return;
+    }
     if (this.travel) {
       e.preventDefault();
       this.stopTravel('You stop.');
@@ -339,6 +501,17 @@ export class App {
     const pending = game.run.pending;
     const handled = () => e.preventDefault();
 
+    if (top?.kind === 'confirm-descend') {
+      if (k === 'Enter' || k === '>') {
+        handled();
+        this.overlays.shift();
+        this.act({ type: 'descend' });
+      } else if (k === 'Escape') {
+        handled();
+        this.dismissOverlay();
+      }
+      return;
+    }
     if (top) {
       if (k === 'Escape' || k === 'Enter' || k === ' ' || (top.kind === 'codex' && k === 'c') || (top.kind === 'help' && k === '?')) {
         handled();
@@ -368,6 +541,29 @@ export class App {
     }
     if (game.run.over) return;
 
+    // Look mode: movement keys steer the cursor instead of the player.
+    if (this.look) {
+      const d = KEY_DIRS[k];
+      if (d) {
+        handled();
+        this.moveLook(d[0], d[1]);
+        return;
+      }
+      if (k === 'Escape' || k === ';' || k === 'v') {
+        handled();
+        this.setLook(null);
+        return;
+      }
+      if (k === 'Enter') {
+        handled();
+        const t = this.look;
+        this.setLook(null);
+        this.startTravel(t);
+        return;
+      }
+      this.setLook(null);
+    }
+
     // Light throttle so a held key doesn't outrun the screen.
     const now = performance.now();
     const repeat = e.repeat && now - this.lastKey < 70;
@@ -394,7 +590,20 @@ export class App {
       case '>':
       case 'Enter':
         handled();
-        this.act({ type: 'descend' });
+        this.tryDescend();
+        break;
+      case 'g':
+      case ',':
+        handled();
+        this.act({ type: 'pickup' });
+        break;
+      case ';':
+      case 'v':
+        handled();
+        this.toggleLook();
+        break;
+      case 'o':
+        this.openOverlay({ kind: 'options' });
         break;
       case 'q': {
         const potion = p.inventory.find((i) => i.kind === 'potion');
@@ -449,6 +658,7 @@ export class App {
       this.refresh();
       return;
     }
+    this.look = null;
     // Foes already nearby when you set off don't stop you — new arrivals do.
     this.travel = { target, timer: 0, known: new Set(nearbyThreats(game).map((m) => m.id)) };
     if (this.renderer) this.renderer.travelTarget = target;
@@ -491,7 +701,7 @@ export class App {
       const name = game.monsterName(stopFor);
       return this.stopTravel(adjacent ? `${article(name) === 'an' ? 'An' : 'A'} ${name} is upon you! You stop.` : `You spot ${article(name)} ${name} (${MONSTERS[stopFor.kind].glyph}). You stop.`);
     }
-    t.timer = window.setTimeout(() => this.travelTick(), 70);
+    t.timer = window.setTimeout(() => this.travelTick(), TRAVEL_STEP_MS[this.options.travelSpeed]);
   }
 
   /**
@@ -501,7 +711,6 @@ export class App {
    */
   private bindMapGestures(canvas: HTMLCanvasElement, board: HTMLElement) {
     const SLOP = 8;
-    const HOLD_MS = 380;
     const tileFor = (e: PointerEvent) => {
       const f = this.game?.run.floor;
       if (!f || !this.renderer) return null;
@@ -524,12 +733,12 @@ export class App {
           if (this.drag !== d || d.moved) return;
           d.held = true;
           try {
-            navigator.vibrate?.(12);
+            if (this.options.vibrate) navigator.vibrate?.(12);
           } catch {
             /* not allowed here; the target marker is feedback enough */
           }
           this.startTravel(tile);
-        }, HOLD_MS);
+        }, HOLD_MS[this.options.holdDelay]);
       }
       this.drag = d;
       canvas.setPointerCapture?.(e.pointerId);
@@ -556,6 +765,21 @@ export class App {
     };
     canvas.addEventListener('pointerup', (e) => end(e, false));
     canvas.addEventListener('pointercancel', (e) => end(e, true));
+    // Mouse hover describes the tile under the pointer (an option; never on touch).
+    canvas.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'mouse' || this.drag || this.look || !this.options.hoverInspect) return;
+      const t = tileFor(e);
+      if (t?.x === this.hover?.x && t?.y === this.hover?.y) return;
+      this.hover = t;
+      this.renderLook();
+      this.scheduleDraw();
+    });
+    canvas.addEventListener('pointerleave', () => {
+      if (!this.hover) return;
+      this.hover = null;
+      this.renderLook();
+      this.scheduleDraw();
+    });
   }
 
   private onTap(e: PointerEvent, canvas: HTMLCanvasElement) {
@@ -565,11 +789,16 @@ export class App {
     const f = game.run.floor;
     const t = this.renderer.tileAt(e.clientX - rect.left, e.clientY - rect.top, f.w, f.h);
     if (!t) return;
+    if (this.look) {
+      this.setLook(t);
+      return;
+    }
     const p = game.run.player;
     const dx = Math.sign(t.x - p.x);
     const dy = Math.sign(t.y - p.y);
     if (dx === 0 && dy === 0) {
-      this.act(p.x === f.stairs.x && p.y === f.stairs.y ? { type: 'descend' } : { type: 'wait' });
+      if (p.x === f.stairs.x && p.y === f.stairs.y) this.tryDescend();
+      else this.act({ type: 'wait' });
     } else this.act({ type: 'move', dx, dy });
   }
 
@@ -626,7 +855,26 @@ export class App {
         this.act({ type: 'wait' });
         break;
       case 'descend':
+        this.tryDescend();
+        break;
+      case 'descend-confirmed':
+        this.overlays.shift();
         this.act({ type: 'descend' });
+        break;
+      case 'pickup':
+        this.act({ type: 'pickup', id: d.id ? Number(d.id) : undefined });
+        break;
+      case 'look':
+        this.toggleLook();
+        break;
+      case 'look-walk': {
+        const t = this.look;
+        this.setLook(null);
+        if (t) this.startTravel(t);
+        break;
+      }
+      case 'options':
+        this.openOverlay({ kind: 'options' });
         break;
       case 'use':
         this.act({ type: 'use', id: Number(d.id) });
@@ -650,12 +898,10 @@ export class App {
         this.act({ type: 'levelup', stat: d.stat as 'str' | 'agi' | 'vit' });
         break;
       case 'codex':
-        this.overlays.unshift({ kind: 'codex' });
-        this.renderOverlay();
+        this.openOverlay({ kind: 'codex' });
         break;
       case 'help':
-        this.overlays.unshift({ kind: 'help' });
-        this.renderOverlay();
+        this.openOverlay({ kind: 'help' });
         break;
       case 'dismiss':
         this.dismissOverlay();

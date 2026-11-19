@@ -266,6 +266,103 @@ try {
       ok('phone: a tap stops the walk', !s4.travelling && s4.turn === s3.turn && !(s4.x === far.at(-1).x && s4.y === far.at(-1).y));
     }
 
+    // ---- Options, pickup, Look mode, the shrine warning --------------------
+    await page.evaluate(() => window.scrollTo(0, 0));
+    if (vp.isMobile) await page.click('.topbar [data-cmd="options"]');
+    else await page.keyboard.press('o');
+    ok(`${vp.name}: options menu opens`, await page.isVisible('.modal.options'));
+    await shot(page, `${vp.name}-2e-options`);
+    await page.click('label[for="opt-autoPickup-none"]');
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('unfolding.options.v1') || '{}').autoPickup);
+    ok(`${vp.name}: auto pickup Off is saved (${stored})`, stored === 'none');
+    await page.click('.modal.options [data-cmd="dismiss"]');
+
+    // With auto pickup off, walking onto a potion leaves it; the Here panel picks it up.
+    await page.evaluate(() => {
+      const a = window.unfolding, g = a.game, p = g.run.player, f = g.run.floor;
+      g.run.monsters = [];
+      for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+        const x = p.x + dx, y = p.y + dy;
+        if (f.tiles[y * f.w + x] === 0 || (f.shrine && f.shrine.pos.x === x && f.shrine.pos.y === y) || (f.stairs.x === x && f.stairs.y === y)) continue;
+        g.run.items = g.run.items.filter((fi) => !(fi.x === x && fi.y === y));
+        g.run.items.push({ item: { id: 8800, kind: 'potion', name: 'Healing Potion', heal: 8, weight: 0, element: null, dur: 0, maxDur: 0 }, x, y });
+        a.act({ type: 'move', dx, dy });
+        return;
+      }
+    });
+    const left = await page.evaluate(() => window.unfolding.game.itemsHere().map((fi) => fi.item.id));
+    ok(`${vp.name}: with auto pickup off, the potion stays put`, left.includes(8800));
+    ok(`${vp.name}: the Here panel offers it`, await page.isVisible('[data-cmd="pickup"][data-id="8800"]'));
+    await shot(page, `${vp.name}-2f-here`);
+    await page.click('[data-cmd="pickup"][data-id="8800"]');
+    const packed = await page.evaluate(() => window.unfolding.game.run.player.inventory.some((i) => i.id === 8800));
+    ok(`${vp.name}: Pick up puts it in the pack`, packed);
+
+    // Look mode.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    if (vp.isMobile) await page.click('.pad-look');
+    else await page.keyboard.press(';');
+    ok(`${vp.name}: Look mode shows a card for your own tile`, /^You \(/.test((await page.textContent('.lookcard .lc-title')) ?? ''));
+    const lookFrom = await page.evaluate(() => ({ ...window.unfolding.look }));
+    if (vp.isMobile) {
+      // Tap a tile a few steps away, then Walk here.
+      const goal = await page.evaluate(() => {
+        const a = window.unfolding, g = a.game, p = g.run.player, f = g.run.floor;
+        for (let r = 3; r >= 1; r--) for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
+          const x = p.x + dx * r, y = p.y + dy * r;
+          let open = true;
+          for (let k = 1; k <= r; k++) if (f.tiles[(p.y + dy * k) * f.w + p.x + dx * k] === 0) open = false;
+          if (open) return { x, y };
+        }
+      });
+      const box = await page.locator('.board canvas').boundingBox();
+      const at = await page.evaluate((t) => { const v = window.unfolding.renderer.view; return { x: t.x * v.cell - v.camX + v.cell / 2, y: t.y * v.cell - v.camY + v.cell / 2 }; }, goal);
+      await page.mouse.click(box.x + at.x, box.y + at.y);
+      const look = await page.evaluate(() => window.unfolding.look);
+      ok(`${vp.name}: tapping in Look mode moves the cursor, not you`, look && look.x === goal.x && look.y === goal.y);
+      await shot(page, `${vp.name}-2g-look`);
+      await page.click('.lookcard [data-cmd="look-walk"]');
+      for (let i = 0; i < 60 && (await page.evaluate(() => !!window.unfolding.travel)); i++) await page.waitForTimeout(50);
+      const p = await page.evaluate(() => ({ x: window.unfolding.game.run.player.x, y: window.unfolding.game.run.player.y }));
+      ok(`${vp.name}: Walk here goes there`, p.x === goal.x && p.y === goal.y);
+      ok(`${vp.name}: and leaves Look mode`, !(await page.isVisible('.lookcard')));
+    } else {
+      await page.keyboard.press('ArrowUp');
+      await page.keyboard.press('ArrowUp');
+      const look = await page.evaluate(() => window.unfolding.look);
+      ok(`${vp.name}: arrow keys move the Look cursor, not you`, look.y === Math.max(0, lookFrom.y - 2) && (await page.evaluate(() => window.unfolding.game.run.player.y)) === lookFrom.y);
+      await shot(page, `${vp.name}-2g-look`);
+      await page.keyboard.press('Escape');
+      ok(`${vp.name}: Escape leaves Look mode`, !(await page.isVisible('.lookcard')));
+      // Hover describes the tile under the mouse.
+      const box = await page.locator('.board canvas').boundingBox();
+      const at = await page.evaluate(() => { const a = window.unfolding, v = a.renderer.view, p = a.game.run.player; return { x: p.x * v.cell - v.camX + v.cell / 2, y: p.y * v.cell - v.camY + v.cell / 2 }; });
+      await page.mouse.move(box.x + at.x, box.y + at.y);
+      await page.waitForTimeout(50);
+      ok(`${vp.name}: hovering describes the tile`, await page.isVisible('.lookcard.hover'));
+      await page.mouse.move(box.x + 2, box.y + box.height + 40);
+    }
+
+    // Leaving an unanswered shrine behind asks first.
+    await page.evaluate(() => {
+      const a = window.unfolding, g = a.game, f = g.run.floor;
+      if (f.shrine) { f.shrine.used = false; f.shrine.offers = ['things']; }
+      g.run.player.x = f.stairs.x;
+      g.run.player.y = f.stairs.y;
+      a.refresh();
+    });
+    const depthBefore = await page.evaluate(() => window.unfolding.game.run.depth);
+    if (vp.isMobile) await page.click('.pad-actions [data-cmd="descend"]');
+    else await page.keyboard.press('>');
+    ok(`${vp.name}: descending past a live shrine asks first`, await page.isVisible('.modal.confirm'));
+    await shot(page, `${vp.name}-2h-confirm`);
+    await page.click('.modal.confirm [data-cmd="dismiss"]');
+    ok(`${vp.name}: Stay keeps you here`, (await page.evaluate(() => window.unfolding.game.run.depth)) === depthBefore);
+    if (vp.isMobile) await page.click('.pad-actions [data-cmd="descend"]');
+    else await page.keyboard.press('>');
+    await page.click('[data-cmd="descend-confirmed"]');
+    ok(`${vp.name}: Descend anyway descends`, (await page.evaluate(() => window.unfolding.game.run.depth)) === depthBefore + 1);
+
     // Force the moment the game is built around: a Greatsword in hand, a shrine offering Weight.
     await page.evaluate(() => {
       const app = window.unfolding;
