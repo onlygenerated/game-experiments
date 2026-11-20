@@ -1,12 +1,122 @@
 import { DIRS, distanceMap, idx } from '../engine/dungeon.ts';
 import type { Action, Game } from '../engine/game.ts';
 import type { Rng } from '../engine/rng.ts';
-import { T_UP } from '../engine/types.ts';
+import { T_UP, type Item } from '../engine/types.ts';
+import { derive } from '../rules/rules.ts';
 
 /**
  * A simple greedy player used by tests to drive real runs: fight what's near,
  * drink when low, take the first shrine offer, otherwise head for the stairs.
  */
+/** Per-game memory for the explorer: which rooms of the current floor it has stood in. */
+const seenRooms = new WeakMap<Game, { floor: unknown; rooms: Set<number> }>();
+
+/**
+ * A thorough player: visits every room before descending, eats when Hungry,
+ * drinks below 40% HP, fights what comes to it. Closer to how a person plays
+ * than the greedy bot, so it's what the balance probe uses.
+ */
+export function explorerAction(g: Game, rng: Rng, opts: { shrines?: boolean } = {}): Action {
+  const run = g.run;
+  const p = run.player;
+  const f = run.floor;
+  if (run.pending?.kind === 'shrine') {
+    const offers = f.shrine?.offers ?? [];
+    if (opts.shrines === false) {
+      // Refuse for good: mark it so the explorer stops walking back to it.
+      if (f.shrine) f.shrine.used = true;
+      return { type: 'shrine', rule: null };
+    }
+    return { type: 'shrine', rule: offers.length ? rng.pick(offers) : null };
+  }
+  if (run.pending?.kind === 'levelup') return { type: 'levelup', stat: rng.pick(['str', 'agi', 'vit'] as const) };
+  const s = g.stats;
+  if (g.has('peril') && p.hp < s.maxHp * 0.4) {
+    const potion = p.inventory.find((i) => i.kind === 'potion');
+    if (potion) return { type: 'use', id: potion.id };
+    if (g.has('arcana') && p.mana >= 3) return { type: 'ability', ability: 'mend' };
+  }
+  if (g.has('hunger') && p.satiety < 250) {
+    const food = p.inventory.find((i) => i.kind === 'food');
+    if (food) return { type: 'use', id: food.id };
+  }
+  if (g.has('arms')) {
+    // Judge gear by what it actually does under the current rules, as a person would.
+    const better = (kind: 'weapon' | 'armor') => {
+      const score = (it: Item | null) => gearScore(g, kind, it);
+      const now = score(p[kind]);
+      return p.inventory.filter((i) => i.kind === kind).find((i) => score(i) > now + 0.01);
+    };
+    const w = better('weapon') ?? (!p.weapon ? p.inventory.find((i) => i.kind === 'weapon') : undefined);
+    if (w) return { type: 'equip', id: w.id };
+    const a = better('armor');
+    if (a) return { type: 'equip', id: a.id };
+  }
+  for (const d of DIRS) if (g.monsterAt(p.x + d.x, p.y + d.y)) return { type: 'move', dx: d.x, dy: d.y };
+  // Like a person, drop spare arms (keeping one spare weapon) rather than walk past food with a full pack.
+  const spares = p.inventory.filter((i) => i.kind === 'weapon' || i.kind === 'armor');
+  const junk = spares.find((i) => i.kind === 'armor') ?? (spares.length > 1 ? spares[0] : undefined);
+  if (junk && p.inventory.length >= 10 && !g.itemsHere().length) return { type: 'drop', id: junk.id };
+
+  let mem = seenRooms.get(g);
+  if (!mem || mem.floor !== f) seenRooms.set(g, (mem = { floor: f, rooms: new Set() }));
+  f.rooms.forEach((r, i) => {
+    if (p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h) mem!.rooms.add(i);
+  });
+  const centre = (i: number) => ({ x: f.rooms[i].x + (f.rooms[i].w >> 1), y: f.rooms[i].y + (f.rooms[i].h >> 1) });
+  const unseen = f.rooms.map((_, i) => i).filter((i) => !mem!.rooms.has(i));
+  const near = (ts: { x: number; y: number }[]) => {
+    const dist = distanceMap(f, p);
+    return ts.filter((t) => dist[idx(f, t.x, t.y)] > 0).sort((a, b) => dist[idx(f, a.x, a.y)] - dist[idx(f, b.x, b.y)])[0];
+  };
+  const loot = run.items
+    .filter((i) => {
+      if (i.item.kind === 'gold') return true;
+      if (p.inventory.length >= 10) return false;
+      if (i.item.kind !== 'weapon' && i.item.kind !== 'armor') return true;
+      if (!g.has('arms')) return false;
+      const kind = i.item.kind;
+      const spareWeapon = kind === 'weapon' && !p.inventory.some((x) => x.kind === 'weapon');
+      return spareWeapon || gearScore(g, kind, i.item) > gearScore(g, kind, p[kind]) + 0.01;
+    })
+    .map((i) => ({ x: i.x, y: i.y }));
+  const shrine = f.shrine && !f.shrine.used ? [f.shrine.pos] : [];
+  const target = near(loot) ?? near(shrine) ?? (unseen.length ? near(unseen.map(centre)) : undefined);
+  if (!target) {
+    if (p.x === f.stairs.x && p.y === f.stairs.y) return { type: 'descend' };
+    return stepToward(g, f.stairs, rng);
+  }
+  return stepToward(g, target, rng);
+}
+
+function stepToward(g: Game, target: { x: number; y: number }, rng: Rng): Action {
+  const f = g.run.floor;
+  const p = g.run.player;
+  const dist = distanceMap(f, target);
+  let best: { dx: number; dy: number } | null = null;
+  let bestD = dist[idx(f, p.x, p.y)];
+  for (const d of DIRS) {
+    const nx = p.x + d.x;
+    const ny = p.y + d.y;
+    if (nx < 0 || ny < 0 || nx >= f.w || ny >= f.h) continue;
+    const nd = dist[idx(f, nx, ny)];
+    if (nd >= 0 && nd < bestD) {
+      bestD = nd;
+      best = { dx: d.x, dy: d.y };
+    }
+  }
+  if (best) return { type: 'move', ...best };
+  const d = rng.pick(DIRS);
+  return { type: 'move', dx: d.x, dy: d.y };
+}
+
+/** How good a weapon (attack per turn, plus stagger) or armour (defense, halved if it slows you) is right now. */
+function gearScore(g: Game, kind: 'weapon' | 'armor', it: Item | null): number {
+  const p = g.run.player;
+  const d = derive({ ...p, [kind]: it }, g.ctx);
+  return kind === 'weapon' ? (d.attack / d.attackCost) * (1 + d.stagger) : d.defense / d.moveCost;
+}
+
 export function botAction(g: Game, rng: Rng): Action {
   const run = g.run;
   const p = run.player;

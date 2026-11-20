@@ -14,7 +14,8 @@ npm run dev      # http://localhost:5173
 npm test         # engine tests, including bot-driven fuzz runs under every rule
 npm run smoke    # build, serve, and play it in headless Chromium (desktop + phone)
 npm run single   # dist/unfolding.html — the whole game in one file (+ dist/artifact.html)
-npx vite-node tools/probe.ts 60   # balance probe: how deep a greedy bot gets
+npx vite-node tools/probe.ts 60   # balance probe: per-floor economy + rule-by-rule comparison
+PROBE_DEPTH=25 npx vite-node tools/probe.ts 60 full   # how deep the late game goes
 ```
 
 No framework: TypeScript, a canvas for the map and plain DOM for panels. Worlds and the
@@ -69,4 +70,5 @@ MVP: twelve rules (Halls, Peril, Things, Growth, Arms, Weight, Durability, Eleme
 Darkness, Hunger, Arcana, Bestiary), shrines with personal previews on every floor,
 per-world emergence depths (basic rules usually arrive early, occasionally very late),
 mastery and imposed arrivals, rolled world variants, new world / new heir with one repeal, graves and a chronicle, keyboard
-and touch controls. Balance is first-pass — see `tools/probe.ts`.
+and touch controls. Every tuning number is in `src/engine/balance.ts`; see DESIGN.md §8
+for what the probe measures and the targets.

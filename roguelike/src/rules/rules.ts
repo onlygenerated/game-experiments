@@ -1,3 +1,4 @@
+import { BALANCE } from '../engine/balance.ts';
 import type { Item, Player, RuleId, World } from '../engine/types.ts';
 
 export interface RuleVariant {
@@ -44,7 +45,7 @@ export const RULES: Record<RuleId, RuleDef> = {
     summary: 'Rats appear. You have HP; walk into a rat to fight it. If you die, an heir carries on.',
     upside: 'Foes open the way to Growth, Arms, Darkness and Hunger.',
     downside: 'You can be hurt, and you can die.',
-    variant: { name: 'Frail', text: 'Max HP 16 instead of 20.' },
+    variant: { name: 'Frail', text: `Max HP ${BALANCE.player.frailHp} instead of ${BALANCE.player.hp}.` },
   },
   things: {
     id: 'things',
@@ -111,7 +112,7 @@ export const RULES: Record<RuleId, RuleDef> = {
     summary: 'Ember and frost. Elemental weapons and foes; ember stones burn, frost stones freeze.',
     upside: 'Elemental weapons deal double to the opposite element. Lure foes onto stones.',
     downside: 'Stones hurt you too. Same-element foes take half.',
-    variant: { name: 'Wildfire', text: 'Ember stones burn for 4 instead of 2.' },
+    variant: { name: 'Wildfire', text: `Ember stones burn for ${BALANCE.elements.wildfireBurn} instead of ${BALANCE.elements.emberBurn}.` },
   },
   darkness: {
     id: 'darkness',
@@ -131,8 +132,8 @@ export const RULES: Record<RuleId, RuleDef> = {
     prereqs: ['things', 'peril'],
     tagline: 'You must eat.',
     summary: 'Satiety drains each turn. Food appears.',
-    upside: 'While more than half fed, regenerate 1 HP every 6 turns. Nothing else regenerates.',
-    downside: 'Starving costs 1 HP every 4 turns.',
+    upside: `While at least ${Math.round(BALANCE.hunger.regenAbove * 100)}% fed, regenerate 1 HP every ${BALANCE.hunger.regenEvery} turns. Nothing else regenerates.`,
+    downside: `Satiety drains every turn; food is scarce. Starving costs 1 HP every ${BALANCE.hunger.starveEvery} turns.`,
     variant: { name: 'Lean Years', text: 'Satiety drains half again as fast.' },
   },
   arcana: {
@@ -141,7 +142,7 @@ export const RULES: Record<RuleId, RuleDef> = {
     tier: 4,
     prereqs: ['growth'],
     tagline: 'Power drawn from the body.',
-    summary: 'Mana (3 + level), regenerating slowly. Cleave (2): strike every adjacent foe. Mend (3): heal 40%.',
+    summary: `Mana (3 + level), regenerating slowly. Cleave (${BALANCE.arcana.cleaveCost}): strike every adjacent foe. Mend (${BALANCE.arcana.mendCost}): heal ${Math.round(BALANCE.arcana.mendFraction * 100)}%.`,
     upside: 'Two abilities.',
     downside: '−4 max HP.',
     variant: { name: 'Ley Lines', text: 'Mana regenerates twice as fast.' },
@@ -150,7 +151,8 @@ export const RULES: Record<RuleId, RuleDef> = {
     id: 'bestiary',
     name: 'Bestiary',
     tier: 3,
-    prereqs: ['peril'],
+    // Goblins wear armour; meeting them with nothing but fists is a death sentence.
+    prereqs: ['peril', 'growth'],
     tagline: 'The deep stirs.',
     summary: 'Bats (fast, erratic), goblins (armoured) and slimes (slow, tough) join the rats.',
     upside: 'More XP and more drops.',
@@ -257,9 +259,9 @@ export interface Derived {
   regen: boolean;
 }
 
-export const BASE_HP = 20;
+export const BASE_HP = BALANCE.player.hp;
 export const BASE_STAT = 3;
-export const MAX_SATIETY = 500;
+export const MAX_SATIETY = BALANCE.hunger.maxSatiety;
 
 export function weightOf(item: Item, ctx: RuleCtx): number {
   return item.weight + (ctx.variants.weight === 'alt' ? 1 : 0);
@@ -269,7 +271,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 
 export function derive(p: Player, ctx: RuleCtx): Derived {
   const d: Derived = {
-    maxHp: ctx.variants.peril === 'alt' ? 16 : BASE_HP,
+    maxHp: ctx.variants.peril === 'alt' ? BALANCE.player.frailHp : BASE_HP,
     attack: 2,
     defense: 0,
     hit: 1,

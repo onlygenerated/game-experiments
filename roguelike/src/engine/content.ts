@@ -1,4 +1,5 @@
 import { alt, has, RULES, type RuleCtx } from '../rules/rules.ts';
+import { BALANCE as B } from './balance.ts';
 import { idx, randomFloorTile } from './dungeon.ts';
 import type { Rng } from './rng.ts';
 import type { Element, Floor, FloorItem, Item, ItemKind, Monster, MonsterKind } from './types.ts';
@@ -63,25 +64,25 @@ export function makeItem(kind: ItemKind, depth: number, g: GenCtx): Item {
   const base = { id: g.nextId(), kind, weight: 0, element: null as Element | null, dur: 0, maxDur: 0 };
   switch (kind) {
     case 'potion':
-      return { ...base, name: 'Healing Potion', heal: 8 };
+      return { ...base, name: 'Healing Potion', heal: B.potion.heal };
     case 'gold':
-      return { ...base, name: 'Gold', amount: rng.int(3, 8) + depth * 2 };
-    case 'food':
-      return rng.chance(0.6)
-        ? { ...base, name: 'Ration', nourish: 300 }
-        : { ...base, name: 'Dried Meat', nourish: 150 };
+      return { ...base, name: 'Gold', amount: rng.int(B.loot.goldPile[0], B.loot.goldPile[1]) + depth * B.loot.goldPerDepth };
+    case 'food': {
+      const [name, nourish] = rng.weighted(B.food.kinds.map((k) => [k, k[2]] as [typeof k, number]));
+      return { ...base, name, nourish };
+    }
     case 'weapon':
     case 'armor': {
       const def = pickArms(kind === 'weapon' ? WEAPONS : ARMORS, depth, rng);
-      const element = kind === 'weapon' && rng.chance(0.3) ? rng.pick<Element>(['ember', 'frost']) : null;
+      const element = kind === 'weapon' && rng.chance(B.loot.elementalWeaponChance) ? rng.pick<Element>(['ember', 'frost']) : null;
       return {
         ...base,
         name: def.name,
         ...(kind === 'weapon' ? { atk: def.value } : { def: def.value }),
         weight: def.weight,
         element,
-        dur: def.dur,
-        maxDur: def.dur,
+        dur: def.dur * B.durability.scale,
+        maxDur: def.dur * B.durability.scale,
       };
     }
   }
@@ -90,8 +91,8 @@ export function makeItem(kind: ItemKind, depth: number, g: GenCtx): Item {
 export function makeMonster(kind: MonsterKind, depth: number, g: GenCtx, x: number, y: number): Monster {
   const def = MONSTERS[kind];
   const growth = has(g.ctx, 'growth');
-  const hp = def.hp + (depth - 1) * (growth ? 2 : 1);
-  const atk = def.atk + Math.floor((depth - 1) / (growth ? 2 : 3));
+  const hp = def.hp + Math.floor((depth - 1) * B.monsters.hpPerDepth[growth ? 0 : 1]);
+  const atk = def.atk + Math.floor((depth - 1) / B.monsters.atkEveryDepths[growth ? 0 : 1]);
   return {
     id: g.nextId(),
     kind,
@@ -104,7 +105,7 @@ export function makeMonster(kind: MonsterKind, depth: number, g: GenCtx, x: numb
     xp: def.xp + depth,
     aware: false,
     stun: 0,
-    element: g.rng.chance(0.25) ? g.rng.pick<Element>(['ember', 'frost']) : null,
+    element: g.rng.chance(B.monsters.elementalChance) ? g.rng.pick<Element>(['ember', 'frost']) : null,
   };
 }
 
@@ -125,21 +126,21 @@ export function itemsForRule(rule: keyof typeof RULES, floor: Floor, g: GenCtx):
   const { rng } = g;
   const out: Item[] = [];
   if (rule === 'things') {
-    const potions = rng.int(1, 2);
+    const potions = rng.int(...B.loot.potionsPerFloor);
     for (let i = 0; i < potions; i++) out.push(makeItem('potion', d, g));
-    const gold = rng.int(1, 3);
+    const gold = rng.int(...B.loot.goldPilesPerFloor);
     for (let i = 0; i < gold; i++) out.push(makeItem('gold', d, g));
   }
   if (rule === 'arms') {
     const n = alt(g.ctx, 'arms') ? 2 : 1;
     for (let i = 0; i < n; i++) {
-      out.push(makeItem('weapon', d, g));
-      if (rng.chance(0.6)) out.push(makeItem('armor', d, g));
+      if (rng.chance(B.loot.weaponChance)) out.push(makeItem('weapon', d, g));
+      if (rng.chance(B.loot.armorChance)) out.push(makeItem('armor', d, g));
     }
   }
   if (rule === 'hunger') {
-    out.push(makeItem('food', d, g));
-    if (rng.chance(0.5)) out.push(makeItem('food', d, g));
+    for (let i = 0; i < B.food.perFloor; i++) out.push(makeItem('food', d, g));
+    if (rng.chance(B.food.extraChance)) out.push(makeItem('food', d, g));
   }
   return out;
 }
@@ -155,11 +156,12 @@ export function scatter(items: Item[], floor: Floor, g: GenCtx, taken: (x: numbe
 
 /** How many foes a floor holds under Peril. A single room gets a smaller crowd. */
 export function monsterCount(floor: Floor, ctx: RuleCtx): number {
-  let count = Math.min(14, 4 + Math.ceil(floor.depth * 1.2));
-  if (alt(ctx, 'bestiary')) count += 2;
+  const M = B.monsters;
+  let count = Math.min(M.countCap, M.countBase + Math.ceil(floor.depth * M.countPerDepth));
+  if (alt(ctx, 'bestiary')) count += M.swarmExtra;
   if (floor.solo) {
     const r = floor.rooms[0];
-    count = Math.min(count, Math.max(2, Math.floor((r.w * r.h) / 9)));
+    count = Math.min(count, Math.max(2, Math.floor((r.w * r.h) / M.soloTilesPerFoe)));
   }
   return count;
 }

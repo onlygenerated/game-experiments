@@ -112,8 +112,8 @@ prerequisites pace them instead.
 Not everything is chosen:
 
 - **Mastery** — *Things* also arrives on your fifth kill, even if it hasn't emerged yet.
-- **Imposed** — *Bestiary* is never offered at a shrine. Once it has emerged (and Peril
-  exists) it arrives when you descend. The deep wakes up whether you like it or not.
+- **Imposed** — *Bestiary* is never offered at a shrine. Once it has emerged (and Peril and
+  Growth exist, so you can grow to meet it) it arrives when you descend. The deep wakes up whether you like it or not.
 
 ### 2.6 The rule graph
 
@@ -124,9 +124,9 @@ Halls                      (no prerequisites)
 Things ───────────┐
 Peril ──┬─────────┴── Arms ──┬── Weight
         │         └── Hunger ├── Durability
-        ├── Growth ── Arcana └── Elements
-        ├── Darkness
-        └── Bestiary  (imposed once emerged)
+        ├── Growth ─┬─ Arcana └── Elements
+        │           └─ Bestiary  (imposed once emerged)
+        └── Darkness
 ```
 
 The **frontier** is every inactive rule whose prerequisites are all active and that has
@@ -249,7 +249,24 @@ explore floor → fight, loot, find shrine → draft a rule (or refuse)
 - Ghosts of former characters who fight with their old gear.
 - A win condition (the world's Heart at depth 10) that "completes" a world.
 
-## 8. Open questions
+## 8. Balance
+
+All tuning numbers live in `src/engine/balance.ts`. `tools/probe.ts` plays many runs with
+an explorer bot (visits every room, eats when Hungry, judges gear by its real effect)
+and reports the economy per floor, plus a rule-by-rule comparison. Targets from the
+first balance pass:
+
+- **Food** supplies roughly 1.3–1.6× what a thorough player burns: you stay fed if you
+  collect it, starve a little if you don't. Hunger's regen is a real but minor heal.
+- **Early Peril** floors are a threat, not a wall: most fresh runs survive past depth 4.
+- **Strategic rules are near-even trades** for a sensible player (within about one
+  floor of the base ruleset): Weight and Durability cost a little, Darkness, Hunger
+  and Arcana give a little. Bestiary is harder by design.
+- **Every run ends**: past about depth 14 foes outpace levels.
+
+## 9. Open questions
+
+- **Gold has no use yet.** It needs a sink (shops in a Society tier) or a role as score.
 
 - **Narrative frame.** Why does the world grow rules? (A god relearning reality; a
   simulation booting; the dungeon is dreaming.)

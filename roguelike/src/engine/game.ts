@@ -13,6 +13,7 @@ import {
   type Derived,
   type RuleCtx,
 } from '../rules/rules.ts';
+import { BALANCE as B } from './balance.ts';
 import {
   itemLabel,
   itemsForRule,
@@ -56,8 +57,8 @@ export const INVENTORY_CAP = 12;
 
 /** What stepping onto items does: take everything, take only gold, or just tell you. */
 export type AutoPickup = 'all' | 'gold' | 'none';
-export const CLEAVE_COST = 2;
-export const MEND_COST = 3;
+export const CLEAVE_COST = B.arcana.cleaveCost;
+export const MEND_COST = B.arcana.mendCost;
 
 export function newPlayer(name: string): Player {
   return {
@@ -84,7 +85,7 @@ export function newPlayer(name: string): Player {
 }
 
 export function xpNeeded(level: number, ctx: RuleCtx): number {
-  return Math.round(6 * level ** 1.5 * (alt(ctx, 'growth') ? 0.7 : 1));
+  return Math.round(B.growth.xpBase * level ** B.growth.xpExp * (alt(ctx, 'growth') ? B.growth.quickMult : 1));
 }
 
 /** "a" or "an" for a creature name. */
@@ -100,6 +101,23 @@ export class Game {
   visible = new Set<number>();
   /** A player preference, not part of the run: set by the UI from its options. */
   autoPickup: AutoPickup = 'all';
+  /**
+   * Running totals for the balance probe (damage, healing by source, food in
+   * and out, what spawned…). Not saved; nothing in play reads them.
+   */
+  tally: Record<string, number> = {};
+
+  private count(key: string, n = 1) {
+    this.tally[key] = (this.tally[key] ?? 0) + n;
+  }
+
+  private countSpawned(items: Item[]) {
+    for (const it of items) {
+      this.count(`spawn_${it.kind}`);
+      if (it.kind === 'food') this.count('satietySpawned', it.nourish ?? 0);
+      if (it.kind === 'gold') this.count('goldSpawned', it.amount ?? 0);
+    }
+  }
 
   constructor(world: World, run: RunState) {
     this.world = world;
@@ -227,6 +245,8 @@ export class Game {
       const { monsters, items } = populate(run.floor, this.genCtx('populate'));
       run.monsters = monsters;
       run.items = items;
+      this.countSpawned(items.map((fi) => fi.item));
+      this.count('floorsEntered');
     }
     arrive();
     this.clearArrival();
@@ -423,16 +443,22 @@ export class Game {
     const item = p.inventory.find((i) => i.id === id);
     if (!item) return 0;
     if (item.kind === 'potion') {
-      const heal = Math.round((item.heal ?? 0) * (alt(this.ctx, 'things') ? 1.5 : 1));
+      const heal = Math.round((item.heal ?? 0) * (alt(this.ctx, 'things') ? B.potion.generousMult : 1));
       const before = p.hp;
       p.hp = Math.min(this.stats.maxHp, p.hp + heal);
+      this.count('healPotion', p.hp - before);
+      this.count('potionsDrunk');
       this.log(`You drink the potion and recover ${p.hp - before} HP.`, 'good');
     } else if (item.kind === 'food') {
       if (!this.has('hunger')) {
         this.log('You are not hungry. You are never hungry.', 'dim');
         return 0;
       }
+      const before = p.satiety;
       p.satiety = Math.min(MAX_SATIETY, p.satiety + (item.nourish ?? 0));
+      this.count('satietyEaten', p.satiety - before);
+      this.count('satietyWasted', (item.nourish ?? 0) - (p.satiety - before));
+      this.count('foodEaten');
       this.log(`You eat the ${item.name}.`, 'good');
     } else {
       return this.equip(id);
@@ -538,7 +564,8 @@ export class Game {
     }
     p.mana -= costMana;
     const before = p.hp;
-    p.hp = Math.min(this.stats.maxHp, p.hp + Math.ceil(this.stats.maxHp * 0.4));
+    p.hp = Math.min(this.stats.maxHp, p.hp + Math.ceil(this.stats.maxHp * B.arcana.mendFraction));
+    this.count('healMend', p.hp - before);
     this.log(`Warmth knits your wounds: +${p.hp - before} HP.`, 'good');
     return 1;
   }
@@ -574,6 +601,7 @@ export class Game {
       sh.used = true;
       this.adopt(rule, 'shrine');
       const p = this.run.player;
+      this.count('healShrine', this.stats.maxHp - p.hp);
       p.hp = this.stats.maxHp;
       this.log('The shrine’s light washes over you. You are fully healed.', 'good');
     }
@@ -630,6 +658,7 @@ export class Game {
     const spawn = (r: RuleId) => {
       const items = itemsForRule(r, run.floor, this.genCtx(`adopt-${r}`));
       run.items.push(...scatter(items, run.floor, this.genCtx(`scatter-${r}`), taken));
+      this.countSpawned(items);
     };
     switch (rule) {
       case 'halls':
@@ -689,7 +718,9 @@ export class Game {
       inRoom(x, y) || this.run.items.some((fi) => fi.x === x && fi.y === y) || this.monsterAt(x, y) !== undefined;
     const g = this.genCtx('expand');
     if (this.has('peril')) run.monsters.push(...spawnMonsters(full, g, monsterCount(full, this.ctx), taken));
-    run.items.push(...scatter(lootFor(full, g), full, g, taken));
+    const loot = lootFor(full, g);
+    run.items.push(...scatter(loot, full, g, taken));
+    this.countSpawned(loot);
     if (p.x === full.stairs.x && p.y === full.stairs.y) return;
     this.log('The walls fall away. The stairs are somewhere else now.', 'dim');
   }
@@ -799,6 +830,7 @@ export class Game {
       }
     }
     p.hp -= dmg;
+    this.count('damageTaken', dmg);
     this.log(`The ${name} hits you for ${dmg}.`, 'bad');
     if (p.hp <= 0) this.die(`slain by ${article(name)} ${name} on depth ${this.run.depth}`);
   }
@@ -827,12 +859,15 @@ export class Game {
     }
     const drops: Item[] = [];
     const g: GenCtx = { rng: this.rng, ctx: this.ctx, nextId: () => run.nextId++ };
-    const bonus = this.has('bestiary') ? 1.5 : 1;
-    if (this.has('things') && this.rng.chance(0.25 * bonus)) drops.push(makeItem('gold', run.depth, g));
-    if (this.has('things') && this.rng.chance(0.06 * bonus)) drops.push(makeItem('potion', run.depth, g));
-    if (this.has('hunger') && this.rng.chance(0.12 * bonus)) drops.push(makeItem('food', run.depth, g));
-    if (this.has('arms') && this.rng.chance(0.05 * bonus)) drops.push(makeItem(this.rng.chance(0.6) ? 'weapon' : 'armor', run.depth, g));
+    const D = B.drops;
+    const bonus = this.has('bestiary') ? D.bestiaryMult : 1;
+    if (this.has('things') && this.rng.chance(D.gold * bonus)) drops.push(makeItem('gold', run.depth, g));
+    if (this.has('things') && this.rng.chance(D.potion * bonus)) drops.push(makeItem('potion', run.depth, g));
+    if (this.has('hunger') && this.rng.chance(D.food * bonus)) drops.push(makeItem('food', run.depth, g));
+    if (this.has('arms') && this.rng.chance(D.arms * bonus)) drops.push(makeItem(this.rng.chance(0.6) ? 'weapon' : 'armor', run.depth, g));
     for (const item of drops) run.items.push({ item, x: m.x, y: m.y });
+    this.countSpawned(drops);
+    this.count('kills');
     if (!this.has('things') && p.kills >= MASTERY_KILLS) this.adopt('things', 'mastery');
   }
 
@@ -894,25 +929,32 @@ export class Game {
     this.environment();
     if (run.over) return;
     if (this.has('hunger')) {
-      p.satiety = Math.max(0, p.satiety - (alt(this.ctx, 'hunger') ? 1.5 : 1));
+      const H = B.hunger;
+      p.satiety = Math.max(0, p.satiety - H.drainPerTurn * (alt(this.ctx, 'hunger') ? H.leanMult : 1));
+      this.count('hungerTurns');
       if (p.satiety <= 0) {
         p.starveClock += 1;
-        if (p.starveClock % 4 === 0) {
+        this.count('starvingTurns');
+        if (p.starveClock % H.starveEvery === 0) {
           p.hp -= 1;
+          this.count('damageStarving');
           this.log('You are starving.', 'bad');
           if (p.hp <= 0) return this.die(`starved on depth ${run.depth}`);
         }
-      } else if (p.satiety >= MAX_SATIETY / 2) {
+      } else if (p.satiety >= MAX_SATIETY * H.regenAbove) {
         p.regenClock += 1;
-        if (p.regenClock >= 6) {
+        this.count('regenTurns');
+        if (p.regenClock >= H.regenEvery) {
           p.regenClock = 0;
+          const before = p.hp;
           p.hp = Math.min(this.stats.maxHp, p.hp + 1);
+          this.count('healRegen', p.hp - before);
         }
       }
     }
     if (this.has('arcana')) {
       p.manaClock += 1;
-      if (p.manaClock >= (alt(this.ctx, 'arcana') ? 3 : 6)) {
+      if (p.manaClock >= (alt(this.ctx, 'arcana') ? B.arcana.leyManaEvery : B.arcana.manaEvery)) {
         p.manaClock = 0;
         p.mana = Math.min(this.stats.maxMana, p.mana + 1);
       }
@@ -924,10 +966,11 @@ export class Game {
     if (!this.has('elements')) return;
     const run = this.run;
     const f = run.floor;
-    const burn = alt(this.ctx, 'elements') ? 4 : 2;
+    const burn = alt(this.ctx, 'elements') ? B.elements.wildfireBurn : B.elements.emberBurn;
     const p = run.player;
     if (f.glimmer[idx(f, p.x, p.y)] === 'ember') {
       p.hp -= burn;
+      this.count('damageTaken', burn);
       this.log(`The ember stone burns you for ${burn}.`, 'bad');
       if (p.hp <= 0) return this.die(`burned on depth ${run.depth}`);
     }

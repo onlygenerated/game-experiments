@@ -199,7 +199,7 @@ describe('game', () => {
 
   it('imposed rules arrive by themselves once emerged', () => {
     const world = newWorld(12);
-    world.rules = ['peril', 'halls'];
+    world.rules = ['peril', 'halls', 'growth'];
     world.emergence.bestiary = 3;
     const g = Game.start(world);
     const descend = () => {
@@ -221,8 +221,11 @@ describe('game', () => {
     p.hp = 999;
     let guard = 0;
     while (!g.world.rules.includes('things') && guard++ < 200) {
+      // Early floors are sparse now; keep a rat on hand.
+      if (!g.run.monsters.length) {
+        g.run.monsters.push({ id: 900 + guard, kind: 'rat', x: p.x, y: p.y, hp: 3, maxHp: 3, atk: 1, def: 0, xp: 2, aware: true, stun: 0, element: null });
+      }
       const m = g.run.monsters[0];
-      if (!m) break;
       // Teleport the rat next to the player and hit it until it dies.
       m.x = p.x + 1;
       m.y = p.y;
