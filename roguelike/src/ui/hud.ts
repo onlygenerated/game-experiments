@@ -222,10 +222,11 @@ function floorNameHTML(game: Game): string {
   return name ? ` <span class="tb-floor">· ${esc(name)}</span>` : '';
 }
 
+/** The latest notices, newest on top, fading as they get older. */
 export function logHTML(game: Game): string {
-  const lines = game.run.log.slice(-6);
+  const lines = game.run.log.slice(-6).reverse();
   return lines
-    .map((l, i) => `<p class="tone-${l.tone}" style="opacity:${0.45 + (0.55 * (i + 1)) / lines.length}">${esc(l.text)}</p>`)
+    .map((l, i) => `<p class="tone-${l.tone}" style="opacity:${1 - (0.55 * i) / lines.length}">${esc(l.text)}</p>`)
     .join('');
 }
 

@@ -311,8 +311,8 @@ button.chip:hover {
   grid-template-areas:
     'top top'
     'board side'
-    'log side'
-    'pad side';
+    'pad side'
+    'log side';
 }
 
 .topbar {
@@ -721,7 +721,7 @@ p.gloss {
     min-height: 100%;
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto 56dvh auto auto auto;
-    grid-template-areas: 'top' 'board' 'log' 'pad' 'side';
+    grid-template-areas: 'top' 'board' 'pad' 'log' 'side';
   }
   .pad {
     display: flex;
