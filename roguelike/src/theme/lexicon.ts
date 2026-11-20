@@ -296,7 +296,7 @@ function plainWords(world: Premise, harm: HarmId): Premise {
   for (const el of ['ember', 'frost'] as Element[]) {
     elements[el] = { ...world.elements[el], adj: PLAIN.elements[el].adj, Adj: PLAIN.elements[el].Adj };
   }
-  return { ...PLAIN_HERE, id: world.id, name: world.name, foes, elements, naming: { ...world.naming, floors: [] } };
+  return { ...PLAIN_HERE, id: world.id, name: world.name, pitch: world.pitch, tiles: world.tiles, foes, elements, naming: { ...world.naming, floors: [] } };
 }
 
 /** The lexicon a world speaks in. */

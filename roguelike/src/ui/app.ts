@@ -23,6 +23,7 @@ import {
   schismHTML,
   shopHTML,
   shrineHTML,
+  storyHTML,
   sidebarHTML,
   topbarHTML,
 } from './hud.ts';
@@ -32,6 +33,7 @@ import { COLORS, Renderer } from './render.ts';
 type Overlay =
   | { kind: 'banner'; rule: RuleId; how: 'shrine' | 'mastery' | 'milestone' }
   | { kind: 'axiom'; harm: HarmId; how: 'rolled' | 'schism' }
+  | { kind: 'story'; title: string; eyebrow: string; lines: string[]; hint?: string }
   | { kind: 'codex' }
   | { kind: 'help' }
   | { kind: 'options' }
@@ -186,6 +188,7 @@ export class App {
       <header class="topbar"></header>
       <main class="board"><canvas aria-label="Dungeon map"></canvas>
         <button class="recenter" data-cmd="recenter" hidden>⌖ Center on ${esc(game.run.player.name)}</button>
+        <div class="toasts" aria-hidden="true"></div>
         <div class="lookslot"></div></main>
       <section class="log" aria-live="polite"></section>
       <nav class="pad" aria-label="Controls">
@@ -213,7 +216,24 @@ export class App {
     this.resizeObs.observe(board);
     this.applyOptions();
     this.layout();
+    // A new run opens with its story; a resumed one has nothing waiting.
+    this.consumeEvents(game.events.splice(0));
     this.refresh();
+  }
+
+  /**
+   * Flash a line over the map for a moment (kills, level-ups, finds). It's in
+   * the log as well; this is just so the good parts aren't missed.
+   */
+  toast(text: string, tone: string, big = false) {
+    const layer = this.root.querySelector<HTMLElement>('.toasts');
+    if (!layer) return;
+    const el = document.createElement('div');
+    el.className = `toast tone-${tone}${big ? ' big' : ''}`;
+    el.textContent = text;
+    layer.appendChild(el);
+    while (layer.children.length > 3) layer.firstElementChild!.remove();
+    window.setTimeout(() => el.remove(), big ? 2600 : 2100);
   }
 
   death() {
@@ -432,7 +452,12 @@ export class App {
     this.renderLook();
     q('.side')!.innerHTML = sidebarHTML(game, this.fresh);
     q('.log')!.innerHTML = logHTML(game);
-    q('.play-screen')!.classList.toggle('has-arcana', game.has('arcana'));
+    const screen = q('.play-screen')!;
+    screen.classList.toggle('has-arcana', game.has('arcana'));
+    // The premise sets the mood of the frame around the map too.
+    const T = game.lex.premise.tiles;
+    screen.style.setProperty('--theme', T.accent);
+    screen.style.setProperty('--theme-void', T.void);
     this.fresh.clear();
     this.draw();
     this.renderOverlay();
@@ -449,6 +474,7 @@ export class App {
     else if (!game) html = '';
     else if (top?.kind === 'banner') html = bannerHTML(top.rule, top.how, game.world, game.lex);
     else if (top?.kind === 'axiom') html = axiomBannerHTML(top.harm, top.how, game.lex);
+    else if (top?.kind === 'story') html = storyHTML(top);
     else if (top?.kind === 'codex') html = codexHTML(game.world, game.lex);
     else if (top?.kind === 'confirm-stairs') html = confirmDescendHTML(game, top.dir);
     else if (game.run.pending?.kind === 'shrine') html = shrineHTML(game);
@@ -509,7 +535,16 @@ export class App {
         this.overlays.push({ kind: 'banner', rule: e.rule, how: e.how });
         this.fresh.add(e.rule);
       }
-      if (e.type === 'floor') this.layout();
+      if (e.type === 'floor') {
+        this.layout();
+        const g = this.game;
+        if (g) {
+          const name = g.lex.floorName(g.world.seed, e.depth);
+          this.toast(`${g.lex.t('hud.depth', { n: e.depth })}${name ? ` · ${name}` : ''}`, 'rule', true);
+        }
+      }
+      if (e.type === 'say') this.toast(e.text, e.tone);
+      if (e.type === 'story') this.overlays.push({ kind: 'story', title: e.title, eyebrow: e.eyebrow, lines: e.lines, hint: e.hint });
       if (e.type === 'axiom') this.overlays.push({ kind: 'axiom', harm: e.harm, how: e.how });
       if (e.type === 'shot') this.renderer?.shot(e.path);
     }
@@ -785,11 +820,11 @@ export class App {
     const stopFor = adjacent ?? arrived;
     if (stopFor) {
       const name = game.monsterName(stopFor);
-      return this.stopTravel(
-        adjacent
-          ? game.lex.t('travel.upon', { A: article(name) === 'an' ? 'An' : 'A', foe: name })
-          : game.lex.t('travel.spot', { a: article(name), foe: name, glyph: game.lex.foe(stopFor.kind).glyph }),
-      );
+      const why = adjacent
+        ? game.lex.t('travel.upon', { A: article(name) === 'an' ? 'An' : 'A', foe: name })
+        : game.lex.t('travel.spot', { a: article(name), foe: name, glyph: game.lex.foe(stopFor.kind).glyph });
+      this.toast(why, 'bad');
+      return this.stopTravel(why);
     }
     t.timer = window.setTimeout(() => this.travelTick(), TRAVEL_STEP_MS[this.options.travelSpeed]);
   }

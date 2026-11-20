@@ -96,6 +96,28 @@ describe('premise data', () => {
         for (const g of foes) expect('@<>Ω†!$)[%'.includes(g), g).toBe(false);
         expect(premise.elements.ember.glyph).not.toBe(premise.elements.frost.glyph);
       });
+
+      it('decorates its floors with nothing that could be mistaken for a thing', () => {
+        const T = premise.tiles;
+        const taken = new Set([
+          ...'@<>Ω†!$)[%/&◈',
+          ...Object.values(premise.foes).map((f) => f.glyph),
+          premise.elements.ember.glyph,
+          premise.elements.frost.glyph,
+          '∙', // a dormant hazard
+          'z', '?', // stun and unaware markers
+        ]);
+        for (const d of T.decor) {
+          expect(taken.has(d.glyph), `${premise.id} decor ${d.glyph}`).toBe(false);
+          expect(d.glyph, `${premise.id} decor`).not.toMatch(/[A-Za-z0-9]/);
+        }
+        expect(taken.has(T.dot), `${premise.id} dot`).toBe(false);
+        expect(T.density).toBeGreaterThanOrEqual(0);
+        expect(T.density).toBeLessThan(0.2);
+        for (const c of [T.void, T.floor, T.floorAlt ?? '#000000', T.dotColor, T.wall, T.wallEdge, T.accent, ...T.decor.map((d) => d.color)]) {
+          expect(c).toMatch(/^#[0-9a-f]{6}$/i);
+        }
+      });
     });
   }
 

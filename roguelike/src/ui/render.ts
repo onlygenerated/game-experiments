@@ -33,6 +33,14 @@ export const COLORS = {
 
 const MONO = '"JetBrains Mono", ui-monospace, Menlo, Consolas, monospace';
 
+/** A fixed 0..1 value per tile, so decorations stay put from frame to frame. */
+function tileHash(seed: number, depth: number, x: number, y: number): number {
+  let h = (seed ^ Math.imul(depth, 0x9e3779b1) ^ Math.imul(x, 0x85ebca6b) ^ Math.imul(y, 0xc2b2ae35)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x7feb352d);
+  h = Math.imul(h ^ (h >>> 15), 0x846ca68b);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
 export interface View {
   cell: number;
   /** Canvas size in CSS pixels. */
@@ -185,7 +193,9 @@ export class Renderer {
     [v.camX, this.panX] = this.axis(v.w, b.x0 * c, b.x1 * c, p.x * c + c / 2, this.panX);
     [v.camY, this.panY] = this.axis(v.h, b.y0 * c, b.y1 * c, p.y * c + c / 2, this.panY);
 
-    ctx.fillStyle = COLORS.void;
+    // Each premise has its own floors: palette, pattern and a scatter of decorations.
+    const T = game.lex.premise.tiles;
+    ctx.fillStyle = T.void;
     ctx.fillRect(0, 0, v.w, v.h);
 
     const x0 = Math.max(0, Math.floor(v.camX / c));
@@ -221,15 +231,15 @@ export class Renderer {
           // Only walls that border a floor are drawn, so rooms read as outlines
           // instead of a striped slab. A floor below gets a lit top edge.
           if (!this.bordersFloor(f.tiles, f.w, f.h, x, y)) continue;
-          ctx.fillStyle = COLORS.wall;
+          ctx.fillStyle = T.wall;
           ctx.fillRect(sx, sy, c, c);
           if (y + 1 < f.h && f.tiles[i + f.w] !== T_WALL) {
-            ctx.fillStyle = COLORS.wallEdge;
+            ctx.fillStyle = T.wallEdge;
             ctx.fillRect(sx, sy + c - Math.max(2, c * 0.16), c, Math.max(2, c * 0.16));
           }
           continue;
         }
-        ctx.fillStyle = COLORS.floor;
+        ctx.fillStyle = T.floorAlt && (x + y) % 2 ? T.floorAlt : T.floor;
         ctx.fillRect(sx, sy, c, c);
         const g = f.glimmer[i];
         if (covered.has(i) && !(g && elements)) continue;
@@ -243,7 +253,13 @@ export class Renderer {
         } else if (g) {
           // Dormant: a faint tint and a different dot. Means nothing — yet.
           glyph('∙', x, y, game.lex.element(g).dormant, true, 0.9);
-        } else glyph('·', x, y, COLORS.floorDot);
+        } else {
+          const h = tileHash(game.world.seed, run.depth, x, y);
+          if (T.decor.length && h < T.density) {
+            const d = T.decor[Math.floor((h / T.density) * T.decor.length) % T.decor.length];
+            glyph(d.glyph, x, y, d.color, false, 0.62);
+          } else glyph(T.dot, x, y, T.dotColor);
+        }
       }
     }
     ctx.globalAlpha = 1;

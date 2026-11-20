@@ -66,6 +66,10 @@ export type GameEvent =
   | { type: 'rule'; rule: RuleId; how: 'shrine' | 'mastery' | 'milestone' }
   /** The world's Means of Harm became known: rolled at its creation, or chosen at a schism shrine. */
   | { type: 'axiom'; harm: HarmId; how: 'rolled' | 'schism' }
+  /** A line worth putting in front of the player for a moment, not just in the log. */
+  | { type: 'say'; text: string; tone: Tone }
+  /** Something to read before going on: the start of a run. */
+  | { type: 'story'; title: string; eyebrow: string; lines: string[]; hint?: string }
   /** Aimed harm flew over these tiles (for the renderer to draw). */
   | { type: 'shot'; path: Pos[] }
   | { type: 'death' }
@@ -176,16 +180,30 @@ export class Game implements RuleHost {
     p.hp = d.maxHp;
     p.mana = d.maxMana;
     if (game.ctx.harm === 'volley') p.ammo = B.harm.startAmmo;
+    const L = game.lex;
+    const story: string[] = [];
     if (world.rules.length === 0) {
-      game.log(game.lex.t('start.fresh'), 'info');
-      game.log(game.lex.t('start.hint'), 'dim');
+      story.push(L.premise.pitch, L.t('start.fresh'));
+      game.log(L.t('start.fresh'), 'info');
+      game.log(L.t('start.hint'), 'dim');
     } else {
-      game.log(game.lex.t('start.heir', { name: p.name, world: world.name, n: world.rules.length }), 'info');
+      const line = L.t('start.heir', { name: p.name, world: world.name, n: world.rules.length });
+      story.push(line);
+      game.log(line, 'info');
     }
     // Borrowed things are announced to every heir: the world explains its own oddities.
     for (const { bundle, from } of world.genome?.intrusions ?? []) {
-      game.log(`${game.lex.premise.seep} ${game.lex.t(`intrusion.${bundle}`, { donor: PREMISES[from].name })}`, 'dim');
+      const line = `${L.premise.seep} ${L.t(`intrusion.${bundle}`, { donor: PREMISES[from].name })}`;
+      story.push(line);
+      game.log(line, 'dim');
     }
+    game.events.push({
+      type: 'story',
+      title: world.rules.length === 0 ? world.name : p.name,
+      eyebrow: world.rules.length === 0 ? PREMISES[world.genome?.premise ?? 'old-stone'].name : `${world.name} · ${L.t('hud.heir', { n: gen })}`,
+      lines: story,
+      hint: world.rules.length === 0 ? L.t('start.hint') : undefined,
+    });
     return game;
   }
 
@@ -217,7 +235,9 @@ export class Game implements RuleHost {
     return this.run;
   }
 
-  log(text: string, tone: Tone = 'info') {
+  /** Log a line; `show` also flashes it on screen (kills, level-ups, finds). */
+  log(text: string, tone: Tone = 'info', show = false) {
+    if (show) this.events.push({ type: 'say', text, tone });
     this.run.log.push({ text, tone, turn: this.run.turn });
     if (this.run.log.length > 80) this.run.log.splice(0, this.run.log.length - 80);
   }
@@ -293,7 +313,7 @@ export class Game implements RuleHost {
     this.refreshVision();
     if (stored) return;
     const graves = this.floorGraves().filter((g) => !g.looted);
-    if (graves.length) this.log(graves.length === 1 ? this.lex.t('graves.one') : this.lex.t('graves.many', { n: graves.length }), 'dim');
+    if (graves.length) this.log(graves.length === 1 ? this.lex.t('graves.one') : this.lex.t('graves.many', { n: graves.length }), 'dim', true);
   }
 
   /** Nothing may be standing where the player arrives: shoo it to the nearest open tile. */
@@ -668,7 +688,7 @@ export class Game implements RuleHost {
       const p = this.run.player;
       this.count('healShrine', this.stats.maxHp - p.hp);
       p.hp = this.stats.maxHp;
-      this.log(this.lex.t('shrine.heal'), 'good');
+      this.log(this.lex.t('shrine.heal'), 'good', true);
     }
     this.settlePending();
     return true;
@@ -811,7 +831,7 @@ export class Game implements RuleHost {
     const harm = this.world.genome?.axioms.harm;
     if (!harm) {
       this.placeSchism();
-      this.log(this.lex.t('schism.appears'), 'rule');
+      this.log(this.lex.t('schism.appears'), 'rule', true);
       return;
     }
     this.announceHarm(harm, 'rolled');
@@ -920,7 +940,7 @@ export class Game implements RuleHost {
     const path = ray(f, p, goal, s.range);
     if (means.reach === 'shot') {
       if ((p.ammo ?? 0) <= 0) {
-        this.log(this.lex.t('volley.empty'), 'dim');
+        this.log(this.lex.t('volley.empty'), 'dim', true);
         return 0;
       }
       p.ammo = (p.ammo ?? 0) - 1;
@@ -1077,7 +1097,7 @@ export class Game implements RuleHost {
     }
     g.looted = true;
     this.run.player.inventory.push(g.item);
-    this.log(this.lex.t('grave.recover', { item: itemLabel(g.item, this.ctx, this.lex) }), 'good');
+    this.log(this.lex.t('grave.recover', { item: itemLabel(g.item, this.ctx, this.lex) }), 'good', true);
   }
 
   // -------------------------------------------------------------------------
@@ -1174,7 +1194,7 @@ export class Game implements RuleHost {
       a.dur -= this.wear();
       if (a.dur <= 0) {
         p.armor = null;
-        this.log(this.lex.t('armor.breaks', { item: this.lex.itemName(a) }), 'bad');
+        this.log(this.lex.t('armor.breaks', { item: this.lex.itemName(a) }), 'bad', true);
       }
     }
     p.hp -= dmg;
@@ -1194,7 +1214,7 @@ export class Game implements RuleHost {
     const p = run.player;
     run.monsters = run.monsters.filter((o) => o !== m);
     p.kills += 1;
-    this.log(this.lex.t('foe.dies', { foe: this.monsterName(m) }), 'good');
+    this.log(this.lex.t('foe.dies', { foe: this.monsterName(m) }), 'good', true);
     if (this.has('growth')) {
       p.xp += m.xp;
       while (p.xp >= xpNeeded(p.level, this.ctx)) {
@@ -1202,7 +1222,7 @@ export class Game implements RuleHost {
         p.level += 1;
         p.hp += 2;
         run.pendingLevelUps += 1;
-        this.log(this.lex.t('levelup.reached', { n: p.level }), 'rule');
+        this.log(this.lex.t('levelup.reached', { n: p.level }), 'rule', true);
       }
     }
     const drops: Item[] = [];

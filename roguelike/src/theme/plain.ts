@@ -127,6 +127,17 @@ export const PLAIN: Premise = {
       weapons: ['Barb (tier 1)', 'Barb (tier 2)', 'Barb (tier 3)', 'Barb (tier 4)', 'Barb (tier 5)', 'Barb (tier 6)'],
     },
   },
+  tiles: {
+    void: '#07080c',
+    floor: '#11141b',
+    dot: '·',
+    dotColor: '#2c3240',
+    wall: '#232a37',
+    wallEdge: '#323b4c',
+    decor: [],
+    density: 0,
+    accent: '#c9a2ff',
+  },
   naming: { worldAdjectives: ['Plain'], worldNouns: ['World'], world: 'The {adj} {noun}', heirs: ['Heir'], floors: [] },
   text: {
     'start.fresh': 'You start in a single room with a rule shrine and stairs down.',

@@ -84,6 +84,31 @@ export interface MeansText {
   downside: string;
 }
 
+/**
+ * How a premise's floors look: palette, floor pattern and a light scatter of
+ * cosmetic decorations. Nothing here touches play; decorations are never
+ * items, never block, and are drawn faintly so they can't be mistaken for things.
+ */
+export interface Tileset {
+  /** Outside the map. */
+  void: string;
+  floor: string;
+  /** A second floor shade for a checkerboard (carpet tiles, marble). */
+  floorAlt?: string;
+  /** The small mark on plain floor, and its colour. */
+  dot: string;
+  dotColor: string;
+  wall: string;
+  /** The lit top edge of a wall above a floor. */
+  wallEdge: string;
+  /** Scattered decorations, picked per tile by a fixed hash. */
+  decor: { glyph: string; color: string }[];
+  /** Fraction of plain floor tiles that carry one. */
+  density: number;
+  /** The colour headlines and toasts are set in. */
+  accent: string;
+}
+
 /** A rule's full text, as the UI shows it. */
 export interface RuleText {
   name: string;
@@ -123,6 +148,8 @@ export interface Premise {
   rules: Record<RuleId, RuleWords>;
   /** Each Means of Harm in this premise's words. */
   means: Record<HarmId, MeansWords>;
+  /** How its floors look. */
+  tiles: Tileset;
   naming: {
     worldAdjectives: string[];
     worldNouns: string[];

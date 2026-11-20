@@ -31,7 +31,8 @@ export interface RuleHost {
   readonly ctx: RuleCtx;
   readonly stats: Derived;
   readonly lex: Lexicon;
-  log(text: string, tone?: Tone): void;
+  /** `show`: also flash it on screen. */
+  log(text: string, tone?: Tone, show?: boolean): void;
   /** Scatter this rule's loot over the current floor. */
   spawnLoot(rule: RuleId): void;
   /** Bring foes onto the current floor, at least `minDistance` from the player. */
@@ -95,7 +96,7 @@ export const MODULES: Record<RuleId, RuleModule> = {
       h.spawnFoes(0.6, 3);
       if (h.ctx.harm === 'volley') h.spawnLoot('peril');
     },
-    onAdopt: (h) => h.log(h.lex.t('adopt.peril'), 'bad'),
+    onAdopt: (h) => h.log(h.lex.t('adopt.peril'), 'bad', true),
     notes: ({ lex }) => [lex.t('note.peril')],
   },
   things: {

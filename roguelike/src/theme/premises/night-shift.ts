@@ -212,6 +212,18 @@ export const NIGHT_SHIFT: Premise = {
       },
     },
   },
+  tiles: {
+    void: '#04030b',
+    floor: '#0f0c1d',
+    floorAlt: '#110e21',
+    dot: '˚',
+    dotColor: '#28224a',
+    wall: '#211b38',
+    wallEdge: '#3d3268',
+    decor: [{ glyph: '✧', color: '#3a3266' }, { glyph: '☾', color: '#4a3f7a' }, { glyph: '˚', color: '#2f2a55' }, { glyph: '~', color: '#2a2648' }],
+    density: 0.07,
+    accent: '#a99cff',
+  },
   naming: {
     worldAdjectives: ['Sleepless', 'Recurring', 'Restless', 'Murmuring', 'Drowsy', 'Endless', 'Flickering', 'Muffled', 'Lucid', 'Half-Lit', 'Unremembered', 'Upside-Down'],
     worldNouns: ['Night Shift', 'Dream Line', 'Slumber Works', 'Night Ward', 'Sleep Annexe', 'Small Hours', 'Bedtime Department', 'Night Office', 'Dream Floor', 'Twilight Mill', 'Lullaby Plant', 'Night Desk'],

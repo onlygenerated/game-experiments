@@ -212,6 +212,17 @@ export const TIDEPOOL: Premise = {
       },
     },
   },
+  tiles: {
+    void: '#03080b',
+    floor: '#0c1a20',
+    dot: '·',
+    dotColor: '#1d3a44',
+    wall: '#283135',
+    wallEdge: '#4a5a5c',
+    decor: [{ glyph: '≈', color: '#1b4150' }, { glyph: '~', color: '#19394a' }, { glyph: '°', color: '#2a5560' }, { glyph: '✶', color: '#5a3a2a' }],
+    density: 0.1,
+    accent: '#6fd0d8',
+  },
   naming: {
     worldAdjectives: ['Briny', 'Barnacled', 'Weedy', 'Sunlit', 'Shallow', 'Salt-Crusted', 'Kelp-Draped', 'Pebbled', 'Rippling', 'Mussel-Black', 'Foaming', 'Tidal'],
     worldNouns: ['Shallows', 'Basin', 'Rockpool', 'Inlet', 'Cove', 'Strand', 'Shelf', 'Reef', 'Gully', 'Flats', 'Lagoon', 'Spit'],

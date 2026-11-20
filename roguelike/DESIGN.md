@@ -230,6 +230,11 @@ explore floor → fight, loot, find shrine → draft a rule (or refuse)
   writes messages as `lex.t('foe.hit', { foe, n })`; a test fails if prose appears in
   engine or rule source. Internal ids (`rat`, `ember`) keep their old names for save
   compatibility and are never shown.
+- **Look and voice up front.** A premise's `tiles` set its palette, floor pattern and
+  faint decorations (placed by a fixed per-tile hash, never mistakable for things — a
+  test checks the glyphs). The engine marks log lines worth showing (`log(text, tone,
+  true)` → a `say` event) and opens each run with a `story` event; the UI turns those
+  into headlines over the map and a card to read. The log keeps everything.
 - **Means of Harm** (`src/rules/harm.ts`): the first axiom family. Strike, Volley,
   Arcanum and Discourse decide what walking into a foe does, how aimed harm travels
   (`src/engine/aim.ts`: lines, piercing lines, paths around corners), its reach and its

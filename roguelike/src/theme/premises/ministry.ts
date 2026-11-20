@@ -212,6 +212,17 @@ export const MINISTRY: Premise = {
       },
     },
   },
+  tiles: {
+    void: '#0a0a08',
+    floor: '#181814',
+    dot: '+',
+    dotColor: '#2b2a23',
+    wall: '#34322a',
+    wallEdge: '#5a5644',
+    decor: [{ glyph: '▪', color: '#3a382c' }, { glyph: '§', color: '#3c3a30' }, { glyph: '¶', color: '#3c3a30' }, { glyph: '▫', color: '#33312a' }],
+    density: 0.05,
+    accent: '#d8cfa0',
+  },
   naming: {
     worldAdjectives: ['Provisional', 'Interim', 'Supplementary', 'Revised', 'Pending', 'Deferred', 'Statutory', 'Departmental', 'Standing', 'Ancillary', 'Residual', 'Unnumbered'],
     worldNouns: ['Ministry', 'Office', 'Bureau', 'Registry', 'Directorate', 'Commission', 'Secretariat', 'Authority', 'Tribunal', 'Agency', 'Board', 'Department'],

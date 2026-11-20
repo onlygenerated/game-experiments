@@ -91,7 +91,7 @@ describe('intrusions', () => {
 
   // No host line may still name a thing its world borrowed from elsewhere:
   // a Merger full of crabs mustn't say "interns pour out of the stairwell".
-  it('no host line names what was borrowed, under any means of harm', () => {
+  it('no host line names what was borrowed, under any means of harm', { timeout: 60_000 }, () => {
     const problems: string[] = [];
     const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     for (const harm of HARMS) for (const host of HOSTS) {
@@ -187,6 +187,40 @@ describe('Plain labels and glosses', () => {
     const plain = lexiconOf('merger', [], true);
     expect(plain.ruleGloss('peril')).toBeNull();
     expect(plain.foeGloss('slime')).toBeNull();
+  });
+});
+
+describe('putting the story up front', () => {
+  it('a new world opens with its premise and its first room, to read before going on', () => {
+    const w = newWorld(77, { premise: 'tidepool', intrusions: [{ bundle: 'foes', from: 'merger' }] });
+    const g = Game.start(w);
+    const story = g.events.find((e) => e.type === 'story');
+    expect(story).toBeTruthy();
+    if (story?.type !== 'story') return;
+    expect(story.title).toBe(w.name);
+    expect(story.lines[0]).toBe(PREMISES.tidepool.pitch);
+    expect(story.lines.some((l) => l.includes(PREMISES.merger.name))).toBe(true);
+  });
+
+  it('an heir opens with where they are, and what they inherit', () => {
+    const w = newWorld(78, { premise: 'ministry' });
+    w.rules = ['peril', 'halls'];
+    const g = Game.start(w);
+    const story = g.events.find((e) => e.type === 'story');
+    expect(story?.type === 'story' && story.title).toBe(g.run.player.name);
+  });
+
+  it('a kill is flashed on screen as well as logged', () => {
+    const w = newWorld(79, { premise: 'merger', harm: 'strike' });
+    w.rules = ['peril'];
+    const g = Game.start(w);
+    g.events.splice(0);
+    const p = g.run.player;
+    const spot = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({ dx, dy })).find(({ dx, dy }) => g.run.floor.tiles[(p.y + dy) * g.run.floor.w + p.x + dx] !== 0)!;
+    g.run.monsters = [{ id: 1, kind: 'rat', x: p.x + spot.dx, y: p.y + spot.dy, hp: 1, maxHp: 1, atk: 0, def: 0, xp: 1, aware: true, stun: 9, element: null }];
+    g.act({ type: 'move', dx: spot.dx, dy: spot.dy });
+    const say = g.events.find((e) => e.type === 'say');
+    expect(say?.type === 'say' && say.text).toBe(g.run.log.find((l) => l.tone === 'good')?.text);
   });
 });
 

@@ -510,3 +510,14 @@ export function shopHTML(game: Game): string {
     <footer><button data-cmd="leave-shop" class="primary"><kbd>Esc</kbd> Done</button></footer>
   </div>`;
 }
+
+/** A card to read before going on: the start of a run, a world's backstory. */
+export function storyHTML(st: { title: string; eyebrow: string; lines: string[]; hint?: string }): string {
+  return `<div class="modal story" role="dialog" aria-label="${esc(st.title)}">
+    <span class="eyebrow">${esc(st.eyebrow)}</span>
+    <h1>${esc(st.title)}</h1>
+    ${st.lines.map((l, i) => `<p class="${i === 0 ? 'lede' : ''}">${esc(l)}</p>`).join('')}
+    ${st.hint ? `<p class="muted small hint">${esc(st.hint)}</p>` : ''}
+    <button class="primary" data-cmd="dismiss"><kbd>Enter</kbd> Begin</button>
+  </div>`;
+}

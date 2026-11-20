@@ -50,6 +50,11 @@ try {
 
     await page.click('text=Begin a new world');
     await page.waitForTimeout(200);
+    ok(`${vp.name}: a new world opens with its story`, await page.isVisible('.modal.story'));
+    await shot(page, `${vp.name}-1b-story`);
+    if (vp.isMobile) await page.click('.modal.story [data-cmd="dismiss"]');
+    else await page.keyboard.press('Enter');
+    ok(`${vp.name}: the story card closes`, !(await page.isVisible('.modal.story')));
     // The main walk-through strikes; each other means gets its own section below.
     await page.evaluate(() => { const a = window.unfolding; a.game.world.genome.axioms.harm = 'strike'; a.applyOptions(); a.refresh(); });
     ok(`${vp.name}: play screen with canvas`, await page.isVisible('.board canvas'));
@@ -479,6 +484,8 @@ try {
     await shot(page, `${vp.name}-7-heir`);
     await page.check('input[value="weight"]');
     await page.click('[data-cmd="begin"]');
+    ok(`${vp.name}: an heir opens with their story too`, await page.isVisible('.modal.story'));
+    await page.click('.modal.story [data-cmd="dismiss"]');
     const rules = await page.evaluate(() => window.unfolding.game.world.rules);
     ok(`${vp.name}: repeal removed Weight (${rules})`, !rules.includes('weight') && rules.includes('arms'));
     const graves = await page.evaluate(() => window.unfolding.game.world.graves.length);
@@ -487,6 +494,7 @@ try {
     // ---- Means of Harm: aim, a schism shrine, a merchant --------------------
     await page.click('[data-cmd="leave"]');
     await page.click('text=Begin a new world');
+    await page.click('.modal.story [data-cmd="dismiss"]');
     const aimed = await page.evaluate(() => {
       const a = window.unfolding, g = a.game;
       g.world.genome.axioms.harm = 'volley';
@@ -519,6 +527,12 @@ try {
     ok(`${vp.name}: aiming harms the foe at range and spends a shot (${fired.hp}/30, ${fired.ammo} left)`, fired.hp < 30 && fired.ammo === 4);
     ok(`${vp.name}: the sidebar says how harm works here ("${fired.means.trim()}")`, /4/.test(fired.means));
     await shot(page, `${vp.name}-7a-volley`);
+    // Finishing it off flashes the kill over the map.
+    await page.evaluate(() => { window.unfolding.game.run.monsters[0].hp = 1; });
+    if (vp.isMobile) await page.click('.pad-fire');
+    else await page.keyboard.press('f');
+    ok(`${vp.name}: a kill flashes over the map`, await page.isVisible('.toasts .toast'));
+    await shot(page, `${vp.name}-7a2-kill`);
 
     await page.evaluate(() => {
       const a = window.unfolding, g = a.game;

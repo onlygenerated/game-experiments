@@ -1248,3 +1248,122 @@ button.linkish:hover:not(:disabled) {
   gap: 8px;
   justify-content: center;
 }
+
+/* ---------------------------------------------------------------- theme and headlines */
+
+/* Each premise tints the frame: its accent on panel tops and the map's surroundings. */
+.play-screen .board {
+  background: var(--theme-void, #07080c);
+}
+.play-screen .side .panel {
+  box-shadow: inset 0 2px 0 color-mix(in srgb, var(--theme, var(--accent)) 45%, transparent);
+}
+.play-screen .topbar {
+  border-bottom-color: color-mix(in srgb, var(--theme, var(--accent)) 30%, var(--line, #2c3342));
+}
+.play-screen .log .tone-rule {
+  color: var(--theme, var(--accent));
+}
+
+/* Headlines over the map: kills, level-ups, finds, the floor you've reached. */
+.toasts {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(92%, 640px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+  z-index: 4;
+}
+.toast {
+  font-family: var(--display);
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  color: var(--theme, var(--accent));
+  background: rgba(6, 7, 11, 0.78);
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 8px;
+  padding: 6px 14px;
+  text-shadow: 0 0 14px color-mix(in srgb, currentColor 45%, transparent);
+  animation: toast 2.1s ease forwards;
+}
+.toast.big {
+  font-size: 26px;
+  letter-spacing: 0.05em;
+  padding: 8px 18px;
+  animation-duration: 2.6s;
+}
+.toast.tone-bad {
+  color: var(--bad);
+}
+.toast.tone-dim,
+.toast.tone-info {
+  color: #d9d4c6;
+  font-size: 16px;
+  font-weight: 600;
+}
+@keyframes toast {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.9);
+  }
+  9% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  16% {
+    transform: scale(1);
+  }
+  78% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+@media (max-width: 860px) {
+  /* On phones the map may be scrolled out of view while you use the pad: headlines stay on screen. */
+  .toasts {
+    position: fixed;
+    top: 10px;
+    z-index: 20;
+  }
+  .toast {
+    font-size: 16px;
+  }
+  .toast.big {
+    font-size: 20px;
+  }
+}
+
+/* The start of a run: a card to read, then Begin. */
+.modal.story {
+  max-width: 560px;
+  text-align: center;
+}
+.modal.story .eyebrow {
+  color: var(--theme, var(--accent));
+}
+.modal.story h1 {
+  margin: 0.2em 0 0.5em;
+  font-family: var(--display);
+  color: var(--theme, var(--text, #e8e4d8));
+}
+.modal.story p {
+  margin: 0 0 0.9em;
+  line-height: 1.55;
+}
+.modal.story .lede {
+  font-size: 17px;
+  font-style: italic;
+}
+.modal.story .hint {
+  margin-top: 1.2em;
+}

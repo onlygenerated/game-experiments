@@ -80,7 +80,10 @@ per-world emergence depths (basic rules usually arrive early, occasionally very 
 mastery and imposed arrivals, rolled world variants, new world / new heir with one repeal, graves and a chronicle, keyboard
 and touch controls. Every world rolls one of seven premises — an office mid-merger, a
 singing garden, a society season, a tide pool, a bureaucracy, a dream — so no two worlds
-share a noun; Plain labels turns the costume off. And worlds fight differently: each
+share a noun; Plain labels turns the costume off. Each premise also has its own
+tileset (palette, floor pattern, a scatter of cosmetic decorations), and the story is
+put up front: a run opens with a card to read, and kills, level-ups, finds and new
+floors flash over the map as headlines (they're in the log too). And worlds fight differently: each
 rolls (or settles at a schism shrine) a Means of Harm — strike up close, shoot along a
 line with shots you have to collect, pierce lines with mana, or say things that carry
 around corners — with its own words in every premise. Commerce puts a merchant on

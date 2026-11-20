@@ -212,6 +212,17 @@ export const OVERGROWN_CHOIR: Premise = {
       },
     },
   },
+  tiles: {
+    void: '#050906',
+    floor: '#0e1811',
+    dot: '·',
+    dotColor: '#20352a',
+    wall: '#202d1d',
+    wallEdge: '#3e5932',
+    decor: [{ glyph: '♣', color: '#21402a' }, { glyph: '"', color: '#2a4c32' }, { glyph: '❀', color: '#4a3046' }, { glyph: '♪', color: '#3a4a2a' }, { glyph: ',', color: '#2a4630' }],
+    density: 0.11,
+    accent: '#9fd68f',
+  },
   naming: {
     worldAdjectives: ['Verdigris', 'Thorned', 'Mossbound', 'Singing', 'Rootbound', 'Fallen', 'Blooming', 'Sleeping', 'Overgrown', 'Hallowed', 'Ivied', 'Seeded'],
     worldNouns: ['Chancel', 'Cloister', 'Apse', 'Chantry', 'Reliquary', 'Garth', 'Transept', 'Bell Tower', 'Rose Window', 'Narthex', 'Sacristy', 'Chapter House'],

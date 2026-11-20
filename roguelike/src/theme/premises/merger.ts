@@ -212,6 +212,18 @@ export const MERGER: Premise = {
       },
     },
   },
+  tiles: {
+    void: '#090b0f',
+    floor: '#141922',
+    floorAlt: '#171d27',
+    dot: '·',
+    dotColor: '#252d3a',
+    wall: '#3a3f49',
+    wallEdge: '#5c636f',
+    decor: [{ glyph: '▫', color: '#3b4453' }, { glyph: '°', color: '#4b3a2a' }, { glyph: '¦', color: '#2c3746' }, { glyph: '▪', color: '#323a48' }],
+    density: 0.05,
+    accent: '#8fb8de',
+  },
   naming: {
     worldAdjectives: ['Consolidated', 'Integrated', 'Global', 'Vertical', 'Synergistic', 'Holistic', 'Agile', 'Strategic', 'Unified', 'Leveraged', 'Scalable', 'Disruptive'],
     worldNouns: ['Holdings', 'Partners', 'Solutions', 'Dynamics', 'Group', 'Ventures', 'Logistics', 'Systems', 'Industries', 'Associates', 'Capital', 'Works'],

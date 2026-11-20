@@ -211,6 +211,18 @@ export const COURT_OF_BARBS: Premise = {
       },
     },
   },
+  tiles: {
+    void: '#0a0508',
+    floor: '#190f15',
+    floorAlt: '#20141b',
+    dot: '·',
+    dotColor: '#3a2430',
+    wall: '#2d1925',
+    wallEdge: '#7a5a2a',
+    decor: [{ glyph: '❦', color: '#4a3020' }, { glyph: '◊', color: '#5a4424' }, { glyph: '¤', color: '#3f2a34' }],
+    density: 0.045,
+    accent: '#e0b860',
+  },
   naming: {
     worldAdjectives: ['Glittering', 'Powdered', 'Perfumed', 'Scandalous', 'Velvet', 'Brocaded', 'Lacquered', 'Whispering', 'Mirrored', 'Feathered', 'Candlelit', 'Gossamer'],
     worldNouns: ['Court', 'Salon', 'Palace', 'Orangery', 'Gallery', 'Pavilion', 'Levee', 'Assembly', 'Residence', 'Chateau', 'Retreat', 'Season'],
