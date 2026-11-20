@@ -5,7 +5,7 @@ foes, not even HP — and grows
 its own rulebook as you play. You draft which rules each world adopts at Rule Shrines, and
 every rule cuts both ways, so the right pick depends on your build and your loot.
 
-Design: [DESIGN.md](DESIGN.md). Playable build: https://claude.ai/artifact/NyhdTzivmYsKK66g5xS9N3
+Design: [DESIGN.md](DESIGN.md). Roadmap: [ROADMAP.md](ROADMAP.md). Playable build: https://claude.ai/artifact/NyhdTzivmYsKK66g5xS9N3
 (republish with `npm run single`, then publish `dist/artifact.html` to that URL).
 
 ```bash

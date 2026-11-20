@@ -240,14 +240,11 @@ explore floor → fight, loot, find shrine → draft a rule (or refuse)
 - [x] Growing UI; codex of active rules
 - [x] Keyboard and touch controls
 
-### Post-MVP ideas
+### What's next
 
-- Attunement: heirs in old worlds receive inherited rules gradually over the first floors.
-- Rule-specific item affixes that only exist under certain rules ("Featherweight").
-- Society tier: shopkeepers whose prices depend on which rules are active.
-- Meta tier: shrines that *edit* an active rule rather than add a new one.
-- Ghosts of former characters who fight with their old gear.
-- A win condition (the world's Heart at depth 10) that "completes" a world.
+See [ROADMAP.md](ROADMAP.md): the genotype/phenotype split, axioms and schisms that make
+worlds play differently, a 60-mechanic catalogue, the premise atlas, and the phased plan.
+Graves and Ghosts are there as low-priority Remembrance rules.
 
 ## 8. Balance
 
