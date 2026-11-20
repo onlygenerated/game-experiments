@@ -203,6 +203,7 @@ export class App {
           <button data-cmd="wait">Wait</button>
           <button data-cmd="pickup" class="pad-pickup" disabled>Pick up</button>
           <button data-cmd="look" class="pad-look" aria-pressed="false">Look</button>
+          <button data-cmd="fire" class="pad-fire" hidden></button>
         </div>
       </nav>
       <aside class="side"></aside>
@@ -440,13 +441,18 @@ export class App {
     if (pickup) pickup.disabled = game.itemsHere().length === 0;
     // The means' own verb (Fire, Cast, Speak), on the map where a thumb can reach it,
     // naming who it will hit. Look mode has its own button, aimed at the cursor.
+    // With the on-screen pad showing it sits in the pad's empty third row; without it
+    // (desktop), it floats over the map's corner.
     const target = this.canAim() ? (game.targets()[0] ?? null) : null;
-    const fireBtn = q('.fire-fab') as HTMLButtonElement | null;
-    if (fireBtn) {
-      fireBtn.hidden = !this.canAim() || !!this.look;
-      fireBtn.disabled = !target;
-      const html = `${esc(game.lex.t('hud.fire'))}${target ? `<small>${esc(game.monsterName(target))}</small>` : ''}`;
-      if (fireBtn.innerHTML !== html) fireBtn.innerHTML = html;
+    const pad = q('.pad');
+    const padShown = !!pad && getComputedStyle(pad).display !== 'none';
+    const html = `${esc(game.lex.t('hud.fire'))}${target ? `<small>${esc(game.monsterName(target))}</small>` : ''}`;
+    for (const [sel, show] of [['.pad-fire', padShown], ['.fire-fab', !padShown]] as const) {
+      const btn = q(sel) as HTMLButtonElement | null;
+      if (!btn) continue;
+      btn.hidden = !show || !this.canAim() || (sel === '.fire-fab' && !!this.look);
+      btn.disabled = !target;
+      if (btn.innerHTML !== html) btn.innerHTML = html;
     }
     if (this.renderer) this.renderer.target = target;
     const lookBtn = q('.pad-look');

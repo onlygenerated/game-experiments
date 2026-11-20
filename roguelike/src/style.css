@@ -692,11 +692,39 @@ p.gloss {
 .pad-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  /* Rows match the direction pad's, so a third row (Fire) costs no height. */
+  grid-auto-rows: 46px;
+  gap: 5px 8px;
+}
+.pad-fire {
+  grid-column: span 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 8px;
+  background: #7fe0cf;
+  border-color: #7fe0cf;
+  color: #0d2420;
+  font-weight: 700;
+}
+.pad-fire small {
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pad-fire:disabled {
+  background: transparent;
+  color: #7fe0cf;
+  border-color: #2f5a54;
+}
+.pad-fire[hidden] {
+  display: none;
 }
 .pad-actions button {
   min-width: 0;
-  padding: 12px 10px;
+  padding: 0 10px;
   white-space: nowrap;
 }
 .pad-actions button.on,
