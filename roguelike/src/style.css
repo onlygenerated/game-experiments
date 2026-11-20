@@ -344,6 +344,37 @@ button.chip:hover {
 .topbar .tb-depth {
   color: var(--gold);
 }
+.topbar .tb-floor {
+  color: var(--muted);
+  font-style: italic;
+}
+/* The mechanical name beside a themed one: "Headcount  Peril". */
+.gloss {
+  font-family: var(--mono);
+  font-size: 0.62em;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  vertical-align: middle;
+  margin-left: 0.4em;
+}
+p.gloss {
+  margin: -0.2em 0 0.6em;
+  font-size: 12px;
+}
+.premise-name {
+  display: block;
+  font-size: 12px;
+  color: #c7b6f0;
+  font-style: italic;
+}
+.borrowed {
+  margin: 0.4em 0 0;
+  padding-left: 1.2em;
+  color: var(--muted);
+  font-size: 13px;
+}
 .topbar .tb-hp {
   font-family: var(--mono);
   font-size: 13px;
@@ -702,6 +733,9 @@ button.chip:hover {
   .topbar .tb-world,
   .topbar .brand,
   .topbar .tb-keys {
+    display: none;
+  }
+  .topbar .tb-floor {
     display: none;
   }
   .title-cols {

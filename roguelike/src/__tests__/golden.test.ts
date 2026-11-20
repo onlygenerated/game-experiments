@@ -46,7 +46,7 @@ const CASES: Case[] = [
 ];
 
 function fingerprint(c: Case): string {
-  const world = newWorld(c.seed * 7919);
+  const world = newWorld(c.seed * 7919, { premise: 'old-stone' });
   if (c.rules) world.rules = [...c.rules];
   const g = Game.start(world);
   const rng = new Rng(c.seed);
@@ -84,9 +84,9 @@ function fingerprint(c: Case): string {
     items: run.items.map((fi) => `${fi.x},${fi.y},${fi.item.name}`),
     world: { rules: world.rules, history: world.history, graves: world.graves.map((gr) => ({ ...gr, item: gr.item?.name ?? null })) },
     texts,
-    codex: codexHTML(world),
+    codex: codexHTML(world, g.lex),
     help: helpHTML(),
-    banners: world.rules.map((r) => bannerHTML(r, 'shrine', world)),
+    banners: world.rules.map((r) => bannerHTML(r, 'shrine', world, g.lex)),
   };
   return createHash('sha256').update(JSON.stringify(final)).digest('hex').slice(0, 16);
 }

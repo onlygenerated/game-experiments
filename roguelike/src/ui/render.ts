@@ -243,8 +243,10 @@ export class Renderer {
     for (const g of game.floorGraves()) {
       if (remembered(g.x, g.y)) glyph('†', g.x, g.y, g.looted ? '#5d6270' : COLORS.grave, true, 0.8);
     }
+    // A foe standing on an item hides it: the two glyphs would overprint each other.
+    const occupied = new Set(run.monsters.filter((m) => canShow(m.x, m.y)).map((m) => idx(f, m.x, m.y)));
     for (const fi of run.items) {
-      if (!canShow(fi.x, fi.y)) continue;
+      if (!canShow(fi.x, fi.y) || occupied.has(idx(f, fi.x, fi.y))) continue;
       glyph(itemGlyph(fi.item), fi.x, fi.y, COLORS[fi.item.kind], true);
     }
     for (const m of run.monsters) {

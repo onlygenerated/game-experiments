@@ -67,12 +67,12 @@ export function makeItem(kind: ItemKind, depth: number, g: GenCtx): Item {
   const base = { id: g.nextId(), kind, weight: 0, element: null as Element | null, dur: 0, maxDur: 0 };
   switch (kind) {
     case 'potion':
-      return { ...base, name: g.lex.premise.items.restorative, heal: B.potion.heal };
+      return { ...base, key: 'potion', name: g.lex.premise.items.restorative, heal: B.potion.heal };
     case 'gold':
-      return { ...base, name: g.lex.premise.items.currency, amount: rng.int(B.loot.goldPile[0], B.loot.goldPile[1]) + depth * B.loot.goldPerDepth };
+      return { ...base, key: 'gold', name: g.lex.premise.items.currency, amount: rng.int(B.loot.goldPile[0], B.loot.goldPile[1]) + depth * B.loot.goldPerDepth };
     case 'food': {
       const i = rng.weighted(B.food.kinds.map((k, i) => [i, k[1]] as [number, number]));
-      return { ...base, name: g.lex.premise.items.foods[i], nourish: B.food.kinds[i][0] };
+      return { ...base, key: `food:${i}`, name: g.lex.premise.items.foods[i], nourish: B.food.kinds[i][0] };
     }
     case 'weapon':
     case 'armor': {
@@ -82,6 +82,7 @@ export function makeItem(kind: ItemKind, depth: number, g: GenCtx): Item {
       const element = kind === 'weapon' && rng.chance(B.loot.elementalWeaponChance) ? rng.pick<Element>(['ember', 'frost']) : null;
       return {
         ...base,
+        key: `${kind}:${i}`,
         name: (kind === 'weapon' ? g.lex.premise.items.weapons : g.lex.premise.items.armors)[i],
         ...(kind === 'weapon' ? { atk: def.value } : { def: def.value }),
         weight: def.weight,
@@ -185,8 +186,9 @@ export function populate(floor: Floor, g: GenCtx): { monsters: Monster[]; items:
 /** What an item is called right now: currency shows its amount, and Elements reveals an element. */
 export function itemLabel(item: Item, ctx: RuleCtx, lex: Lexicon): string {
   if (item.kind === 'gold') return lex.t('item.currency', { n: item.amount ?? 0 });
-  if (item.element && has(ctx, 'elements')) return lex.t('item.elemental', { Element: lex.element(item.element).Adj, item: item.name });
-  return item.name;
+  const name = lex.itemName(item);
+  if (item.element && has(ctx, 'elements')) return lex.t('item.elemental', { Element: lex.element(item.element).Adj, item: name });
+  return name;
 }
 
 export function itemGlyph(item: Item): string {

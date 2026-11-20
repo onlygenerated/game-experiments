@@ -185,13 +185,27 @@ validation suite, and a guard that fails on prose in engine source. Not yet done
 §1.6: harm channels, targeting and the status framework — they arrive with the
 features that need them (Phase 2 and 4).
 
-### Phase 1 — First premises
+### Phase 1 — First premises — **done**
 
 Six premises fully bound for the twelve existing rules: **The Merger, The Overgrown
 Choir, The Court of Barbs, The Tidepool, The Ministry of Forms, The Night Shift.** The
 premise roll, intrusions, naming grammar, mechanical glosses, the Plain labels option.
 *The Old Stone* becomes rare. **Exit:** two random worlds side by side share no
 player-visible noun except the glyphs.
+
+*Shipped as:* `src/theme/base.ts` (36 role words, every message key, rule texts and the
+five borrowable bundles), six premise files in `src/theme/premises/`, *The Plain* (the
+mechanical vocabulary), and `rollLook` in `world.ts`. A new world rolls its premise on
+its own seeded stream (each themed premise weight 5, *The Old Stone* weight 1, about 3%),
+then 0–2 intrusions (50/35/15) from other premises; each heir is told where the borrowed
+things came from. *The Old Stone* is pure: it lends but never borrows, because its texts
+name rats and potions outright. Items carry a genotype key, so their names follow the
+world's words and the Plain labels option (Options → Display), which can be toggled
+mid-run. Themed rule names, foes, items and bars carry small mechanical glosses
+("Headcount · PERIL"); floors have names in the top bar; world cards, the heir screen and
+the Codex name the premise and its borrowings. The exit criterion is a test (no two
+rollable premises share a noun), with a second test that no host line still names a thing
+it has borrowed, over every host × bundle × donor.
 
 ### Phase 2 — Means of Harm (the first schism) and a use for money
 
@@ -244,15 +258,15 @@ Until then, graves stay as they work today.
 - **Rule-specific item traits:** traits that only exist under certain rules
   ("Featherweight" only means something under Weight).
 
-### First steps for Phase 1
+### First steps for Phase 2
 
-1. Write *The Merger* as a second premise file and let new worlds roll between the two;
-   the premise tests will list every key it still needs.
-2. Name the remaining themed chrome (the shrine's "Rule Shrine", the HUD's "Pack") per
-   premise, and add the Plain labels option with mechanical glosses in Look and the Codex.
-3. Intrusions: bind 0–2 roles from the other premise, with a generated justification.
-4. Naming grammar per premise for floors ("Sublevel 3 — Accounts Receivable").
-5. Add the next four premises.
+1. Harm channels and targeting in the engine (§1.6): an attack becomes *who, by what
+   channel, how much*, so Volley and Arcanum are adapters rather than forks.
+2. **Volley** first, as the first exclusive *Means of Harm* member besides Strike, with
+   its role words (ammunition, launcher) added to every premise.
+3. A schism shrine: offers one axiom family member, once, early, with a clear warning.
+4. **Commerce** (M-42) so currency has a use; it needs a merchant role per premise.
+5. Probe parity runs for Strike vs Volley before Arcanum and Discourse.
 
 ---
 

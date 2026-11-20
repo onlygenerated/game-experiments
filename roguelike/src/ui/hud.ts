@@ -3,7 +3,7 @@ import type { TileInfo } from './describe.ts';
 import { OPTION_DEFS, type OptionDef, type Options } from './options.ts';
 import { CLEAVE_COST, MEND_COST, xpNeeded, type Game } from '../engine/game.ts';
 import { BALANCE } from '../engine/balance.ts';
-import { DEFAULT_PREMISE, lexiconFor, lexiconOf, type Lexicon } from '../theme/lexicon.ts';
+import { DEFAULT_PREMISE, lexiconOf, PREMISES, type Lexicon } from '../theme/lexicon.ts';
 import type { Item, RuleId, World } from '../engine/types.ts';
 import {
   alt,
@@ -22,9 +22,19 @@ import {
 export const esc = (s: string) =>
   s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!);
 
-function bar(label: string, cur: number, max: number, cls: string, text = `${Math.ceil(cur)}/${max}`) {
+/** The mechanical name beside a themed one, when there is one to show. */
+export const glossHTML = (g: string | null) => (g ? ` <span class="gloss">${esc(g)}</span>` : '');
+
+/** What kind of world this is: its premise, and who it borrows from. */
+export function premiseLine(world: World): string {
+  const premise = PREMISES[world.genome?.premise ?? DEFAULT_PREMISE];
+  const donors = [...new Set((world.genome?.intrusions ?? []).map((i) => PREMISES[i.from].name))];
+  return donors.length ? `${premise.name}, touched by ${donors.join(' and ')}` : premise.name;
+}
+
+function bar(label: string, cur: number, max: number, cls: string, text = `${Math.ceil(cur)}/${max}`, gloss: string | null = null) {
   const pct = max > 0 ? Math.max(0, Math.min(100, (cur / max) * 100)) : 0;
-  return `<div class="bar ${cls}"><div class="bar-label"><span>${label}</span><span>${text}</span></div>
+  return `<div class="bar ${cls}"${gloss ? ` title="${esc(gloss)}"` : ''}><div class="bar-label"><span>${label}</span><span>${text}</span></div>
     <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div></div>`;
 }
 
@@ -90,12 +100,12 @@ export function sidebarHTML(game: Game, fresh: ReadonlySet<string>): string {
 
   // Before Peril there is nothing to measure: no HP, no way to be hurt.
   let vitals = game.has('peril')
-    ? bar(L.t('hud.hp'), p.hp, s.maxHp, 'hp')
+    ? bar(L.t('hud.hp'), p.hp, s.maxHp, 'hp', undefined, L.roleGloss('hp'))
     : `<p class="muted small">${esc(L.t('hud.unhurt'))}</p>`;
-  if (game.has('arcana')) vitals += bar(L.t('hud.mana'), p.mana, s.maxMana, 'mana');
+  if (game.has('arcana')) vitals += bar(L.t('hud.mana'), p.mana, s.maxMana, 'mana', undefined, L.roleGloss('mana'));
   if (game.has('hunger'))
-    vitals += bar(L.t('hud.satiety'), p.satiety, MAX_SATIETY, p.satiety < 100 ? 'food low' : 'food', L.t(p.satiety <= 0 ? 'hud.starving' : p.satiety < MAX_SATIETY / 2 ? 'hud.hungry' : 'hud.fed'));
-  if (game.has('growth')) vitals += bar(L.t('hud.level', { n: p.level }), p.xp, xpNeeded(p.level, game.ctx), 'xp', L.t('hud.xp', { n: p.xp, max: xpNeeded(p.level, game.ctx) }));
+    vitals += bar(L.t('hud.satiety'), p.satiety, MAX_SATIETY, p.satiety < 100 ? 'food low' : 'food', L.t(p.satiety <= 0 ? 'hud.starving' : p.satiety < MAX_SATIETY / 2 ? 'hud.hungry' : 'hud.fed'), L.roleGloss('satiety'));
+  if (game.has('growth')) vitals += bar(L.t('hud.level', { n: p.level }), p.xp, xpNeeded(p.level, game.ctx), 'xp', L.t('hud.xp', { n: p.xp, max: xpNeeded(p.level, game.ctx) }), L.roleGloss('xp'));
   out.push(section('core', esc(p.name), vitals, fresh));
 
   if (game.has('growth') || game.has('arms')) {
@@ -170,7 +180,7 @@ export function sidebarHTML(game: Game, fresh: ReadonlySet<string>): string {
     const items = p.inventory.length
       ? `<ul class="items">${p.inventory.map((i) => itemRow(i, game)).join('')}</ul>`
       : '<p class="muted">Empty.</p>';
-    out.push(section('things', `Pack <small>${p.inventory.length}/12 · ${esc(L.t('item.currency', { n: p.gold }))}</small>`, items, fresh));
+    out.push(section('things', `${esc(L.t('hud.pack'))} <small>${p.inventory.length}/12 · ${esc(L.t('item.currency', { n: p.gold }))}</small>`, items, fresh));
   }
 
   const rules = game.world.rules;
@@ -180,7 +190,7 @@ export function sidebarHTML(game: Game, fresh: ReadonlySet<string>): string {
       `Rules <small>${rules.length}/${RULE_ORDER.length}</small>`,
       rules.length
         ? `<div class="chips">${RULE_ORDER.filter((r) => rules.includes(r))
-            .map((r) => `<button class="chip${fresh.has(r) ? ' fresh' : ''}" data-cmd="codex" title="${esc(L.rule(r).tagline)}">${esc(L.rule(r).name)}${game.world.variants[r] === 'alt' ? '<sup>✦</sup>' : ''}</button>`)
+            .map((r) => `<button class="chip${fresh.has(r) ? ' fresh' : ''}" data-cmd="codex" title="${esc([L.ruleGloss(r), L.rule(r).tagline].filter(Boolean).join(' — '))}">${esc(L.rule(r).name)}${game.world.variants[r] === 'alt' ? '<sup>✦</sup>' : ''}</button>`)
             .join('')}</div>`
         : `<p class="muted">${esc(L.t('hud.noRules'))}</p>`,
       fresh,
@@ -195,7 +205,7 @@ export function topbarHTML(game: Game, look: boolean): string {
   return `<span class="brand">Unfolding</span>
     <span class="tb-world">${esc(game.world.name)}</span>
     <span class="tb-heir">${esc(run.player.name)} · ${esc(L.t('hud.heir', { n: run.gen }))}</span>
-    <span class="tb-depth">${esc(L.t('hud.depth', { n: run.depth }))}</span>
+    <span class="tb-depth">${esc(L.t('hud.depth', { n: run.depth }))}${floorNameHTML(game)}</span>
     ${game.has('peril') ? `<span class="tb-hp${run.player.hp <= game.stats.maxHp / 3 ? ' low' : ''}">${esc(L.t('hud.hpOf', { n: Math.max(0, run.player.hp), max: game.stats.maxHp }))}</span>` : ''}
     <span class="spacer"></span>
     <button data-cmd="look" class="ghost tb-look${look ? ' on' : ''}" aria-pressed="${look}">Look <kbd>;</kbd></button>
@@ -203,6 +213,11 @@ export function topbarHTML(game: Game, look: boolean): string {
     <button data-cmd="help" class="ghost tb-keys">Keys <kbd>?</kbd></button>
     <button data-cmd="options" class="ghost">Options <kbd>O</kbd></button>
     <button data-cmd="leave" class="ghost">Save &amp; quit</button>`;
+}
+
+function floorNameHTML(game: Game): string {
+  const name = game.lex.floorName(game.world.seed, game.run.depth);
+  return name ? ` <span class="tb-floor">· ${esc(name)}</span>` : '';
 }
 
 export function logHTML(game: Game): string {
@@ -237,7 +252,7 @@ export function shrineHTML(game: Game): string {
           .join('')}</ul>`
       : '<p class="muted small">No change to your numbers right now.</p>';
     return `<article class="rule-card">
-      <header><span class="tier">Tier ${RULES[id].tier}</span><h2>${esc(r.name)}</h2><p class="tagline">${esc(r.tagline)}</p></header>
+      <header><span class="tier">Tier ${RULES[id].tier}</span><h2>${esc(r.name)}${glossHTML(L.ruleGloss(id))}</h2><p class="tagline">${esc(r.tagline)}</p></header>
       ${ruleBody(id, game.world.variants, L)}
       <div class="foryou"><h4>For you, right now</h4>${changes}
       ${pv.notes.length ? `<ul class="notes">${pv.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}</div>
@@ -247,9 +262,9 @@ export function shrineHTML(game: Game): string {
   return `<div class="modal shrine" role="dialog" aria-label="Rule Shrine">
     <header class="modal-head"><span class="eyebrow">${esc(L.t('hud.shrineDepth', { n: game.run.depth }))}</span>
       <h1>Choose a rule for ${esc(game.world.name)}</h1>
-      <p class="muted">Adopting a rule changes this world for every heir who follows${game.has('peril') ? ', and the shrine heals you fully' : ''}. Rules you pass over may be offered again.</p></header>
+      <p class="muted">Adopting a rule changes this world for every ${esc(L.role('heir'))} who follows${game.has('peril') ? `, and the ${esc(L.role('shrine'))} heals you fully` : ''}. Rules you pass over may be offered again.</p></header>
     <div class="cards">${cards.join('')}</div>
-    <footer><button data-cmd="shrine" data-rule="" class="ghost"><kbd>Esc</kbd> Step away — you can return while you’re on this floor</button></footer>
+    <footer><button data-cmd="shrine" data-rule="" class="ghost"><kbd>Esc</kbd> Step away — you can return while you’re on this ${esc(L.role('floor'))}</button></footer>
   </div>`;
 }
 
@@ -281,36 +296,37 @@ export function levelupHTML(game: Game): string {
     </div></div>`;
 }
 
-export function bannerHTML(id: RuleId, how: 'shrine' | 'mastery' | 'milestone', world: World): string {
+export function bannerHTML(id: RuleId, how: 'shrine' | 'mastery' | 'milestone', world: World, L: Lexicon): string {
   const why =
     how === 'mastery' ? 'Earned through mastery' : how === 'milestone' ? 'The world grows deeper' : 'Adopted at a shrine';
-  const L = lexiconFor(world);
   return `<div class="modal banner" role="dialog" aria-label="New rule">
     <span class="eyebrow">${why}</span>
     <p class="new-rule">A new rule</p>
-    <h1>${esc(L.rule(id).name)}</h1>
+    <h1>${esc(L.rule(id).name)}</h1>${L.ruleGloss(id) ? `<p class="gloss">${esc(L.ruleGloss(id)!)}</p>` : ''}
     <p class="tagline">${esc(L.rule(id).tagline)}</p>
     ${ruleBody(id, world.variants, L)}
     <button class="primary" data-cmd="dismiss"><kbd>Enter</kbd> Continue</button>
   </div>`;
 }
 
-export function codexHTML(world: World): string {
+export function codexHTML(world: World, L: Lexicon): string {
   const active = RULE_ORDER.filter((r) => world.rules.includes(r));
   // Only name rules that have already shown themselves somewhere this world has reached.
   const front = frontier(new Set(world.rules), { depth: Math.max(1, world.deepest), emergence: world.emergence ?? {}, pool: world.genome?.pool });
-  const L = lexiconFor(world);
+  const borrowed = (world.genome?.intrusions ?? []).map((i) => L.t(`intrusion.${i.bundle}`, { donor: PREMISES[i.from].name }));
   const unknown = RULE_ORDER.length - active.length - front.length;
   return `<div class="modal codex" role="dialog" aria-label="Codex">
-    <header class="modal-head"><span class="eyebrow">Codex of ${esc(world.name)}</span><h1>The rules of this world</h1></header>
+    <header class="modal-head"><span class="eyebrow">Codex of ${esc(world.name)}</span><h1>The rules of this world</h1>
+      <p class="muted premise-name">${esc(premiseLine(world))}</p>
+      ${borrowed.length ? `<ul class="borrowed">${borrowed.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}</header>
     <div class="codex-list">${active
-      .map((r) => `<article class="codex-entry"><h2>${esc(L.rule(r).name)} <span class="tier">Tier ${RULES[r].tier}</span></h2>
+      .map((r) => `<article class="codex-entry"><h2>${esc(L.rule(r).name)}${glossHTML(L.ruleGloss(r))} <span class="tier">Tier ${RULES[r].tier}</span></h2>
         <p class="tagline">${esc(L.rule(r).tagline)}</p>${ruleBody(r, world.variants, L)}</article>`)
       .join('')}</div>
     ${front.length ? `<p class="muted">Shrines may offer next: ${esc(front.map((r) => L.rule(r).name).join(', '))}.</p>` : ''}
     ${unknown > 0 ? `<p class="muted">${unknown} more ${unknown === 1 ? 'rule lies' : 'rules lie'} beyond those.</p>` : ''}
     ${world.history.length ? `<h3>Chronicle</h3><ol class="chronicle">${world.history
-      .map((h) => `<li><b>${esc(h.name)}</b>, heir ${h.gen} — level ${h.level}, ${esc(h.cause)} after ${h.turns} turns.</li>`)
+      .map((h) => `<li><b>${esc(h.name)}</b>, ${esc(L.role('heir'))} ${h.gen} — ${esc(L.role('level'))} ${h.level}, ${esc(h.cause)} after ${h.turns} turns.</li>`)
       .join('')}</ol>` : ''}
     <footer><button data-cmd="dismiss" class="primary"><kbd>Esc</kbd> Close</button></footer>
   </div>`;
@@ -379,7 +395,7 @@ export function confirmDescendHTML(game: Game, dir: 'up' | 'down'): string {
   const L = game.lex;
   const offered = sh.offers?.length ? ` It offered ${esc(sh.offers.map((r) => L.rule(r).name).join(', '))}.` : ' You haven’t seen what it offers.';
   return `<div class="modal confirm" role="dialog" aria-label="Leave the shrine behind?">
-    <header class="modal-head"><span class="eyebrow">${esc(L.t('hud.depth', { n: game.run.depth }))}</span><h1>Leave this floor’s shrine behind?</h1>
+    <header class="modal-head"><span class="eyebrow">${esc(L.t('hud.depth', { n: game.run.depth }))}</span><h1>Leave this ${esc(L.role('floor'))}’s ${esc(L.role('shrine'))} behind?</h1>
     <p class="muted">Once you take the stairs, this shrine is gone.${offered}</p></header>
     <footer class="confirm-btns">
       <button class="primary" data-cmd="stairs-confirmed"><kbd>Enter</kbd> ${dir === 'up' ? 'Climb up anyway' : 'Descend anyway'}</button>

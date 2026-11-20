@@ -14,6 +14,8 @@ export interface Options {
   dpad: 'auto' | 'always' | 'never';
   vibrate: boolean;
   reduceMotion: boolean;
+  /** Call everything by its mechanical name (HP, common foe, healing item) instead of the world's own words. */
+  plainLabels: boolean;
 }
 
 export const DEFAULT_OPTIONS: Options = {
@@ -26,6 +28,7 @@ export const DEFAULT_OPTIONS: Options = {
   dpad: 'auto',
   vibrate: true,
   reduceMotion: false,
+  plainLabels: false,
 };
 
 export const TRAVEL_STEP_MS = { slow: 140, normal: 70, fast: 25 } as const;
@@ -55,7 +58,7 @@ export const OPTION_DEFS: OptionDef[] = [
     help: 'What happens when you step onto items. Otherwise press g, or use the Here panel.',
     choices: [
       { value: 'all', label: 'Everything' },
-      { value: 'gold', label: 'Gold only' },
+      { value: 'gold', label: 'Currency only' },
       { value: 'none', label: 'Off' },
     ],
   },
@@ -129,6 +132,13 @@ export const OPTION_DEFS: OptionDef[] = [
     group: 'Display',
     label: 'Reduce motion',
     help: 'Turns off hit flashes and panel animations.',
+    choices: onOff,
+  },
+  {
+    key: 'plainLabels',
+    group: 'Display',
+    label: 'Plain labels',
+    help: 'Every world speaks its own language. This calls things what they do instead: HP, common foe, healing item.',
     choices: onOff,
   },
 ];

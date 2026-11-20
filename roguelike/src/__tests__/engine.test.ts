@@ -130,7 +130,7 @@ describe('derived stats and the shrine preview', () => {
   });
 
   it('preview lists the personal consequences', () => {
-    const g = Game.start(newWorld(1));
+    const g = Game.start(newWorld(1, { premise: 'old-stone' }));
     const p = g.run.player;
     p.weapon = greatsword();
     const pv = previewRule(p, ctxOf(world(['things', 'arms'])), 'weight', { glimmers: 0, monsters: 0 }, g.lex);

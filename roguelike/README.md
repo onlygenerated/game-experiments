@@ -29,7 +29,7 @@ what's underfoot. **Options** (`o`) is saved per browser:
 
 | Option | Choices |
 |---|---|
-| Auto pickup | Everything · Gold only · Off |
+| Auto pickup | Everything · Currency only · Off |
 | Warn before leaving a shrine behind | On · Off |
 | Walk speed (hold-to-walk) | Slow · Normal · Fast |
 | Hold to walk after | 0.25 s · 0.4 s · 0.6 s |
@@ -38,6 +38,7 @@ what's underfoot. **Options** (`o`) is saved per browser:
 | Vibrate when a walk starts | On · Off |
 | Map tile size | Small · Normal · Large |
 | Reduce motion | On · Off |
+| Plain labels (call things what they do: HP, common foe, healing item) | On · Off |
 
 ## Layout
 
@@ -45,7 +46,8 @@ what's underfoot. **Options** (`o`) is saved per browser:
 |---|---|
 | `src/rules/modules.ts` | Each rule's behaviour: prerequisites and hooks |
 | `src/rules/rules.ts` | The rule graph (frontier, groups, pool), derived stats, shrine previews |
-| `src/theme/` | Premises (every player-visible word) and the lexicon; *The Old Stone* |
+| `src/theme/` | The lexicon, base vocabulary and bundles; *The Old Stone* and *The Plain* |
+| `src/theme/premises/` | The six themed premises: every word a world of that kind shows |
 | `src/engine/game.ts` | Turn loop, combat, shrines, rule adoption, death and graves |
 | `src/engine/dungeon.ts` | Floor layout — a pure function of world seed and depth |
 | `src/engine/content.ts` | Item and monster catalogues, floor population |
@@ -72,5 +74,7 @@ MVP: twelve rules (Halls, Peril, Things, Growth, Arms, Weight, Durability, Eleme
 Darkness, Hunger, Arcana, Bestiary), shrines with personal previews on every floor,
 per-world emergence depths (basic rules usually arrive early, occasionally very late),
 mastery and imposed arrivals, rolled world variants, new world / new heir with one repeal, graves and a chronicle, keyboard
-and touch controls. Every tuning number is in `src/engine/balance.ts`; see DESIGN.md §8
+and touch controls. Every world rolls one of seven premises — an office mid-merger, a
+singing garden, a society season, a tide pool, a bureaucracy, a dream — so no two worlds
+share a noun; Plain labels turns the costume off. Every tuning number is in `src/engine/balance.ts`; see DESIGN.md §8
 for what the probe measures and the targets.

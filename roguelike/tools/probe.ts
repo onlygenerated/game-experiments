@@ -43,7 +43,7 @@ for (const [name, rules] of Object.entries(SCENARIOS)) {
   let satLeft = 0;
   const t0 = performance.now();
   for (let seed = 1; seed <= N; seed++) {
-    const world = newWorld(seed * 7919);
+    const world = newWorld(seed * 7919, { premise: 'old-stone' });
     if (rules) world.rules = [...rules];
     const g = Game.start(world);
     const rng = new Rng(seed);
@@ -97,7 +97,7 @@ if (!only || only === 'rules') {
   for (const extra of extras) {
     const depths: number[] = [];
     for (let seed = 1; seed <= N; seed++) {
-      const world = newWorld(seed * 104729);
+      const world = newWorld(seed * 104729, { premise: 'old-stone' });
       world.rules = extra ? [...base, extra] : [...base];
       // Hold Bestiary off unless it's the rule under test.
       world.emergence = { ...world.emergence, bestiary: extra === 'bestiary' ? 1 : 99 };

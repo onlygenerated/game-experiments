@@ -11,11 +11,13 @@ import {
   codexHTML,
   confirmDescendHTML,
   esc,
+  glossHTML,
   helpHTML,
   levelupHTML,
   logHTML,
   lookCardHTML,
   optionsHTML,
+  premiseLine,
   shrineHTML,
   sidebarHTML,
   topbarHTML,
@@ -91,11 +93,12 @@ export class App {
       .map((w) => {
         const run = this.store.run(w.id);
         const rules = RULE_ORDER.filter((r) => w.rules.includes(r));
+        const L = lexiconFor(w, this.options.plainLabels);
         return `<li class="world-card">
-          <div class="wc-head"><h3>${esc(w.name)}</h3><span class="muted small">Age ${w.generation} · deepest ${w.deepest || '—'} · ${esc(lexiconFor(w).t(w.graves.length === 1 ? 'screen.graves.one' : 'screen.graves.many', { n: w.graves.length }))}</span></div>
-          <div class="chips">${rules.length ? rules.map((r) => `<span class="chip">${esc(lexiconFor(w).rule(r).name)}</span>`).join('') : '<span class="muted small">No rules yet</span>'}</div>
+          <div class="wc-head"><h3>${esc(w.name)}</h3><span class="premise-name">${esc(premiseLine(w))}</span><span class="muted small">Age ${w.generation} · deepest ${w.deepest || '—'} · ${esc(L.t(w.graves.length === 1 ? 'screen.graves.one' : 'screen.graves.many', { n: w.graves.length }))}</span></div>
+          <div class="chips">${rules.length ? rules.map((r) => `<span class="chip">${esc(L.rule(r).name)}</span>`).join('') : '<span class="muted small">No rules yet</span>'}</div>
           <div class="wc-btns">
-            ${run && !run.over ? `<button class="primary" data-cmd="resume" data-world="${w.id}">${esc(lexiconFor(w).t('screen.resume', { name: run.player.name, n: run.depth }))}</button>` : `<button class="primary" data-cmd="heir" data-world="${w.id}">New heir</button>`}
+            ${run && !run.over ? `<button class="primary" data-cmd="resume" data-world="${w.id}">${esc(L.t('screen.resume', { name: run.player.name, n: run.depth }))}</button>` : `<button class="primary" data-cmd="heir" data-world="${w.id}">New heir</button>`}
             <button class="ghost danger" data-cmd="delete-world" data-world="${w.id}">Forget world</button>
           </div></li>`;
       })
@@ -129,16 +132,16 @@ export class App {
     const active = new Set(world.rules);
     const canRepeal = repealable(active);
     const rules = RULE_ORDER.filter((r) => active.has(r));
-    const L = lexiconFor(world);
+    const L = lexiconFor(world, this.options.plainLabels);
     if (!rules.length && !world.history.length) {
       this.begin(world, null);
       return;
     }
     const last = world.history[world.history.length - 1];
     this.root.innerHTML = `<div class="screen heir-screen">
-      <span class="eyebrow">${esc(world.name)} · age ${world.generation}</span>
-      <h1>${esc(name)}, heir ${gen}</h1>
-      ${last ? `<p class="lede">${esc(L.t('screen.fell', { name: last.name, n: last.depth, cause: last.cause.replace(/ on depth \d+$/, '') }))}</p>` : ''}
+      <span class="eyebrow">${esc(world.name)} · ${esc(premiseLine(world))} · age ${world.generation}</span>
+      <h1>${esc(name)}, ${esc(L.role('heir'))} ${gen}</h1>
+      ${last ? `<p class="lede">${esc(L.t('screen.fell', { name: last.name, cause: last.cause }))}</p>` : ''}
       ${rules.length ? `<h2>The rules you inherit</h2>
       <p class="muted">You may repeal one — only a rule nothing else depends on. A repealed rule leaves the world and can be offered again at shrines.</p>
       <form class="repeal" id="repeal-form">
@@ -147,7 +150,7 @@ export class App {
           .map((r) => {
             const ok = canRepeal.includes(r);
             return `<label class="repeal-opt${ok ? '' : ' locked'}"><input type="radio" name="repeal" value="${r}" ${ok ? '' : 'disabled'}>
-              <span><b>${esc(L.rule(r).name)}</b>${world.variants[r] === 'alt' ? ` <span class="variant-tag">✦ ${esc(L.rule(r).variant.name)}</span>` : ''}
+              <span><b>${esc(L.rule(r).name)}</b>${glossHTML(L.ruleGloss(r))}${world.variants[r] === 'alt' ? ` <span class="variant-tag">✦ ${esc(L.rule(r).variant.name)}</span>` : ''}
               <span class="muted small">${esc(L.rule(r).summary)}${ok ? '' : ` — others depend on it`}</span></span></label>`;
           })
           .join('')}
@@ -161,7 +164,7 @@ export class App {
     if (repeal && repealable(new Set(world.rules)).includes(repeal)) {
       world.rules = world.rules.filter((r) => r !== repeal);
     }
-    const game = Game.start(world);
+    const game = Game.start(world, this.options.plainLabels);
     if (repeal) game.log(game.lex.t('rule.repealed', { rule: game.lex.rule(repeal).name }), 'rule');
     this.play(game);
     this.save();
@@ -215,7 +218,7 @@ export class App {
     const w = game.world;
     this.teardownPlay();
     this.root.innerHTML = `<div class="screen death-screen">
-      <span class="eyebrow">${esc(w.name)} · heir ${run.gen}</span>
+      <span class="eyebrow">${esc(w.name)} · ${esc(game.lex.role('heir'))} ${run.gen}</span>
       <h1>${esc(p.name)} is dead</h1>
       <p class="lede">${esc(run.cause ?? 'lost')}.</p>
       <dl class="stats wide">
@@ -255,7 +258,10 @@ export class App {
     const play = this.root.querySelector<HTMLElement>('.play-screen');
     play?.classList.toggle('pad-always', o.dpad === 'always');
     play?.classList.toggle('pad-never', o.dpad === 'never');
-    if (this.game) this.game.autoPickup = o.autoPickup;
+    if (this.game) {
+      this.game.autoPickup = o.autoPickup;
+      this.game.lex = lexiconFor(this.game.world, o.plainLabels);
+    }
     if (this.renderer) {
       this.renderer.tileRange = TILE_PX[o.tileSize];
       this.renderer.reduceMotion = o.reduceMotion;
@@ -415,8 +421,8 @@ export class App {
     if (top?.kind === 'options') html = optionsHTML(this.options);
     else if (top?.kind === 'help') html = helpHTML(game?.lex);
     else if (!game) html = '';
-    else if (top?.kind === 'banner') html = bannerHTML(top.rule, top.how, game.world);
-    else if (top?.kind === 'codex') html = codexHTML(game.world);
+    else if (top?.kind === 'banner') html = bannerHTML(top.rule, top.how, game.world, game.lex);
+    else if (top?.kind === 'codex') html = codexHTML(game.world, game.lex);
     else if (top?.kind === 'confirm-stairs') html = confirmDescendHTML(game, top.dir);
     else if (game.run.pending?.kind === 'shrine') html = shrineHTML(game);
     else if (game.run.pending?.kind === 'levelup') html = levelupHTML(game);
@@ -849,7 +855,7 @@ export class App {
       }
       case 'resume': {
         const run = world && this.store.run(world.id);
-        if (world && run) this.play(new Game(world, run));
+        if (world && run) this.play(new Game(world, run, this.options.plainLabels));
         break;
       }
       case 'delete-world':

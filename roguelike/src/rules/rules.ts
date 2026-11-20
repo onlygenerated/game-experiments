@@ -4,7 +4,7 @@
  */
 import type { Item, Player, RuleId, World } from '../engine/types.ts';
 import type { Lexicon } from '../theme/lexicon.ts';
-import type { MessageKey } from '../theme/old-stone.ts';
+import type { MessageKey } from '../theme/base.ts';
 import { has, withRule, type Derived, type RuleCtx } from './ctx.ts';
 import { baseDerived, MODULES, type RuleModule } from './modules.ts';
 

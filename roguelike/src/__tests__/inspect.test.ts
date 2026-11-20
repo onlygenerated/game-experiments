@@ -10,7 +10,7 @@ import { describeTile } from '../ui/describe.ts';
 import { DEFAULT_OPTIONS, loadOptions, saveOptions } from '../ui/options.ts';
 
 function game(rules: RuleId[], seed = 3) {
-  const world = newWorld(seed);
+  const world = newWorld(seed, { premise: 'old-stone' });
   world.rules = rules;
   const g = Game.start(world);
   g.run.monsters = [];

@@ -43,6 +43,8 @@ export function describeTile(game: Game, x: number, y: number): TileInfo {
   if (m) {
     const name = game.monsterName(m);
     titles.push(name[0].toUpperCase() + name.slice(1));
+    const gloss = L.foeGloss(m.kind);
+    if (gloss) lines.push(L.t('look.gloss', { what: gloss }));
     const parts = [L.t('look.foeHp', { n: m.hp, max: m.maxHp })];
     if (game.has('peril')) parts.push(L.t('look.foeHits', { n: Math.max(1, m.atk - game.stats.defense) }));
     if (m.def) parts.push(L.t('look.foeArmor', { n: m.def }));
@@ -65,7 +67,8 @@ export function describeTile(game: Game, x: number, y: number): TileInfo {
     const facts = itemFacts(fi.item, game);
     const hidden = hiddenProps(fi.item, ctx);
     const extra = hidden ? L.t(hidden === 1 ? 'look.hidden.one' : 'look.hidden.many', { n: hidden }) : '';
-    lines.push(`${label}${facts.length ? ` — ${facts.join(' · ')}` : ''}${extra}`);
+    const gloss = L.itemGloss(fi.item);
+    lines.push(`${label}${gloss ? ` (${gloss})` : ''}${facts.length ? ` — ${facts.join(' · ')}` : ''}${extra}`);
   }
 
   const t = f.tiles[i];

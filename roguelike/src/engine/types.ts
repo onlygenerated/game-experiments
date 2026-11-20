@@ -70,6 +70,9 @@ export type ItemKind = 'potion' | 'gold' | 'weapon' | 'armor' | 'food';
 export interface Item {
   id: number;
   kind: ItemKind;
+  /** Genotype key ('potion', 'gold', 'food:1', 'weapon:4', 'armor:0'): names resolve from it per lexicon. */
+  key?: string;
+  /** The name it was generated with; used when there is no key (older saves). */
   name: string;
   atk?: number;
   def?: number;
@@ -156,8 +159,8 @@ export type AxiomFamily = 'harm' | 'space' | 'time' | 'self' | 'knowledge';
 /** A world's identity, rolled once from its seed (ROADMAP.md §1.5). */
 export interface Genome {
   premise: PremiseId;
-  /** Roles bound from another premise. None yet. */
-  intrusions: string[];
+  /** Bundles of roles borrowed from another premise. */
+  intrusions: { bundle: 'restorative' | 'foes' | 'arms' | 'currency' | 'sustenance'; from: PremiseId }[];
   /** Axiom options settled so far. Every world today is strike / rooms / turns / single / plain. */
   axioms: Partial<Record<AxiomFamily, string>>;
   /** The rules this world can ever discover; null means every rule. */

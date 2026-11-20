@@ -250,7 +250,8 @@ try {
       }, [long[11], long[13]]);
       await settle();
       const s2 = await state();
-      ok(`phone: a foe coming into range stops the walk ("${s2.log}")`, /You spot a rat/.test(s2.log) && !(s2.x === long[13].x && s2.y === long[13].y));
+      const ratName = await page.evaluate(() => window.unfolding.game.lex.foe('rat').name);
+      ok(`phone: a foe coming into range stops the walk ("${s2.log}")`, s2.log.toLowerCase().includes(ratName.toLowerCase()) && !(s2.x === long[13].x && s2.y === long[13].y));
       await shot(page, 'phone-2d-travel-stopped');
 
       // 3. A tap mid-walk stops it without taking another step.
@@ -275,6 +276,14 @@ try {
     await page.click('label[for="opt-autoPickup-none"]');
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('unfolding.options.v1') || '{}').autoPickup);
     ok(`${vp.name}: auto pickup Off is saved (${stored})`, stored === 'none');
+    // Plain labels: the world's words give way to mechanical ones, and come back.
+    const hpWord = () => page.evaluate(() => document.querySelector('.side .bar.hp .bar-label span')?.textContent ?? '');
+    const themedHp = await hpWord();
+    await page.click('label[for="opt-plainLabels-true"]');
+    const plain = await page.evaluate(() => window.unfolding.game.lex.plain);
+    const plainHp = await hpWord();
+    await page.click('label[for="opt-plainLabels-false"]');
+    ok(`${vp.name}: Plain labels swaps the words ("${themedHp}" → "${plainHp}" → "${await hpWord()}")`, plain && plainHp === 'HP' && (await hpWord()) === themedHp);
     await page.click('.modal.options [data-cmd="dismiss"]');
 
     // With auto pickup off, walking onto a potion leaves it; the Here panel picks it up.
@@ -315,11 +324,16 @@ try {
           if (open) return { x, y };
         }
       });
+      // Pressing the pad's Look button may have scrolled the page down to it: bring the board back.
+      await page.evaluate(() => document.querySelector('.board').scrollIntoView({ block: 'start' }));
+      // Let the camera and layout settle (the Look card can reflow the board) before aiming.
+      const camKey = () => page.evaluate(() => { const v = window.unfolding.renderer.view, r = document.querySelector('.board canvas').getBoundingClientRect(); return `${v.camX},${v.camY},${v.cell},${r.x},${r.y}`; });
+      for (let i = 0, prev = ''; i < 40; i++) { const k = await camKey(); if (k === prev) break; prev = k; await page.waitForTimeout(60); }
       const box = await page.locator('.board canvas').boundingBox();
       const at = await page.evaluate((t) => { const v = window.unfolding.renderer.view; return { x: t.x * v.cell - v.camX + v.cell / 2, y: t.y * v.cell - v.camY + v.cell / 2 }; }, goal);
       await page.mouse.click(box.x + at.x, box.y + at.y);
       const look = await page.evaluate(() => window.unfolding.look);
-      ok(`${vp.name}: tapping in Look mode moves the cursor, not you`, look && look.x === goal.x && look.y === goal.y);
+      ok(`${vp.name}: tapping in Look mode moves the cursor, not you (goal ${goal.x},${goal.y}, look ${look?.x},${look?.y})`, look && look.x === goal.x && look.y === goal.y);
       await shot(page, `${vp.name}-2g-look`);
       await page.click('.lookcard [data-cmd="look-walk"]');
       for (let i = 0; i < 60 && (await page.evaluate(() => !!window.unfolding.travel)); i++) await page.waitForTimeout(50);
@@ -460,6 +474,31 @@ try {
     ok(`${vp.name}: repeal removed Weight (${rules})`, !rules.includes('weight') && rules.includes('arms'));
     const graves = await page.evaluate(() => window.unfolding.game.world.graves.length);
     ok(`${vp.name}: grave of the first heir exists (${graves})`, graves === 1);
+
+    // ---- Every premise speaks its own words -----------------------------
+    // New worlds roll their premise; keep making them until each one has shown up.
+    const seen = new Set();
+    for (let i = 0; i < 80 && seen.size < 7; i++) {
+      await page.click('[data-cmd="leave"]');
+      await page.click('text=Begin a new world');
+      const info = await page.evaluate(() => {
+        const a = window.unfolding;
+        const g = a.game;
+        for (const r of ['peril', 'halls', 'things', 'growth', 'arms']) if (!g.world.rules.includes(r)) g.adopt(r, 'shrine');
+        g.events.splice(0);
+        g.run.pending = null;
+        for (const m of g.run.monsters) m.stun = 9999;
+        a.overlays = [];
+        a.refresh();
+        return { premise: g.world.genome.premise, floor: !!document.querySelector('.tb-floor'), text: document.body.innerText };
+      });
+      if (seen.has(info.premise)) continue;
+      seen.add(info.premise);
+      ok(`${vp.name}: ${info.premise} fills every placeholder`, !/\{\w+\}/.test(info.text));
+      ok(`${vp.name}: ${info.premise} names its floors in the top bar`, vp.isMobile || info.floor === (info.premise !== 'old-stone'));
+      await shot(page, `${vp.name}-8-premise-${info.premise}`);
+    }
+    ok(`${vp.name}: new worlds rolled several premises (${[...seen].join(', ')})`, seen.size >= 5);
 
     ok(`${vp.name}: no page overflow`, await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
     ok(`${vp.name}: no console errors${errs.length ? ': ' + errs.join(' | ') : ''}`, errs.length === 0);

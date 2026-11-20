@@ -1,6 +1,8 @@
 import { EMERGENT, RULE_ORDER } from '../rules/rules.ts';
 import { hashSeed, Rng } from './rng.ts';
-import { DEFAULT_PREMISE, fill, PREMISES } from '../theme/lexicon.ts';
+import { BUNDLES, type BundleId } from '../theme/base.ts';
+import { DEFAULT_PREMISE, fill, PREMISES, ROLLABLE, type Intrusion } from '../theme/lexicon.ts';
+import type { PremiseId } from '../theme/premise.ts';
 import type { Genome, RuleId, RunState, World } from './types.ts';
 
 export const WORLD_VERSION = 3;
@@ -41,12 +43,31 @@ export function defaultGenome(): Genome {
   return { premise: DEFAULT_PREMISE, intrusions: [], axioms: { ...DEFAULT_AXIOMS }, pool: null };
 }
 
-export function newWorld(seed: number): World {
+/**
+ * A world's premise and borrowed bundles, rolled on their own stream so the
+ * rest of a world (variants, emergence, layout) doesn't depend on its look.
+ */
+export function rollLook(seed: number): { premise: PremiseId; intrusions: Intrusion[] } {
+  const rng = new Rng(hashSeed(seed, 'premise'));
+  const premise = rng.weighted(ROLLABLE.map((id) => [id, PREMISES[id].weight] as [PremiseId, number]));
+  const count = rng.weighted([[0, 50], [1, 35], [2, 15]] as [number, number][]) * (PREMISES[premise].pure ? 0 : 1);
+  const bundles = rng.shuffle(Object.keys(BUNDLES) as BundleId[]).slice(0, count);
+  const donors = ROLLABLE.filter((id) => id !== premise);
+  const intrusions = bundles.map((bundle) => ({
+    bundle,
+    from: rng.weighted(donors.map((id) => [id, PREMISES[id].weight] as [PremiseId, number])),
+  }));
+  return { premise, intrusions };
+}
+
+/** Create a world. Its look is rolled unless `look` pins it (tests, migrations). */
+export function newWorld(seed: number, look?: { premise: PremiseId; intrusions?: Intrusion[] }): World {
   const rng = new Rng(hashSeed(seed, 'world'));
   const variants: World['variants'] = {};
   for (const id of RULE_ORDER) variants[id] = rng.chance(0.4) ? 'alt' : 'base';
   const emergence = rollEmergenceTable(new Rng(hashSeed(seed, 'emergence')));
-  const genome = defaultGenome();
+  const rolled = look ? { premise: look.premise, intrusions: look.intrusions ?? [] } : rollLook(seed);
+  const genome: Genome = { ...defaultGenome(), premise: rolled.premise, intrusions: rolled.intrusions };
   const naming = PREMISES[genome.premise].naming;
   return {
     version: WORLD_VERSION,

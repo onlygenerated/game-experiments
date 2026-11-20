@@ -4,24 +4,31 @@
  * premises existed. Its `text` table defines every message key; other premises
  * must provide the same keys (the type enforces it).
  */
+import type { MessageKey } from './base.ts';
 import type { Premise } from './premise.ts';
 
-const TEXT = {
+/** The Old Stone says every line itself, word for word as the game always has. */
+const TEXT: Record<MessageKey, string> = {
   // --- Arrival -------------------------------------------------------------
   'start.fresh': 'You wake in a quiet room. A shrine hums in the corner; stairs lead down.',
   'start.hint': 'Move with the arrow keys or by tapping the map; hold a spot to walk there. Step onto the shrine (Ω) to change the world.',
-  'start.heir': '{heir} descends into {world}, heir to {n} rules.',
+  'start.heir': '{name} descends into {world}, heir to {n} rules.',
+  'intrusion.restorative': 'The {restoratives} here come from {donor}.',
+  'intrusion.foes': 'The {foes} here come from {donor}.',
+  'intrusion.arms': 'The {weapons} and {armor} here come from {donor}.',
+  'intrusion.currency': 'The {currency} here comes from {donor}.',
+  'intrusion.sustenance': 'The {food} here comes from {donor}.',
   'floor.changed': 'This floor has changed since you were last here.',
   'graves.one': 'You sense a grave on this floor.',
   'graves.many': 'You sense {n} graves on this floor.',
 
   // --- Stairs --------------------------------------------------------------
   'stairs.down.here': 'Stairs lead down. Press > to descend.',
-  'stairs.up.here': 'Stairs lead up to depth {depth}. Press < to climb.',
+  'stairs.up.here': 'Stairs lead up to depth {n}. Press < to climb.',
   'stairs.down.none': 'There are no stairs here.',
   'stairs.up.none': 'There are no stairs up here.',
-  'stairs.descend': 'You descend to depth {depth}.',
-  'stairs.ascend': 'You climb back up to depth {depth}.',
+  'stairs.descend': 'You descend to depth {n}.',
+  'stairs.ascend': 'You climb back up to depth {n}.',
 
   // --- Items ---------------------------------------------------------------
   'pickup.see': 'You see {what} here. Press g to pick up.',
@@ -102,9 +109,9 @@ const TEXT = {
   'armor.breaks': 'Your {item} falls apart.',
   'starving': 'You are starving.',
   'death': 'You die — {cause}.',
-  'cause.slain': 'slain by {a} {foe} on depth {depth}',
-  'cause.starved': 'starved on depth {depth}',
-  'cause.burned': 'burned on depth {depth}',
+  'cause.slain': 'slain by {a} {foe} on depth {n}',
+  'cause.starved': 'starved on depth {n}',
+  'cause.burned': 'burned on depth {n}',
 
   // --- Auto-travel ---------------------------------------------------------
   'travel.unknown': 'You don’t know a way there.',
@@ -141,7 +148,7 @@ const TEXT = {
   'note.growth': 'Your STR, AGI and VIT (all 3) start to matter. You are level 1.',
   'note.arms': 'Weapons and armour will appear, starting on this floor.',
   'note.carry.none': 'You carry nothing it applies to — yet.',
-  'note.weight.item': '{item} weighs {w} vs your STR {str} — {verdict}.',
+  'note.weight.item': '{item} weighs {w} vs your STR {have} — {verdict}.',
   'note.weight.ok': 'within your strength',
   'note.weight.heavy.weapon': 'too heavy: attacks take 2 turns if equipped',
   'note.weight.heavy.armor': 'too heavy: moving takes 2 turns if equipped',
@@ -151,7 +158,7 @@ const TEXT = {
   'note.elements.glimmers': '{n} glimmering stones on this floor will awaken.',
   'note.darkness': 'All {n} foes on this floor lose track of you.',
   'note.hunger': 'You start fully fed ({n}).',
-  'note.arcana': 'Learn Cleave ({cleave} mana) and Mend ({mend} mana). You start with {n} mana.',
+  'note.arcana': 'Learn Cleave ({c} mana) and Mend ({m} mana). You start with {n} mana.',
   'note.variant': 'This world: {name} — {text}',
 
   // --- HUD -----------------------------------------------------------------
@@ -172,6 +179,7 @@ const TEXT = {
   'hud.depth': 'Depth {n}',
   'hud.heir': 'heir {n}',
   'hud.shrineDepth': 'Rule Shrine · depth {n}',
+  'hud.pack': 'Pack',
   'fact.heals': 'Heals {n}',
   'fact.nourish': 'Satiety +{n}',
   'fact.attack': 'Attack +{n}',
@@ -193,7 +201,7 @@ const TEXT = {
   'screen.graves.one': '{n} grave',
   'screen.graves.many': '{n} graves',
   'screen.resume': 'Resume {name} · depth {n}',
-  'screen.fell': '{name} fell at depth {n}, {cause}. Their grave remains where they fell.',
+  'screen.fell': '{name} fell — {cause}. Their grave remains where they fell.',
   'screen.graveNow': 'Their grave now lies on depth {n}. The world keeps every rule it has learned.',
 
   // --- Look ----------------------------------------------------------------
@@ -236,19 +244,59 @@ const TEXT = {
   'look.glimmer.frost': 'It’s faintly cold. It does nothing — yet.',
   'look.underfoot': 'Underfoot: {terrain}.',
   'look.rock': 'Solid rock.',
+  'look.gloss': '{what}',
 };
-
-export type MessageKey = keyof typeof TEXT;
 
 export const OLD_STONE: Premise = {
   id: 'old-stone',
   name: 'The Old Stone',
   pitch: 'Rats, potions and swords: the classic dungeon the mechanics were built in.',
+  seep: 'Things wash down from the world above.',
+  weight: 1,
+  pure: true,
+  roles: {
+    heir: 'heir',
+    depth: 'depth',
+    floor: 'floor',
+    hp: 'HP',
+    mana: 'mana',
+    satiety: 'satiety',
+    hungry: 'hungry',
+    fed: 'fed',
+    starving: 'starving',
+    level: 'level',
+    xp: 'XP',
+    str: 'STR',
+    agi: 'AGI',
+    vit: 'VIT',
+    cleave: 'Cleave',
+    mend: 'Mend',
+    currency: 'gold',
+    restorative: 'potion',
+    restoratives: 'potions',
+    weapon: 'weapon',
+    weapons: 'weapons',
+    armor: 'armour',
+    arms: 'arms',
+    fists: 'bare fists',
+    food: 'food',
+    foe: 'foe',
+    foes: 'foes',
+    shrine: 'shrine',
+    shrineName: 'Rule Shrine',
+    grave: 'grave',
+    graves: 'graves',
+    stairsDown: 'stairs down',
+    stairsUp: 'stairs up',
+    stone: 'stone',
+    stones: 'stones',
+    pack: 'pack',
+  },
   foes: {
-    rat: { name: 'rat', glyph: 'r', color: '#c49a6c' },
-    bat: { name: 'bat', glyph: 'b', color: '#b38cff' },
-    goblin: { name: 'goblin', glyph: 'g', color: '#86d17a' },
-    slime: { name: 'slime', glyph: 's', color: '#c6e85a' },
+    rat: { name: 'rat', plural: 'rats', glyph: 'r', color: '#c49a6c' },
+    bat: { name: 'bat', plural: 'bats', glyph: 'b', color: '#b38cff' },
+    goblin: { name: 'goblin', plural: 'goblins', glyph: 'g', color: '#86d17a' },
+    slime: { name: 'slime', plural: 'slimes', glyph: 's', color: '#c6e85a' },
   },
   elements: {
     ember: { adj: 'ember', Adj: 'Ember', color: '#ff7a45', tint: '#3a2620', glyph: '^', dormant: '#5a3a30' },
@@ -268,7 +316,8 @@ export const OLD_STONE: Premise = {
       summary: 'Floors grow from a single room into many rooms joined by corridors.',
       upside: 'More floor holds more to find.',
       downside: 'The stairs are no longer in plain sight.',
-      variant: { name: 'Sprawl', text: 'Floors have up to three more rooms.' },
+      variant: 'Sprawl',
+      variantText: 'Floors have up to three more rooms.',
     },
     peril: {
       name: 'Peril',
@@ -276,7 +325,8 @@ export const OLD_STONE: Premise = {
       summary: 'Rats appear. You have HP; walk into a rat to fight it. If you die, an heir carries on.',
       upside: 'Foes open the way to Growth, Arms, Darkness and Hunger.',
       downside: 'You can be hurt, and you can die.',
-      variant: { name: 'Frail', text: 'Max HP {frailHp} instead of {hp}.' },
+      variant: 'Frail',
+      variantText: 'Max HP {frailHp} instead of {baseHp}.',
     },
     things: {
       name: 'Things',
@@ -285,7 +335,8 @@ export const OLD_STONE: Premise = {
       upside: 'Healing potions; foes drop coin.',
       downside: 'Nothing yet. This one is a gift.',
       earned: 'Also arrives on your fifth kill.',
-      variant: { name: 'Generous Springs', text: 'Potions heal half again as much.' },
+      variant: 'Generous Springs',
+      variantText: 'Potions heal half again as much.',
     },
     growth: {
       name: 'Growth',
@@ -293,7 +344,8 @@ export const OLD_STONE: Premise = {
       summary: 'XP and levels. STR adds damage, AGI aids hitting and dodging, VIT adds HP.',
       upside: 'Choose a stat each level; HP grows.',
       downside: 'You can miss now. Foes grow faster with depth.',
-      variant: { name: 'Quick Study', text: 'Levels need 30% less XP.' },
+      variant: 'Quick Study',
+      variantText: 'Levels need 30% less XP.',
     },
     arms: {
       name: 'Arms',
@@ -301,7 +353,8 @@ export const OLD_STONE: Premise = {
       summary: 'Weapons and armour appear and can be equipped.',
       upside: 'Weapons add attack, armour subtracts damage taken.',
       downside: 'Bare fists weaken (2 → 1).',
-      variant: { name: 'Smithworld', text: 'Twice as many arms appear.' },
+      variant: 'Smithworld',
+      variantText: 'Twice as many arms appear.',
     },
     weight: {
       name: 'Weight',
@@ -309,7 +362,8 @@ export const OLD_STONE: Premise = {
       summary: 'Arms weigh what they weigh. Your STR decides what you can wield.',
       upside: 'A weapon within your STR staggers foes (weight × 8%). Armour within STR absorbs +1 per 3 weight.',
       downside: 'Weapon heavier than STR: attacks take 2 turns. Armour heavier than STR: moving takes 2 turns.',
-      variant: { name: 'Iron World', text: 'Everything weighs 1 more.' },
+      variant: 'Iron World',
+      variantText: 'Everything weighs 1 more.',
     },
     durability: {
       name: 'Durability',
@@ -317,7 +371,8 @@ export const OLD_STONE: Premise = {
       summary: 'Arms lose durability with use and shatter at zero.',
       upside: 'Honed edges: weapons +2 attack, armour +1 defense. A shattering weapon strikes for triple.',
       downside: 'Your gear will break.',
-      variant: { name: 'Brittle Steel', text: 'Arms wear twice as fast.' },
+      variant: 'Brittle Steel',
+      variantText: 'Arms wear twice as fast.',
     },
     elements: {
       name: 'Elements',
@@ -325,7 +380,8 @@ export const OLD_STONE: Premise = {
       summary: 'Ember and frost. Elemental weapons and foes; ember stones burn, frost stones freeze.',
       upside: 'Elemental weapons deal double to the opposite element. Lure foes onto stones.',
       downside: 'Stones hurt you too. Same-element foes take half.',
-      variant: { name: 'Wildfire', text: 'Ember stones burn for {wildfireBurn} instead of {emberBurn}.' },
+      variant: 'Wildfire',
+      variantText: 'Ember stones burn for {wildfireBurn} instead of {emberBurn}.',
     },
     darkness: {
       name: 'Darkness',
@@ -333,7 +389,8 @@ export const OLD_STONE: Premise = {
       summary: 'You see only nearby. Foes notice you only up close.',
       upside: 'Unaware foes take double damage. Every foe loses track of you now.',
       downside: 'You can no longer see the whole floor.',
-      variant: { name: 'Moonless', text: 'Sight radius 3 instead of 5.' },
+      variant: 'Moonless',
+      variantText: 'Sight radius 3 instead of 5.',
     },
     hunger: {
       name: 'Hunger',
@@ -341,7 +398,8 @@ export const OLD_STONE: Premise = {
       summary: 'Satiety drains each turn. Food appears.',
       upside: 'While at least {regenPct}% fed, regenerate 1 HP every {regenEvery} turns. Nothing else regenerates.',
       downside: 'Satiety drains every turn; food is scarce. Starving costs 1 HP every {starveEvery} turns.',
-      variant: { name: 'Lean Years', text: 'Satiety drains half again as fast.' },
+      variant: 'Lean Years',
+      variantText: 'Satiety drains half again as fast.',
     },
     arcana: {
       name: 'Arcana',
@@ -349,7 +407,8 @@ export const OLD_STONE: Premise = {
       summary: 'Mana (3 + level), regenerating slowly. Cleave ({cleaveCost}): strike every adjacent foe. Mend ({mendCost}): heal {mendPct}%.',
       upside: 'Two abilities.',
       downside: '−4 max HP.',
-      variant: { name: 'Ley Lines', text: 'Mana regenerates twice as fast.' },
+      variant: 'Ley Lines',
+      variantText: 'Mana regenerates twice as fast.',
     },
     bestiary: {
       name: 'Bestiary',
@@ -358,13 +417,15 @@ export const OLD_STONE: Premise = {
       upside: 'More XP and more drops.',
       downside: 'More dangerous foes.',
       imposed: 'Never offered at shrines: it arrives on its own as you go deeper.',
-      variant: { name: 'Swarming Deep', text: 'Two more foes per floor.' },
+      variant: 'Swarming Deep',
+      variantText: 'Two more foes per floor.',
     },
   },
   naming: {
     worldAdjectives: ['Hollow', 'Sunken', 'Ashen', 'Verdant', 'Silent', 'Gilded', 'Drowned', 'Hungry', 'Pale', 'Iron', 'Weeping', 'Crooked'],
     worldNouns: ['Deep', 'Warren', 'Vault', 'Barrow', 'Maw', 'Cistern', 'Labyrinth', 'Undercroft', 'Hive', 'Spire', 'Reach', 'Well'],
     world: 'The {adj} {noun}',
+    floors: [],
     heirs: [
       'Ada', 'Bram', 'Cass', 'Dov', 'Esme', 'Fen', 'Gil', 'Hale', 'Ines', 'Jory', 'Kit', 'Lark',
       'Mira', 'Nell', 'Orrin', 'Pell', 'Quin', 'Rook', 'Sable', 'Tamsin', 'Ulric', 'Vesna', 'Wren', 'Yara',

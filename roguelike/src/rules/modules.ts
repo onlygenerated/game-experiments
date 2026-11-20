@@ -142,7 +142,7 @@ export const MODULES: Record<RuleId, RuleModule> = {
     },
     notes: ({ lex, arms }) => [
       ...(arms.length ? [] : [lex.t('note.carry.none')]),
-      ...arms.map((it) => lex.t('note.durability.item', { item: it.name, n: it.dur })),
+      ...arms.map((it) => lex.t('note.durability.item', { item: lex.itemName(it), n: it.dur })),
     ],
   },
   weight: {
@@ -167,7 +167,7 @@ export const MODULES: Record<RuleId, RuleModule> = {
         const w = weightOf(it, ctx);
         const verdict =
           w <= p.str ? lex.t('note.weight.ok') : lex.t(it.kind === 'weapon' ? 'note.weight.heavy.weapon' : 'note.weight.heavy.armor');
-        return lex.t('note.weight.item', { item: it.name, w, str: p.str, verdict });
+        return lex.t('note.weight.item', { item: lex.itemName(it), w, have: p.str, verdict });
       }),
     ],
   },
@@ -183,7 +183,7 @@ export const MODULES: Record<RuleId, RuleModule> = {
       const el = arms.filter((i) => i.element);
       const out = el.map((it) =>
         lex.t('note.elements.item', {
-          item: it.name,
+          item: lex.itemName(it),
           el: lex.element(it.element!).adj,
           opp: lex.element(it.element === 'ember' ? 'frost' : 'ember').adj,
         }),
@@ -237,7 +237,7 @@ export const MODULES: Record<RuleId, RuleModule> = {
     onAdopt: (h) => {
       h.run.player.mana = h.stats.maxMana;
     },
-    notes: ({ lex, p }) => [lex.t('note.arcana', { cleave: B.arcana.cleaveCost, mend: B.arcana.mendCost, n: 3 + p.level })],
+    notes: ({ lex, p }) => [lex.t('note.arcana', { c: B.arcana.cleaveCost, m: B.arcana.mendCost, n: 3 + p.level })],
   },
   bestiary: {
     id: 'bestiary',

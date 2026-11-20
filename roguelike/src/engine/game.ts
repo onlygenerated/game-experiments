@@ -28,7 +28,7 @@ import {
   type GenCtx,
 } from './content.ts';
 import { DIRS, distanceMap, generateLayout, idx, passable, soloRoom, type LayoutOpts } from './dungeon.ts';
-import { lexiconFor, type Lexicon } from '../theme/lexicon.ts';
+import { article, lexiconFor, PREMISES, type Lexicon } from '../theme/lexicon.ts';
 import type { RuleHost } from '../rules/modules.ts';
 import { computeVisible, lineOfSight } from './fov.ts';
 import { hashSeed, Rng } from './rng.ts';
@@ -91,8 +91,7 @@ export function xpNeeded(level: number, ctx: RuleCtx): number {
   return Math.round(B.growth.xpBase * level ** B.growth.xpExp * (alt(ctx, 'growth') ? B.growth.quickMult : 1));
 }
 
-/** "a" or "an" for a creature name. */
-export const article = (name: string) => (/^[aeiou]/i.test(name) ? 'an' : 'a');
+export { article };
 
 const cheb = (a: Pos, b: Pos) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 
@@ -104,8 +103,8 @@ export class Game implements RuleHost {
   visible = new Set<number>();
   /** A player preference, not part of the run: set by the UI from its options. */
   autoPickup: AutoPickup = 'all';
-  /** The words this world speaks: every message the engine logs comes from here. */
-  readonly lex: Lexicon;
+  /** The words this world speaks: every message the engine logs comes from here. The UI swaps in Plain labels. */
+  lex: Lexicon;
   /**
    * Running totals for the balance probe (damage, healing by source, food in
    * and out, what spawned…). Not saved; nothing in play reads them.
@@ -124,16 +123,17 @@ export class Game implements RuleHost {
     }
   }
 
-  constructor(world: World, run: RunState) {
+  /** `plain`: speak The Plain words (the Plain labels option) instead of the world's own. */
+  constructor(world: World, run: RunState, plain = false) {
     this.world = world;
     this.run = run;
-    this.lex = lexiconFor(world);
+    this.lex = lexiconFor(world, plain);
     this.rng = new Rng(run.rng);
     this.refreshVision();
   }
 
   /** Start a new character in `world`. The world's rulebook carries over untouched. */
-  static start(world: World): Game {
+  static start(world: World, plain = false): Game {
     world.generation += 1;
     const gen = world.generation;
     const run: RunState = {
@@ -153,7 +153,7 @@ export class Game implements RuleHost {
       over: false,
       cause: null,
     };
-    const game = new Game(world, run);
+    const game = new Game(world, run, plain);
     game.enterFloor(1);
     const p = run.player;
     const d = game.stats;
@@ -163,7 +163,11 @@ export class Game implements RuleHost {
       game.log(game.lex.t('start.fresh'), 'info');
       game.log(game.lex.t('start.hint'), 'dim');
     } else {
-      game.log(game.lex.t('start.heir', { heir: p.name, world: world.name, n: world.rules.length }), 'info');
+      game.log(game.lex.t('start.heir', { name: p.name, world: world.name, n: world.rules.length }), 'info');
+    }
+    // Borrowed things are announced to every heir: the world explains its own oddities.
+    for (const { bundle, from } of world.genome?.intrusions ?? []) {
+      game.log(`${game.lex.premise.seep} ${game.lex.t(`intrusion.${bundle}`, { donor: PREMISES[from].name })}`, 'dim');
     }
     return game;
   }
@@ -399,7 +403,7 @@ export class Game implements RuleHost {
       }
     }
     if (p.x === floor.stairs.x && p.y === floor.stairs.y) this.log(this.lex.t('stairs.down.here'), 'info');
-    if (floor.tiles[idx(floor, p.x, p.y)] === T_UP) this.log(this.lex.t('stairs.up.here', { depth: this.run.depth - 1 }), 'info');
+    if (floor.tiles[idx(floor, p.x, p.y)] === T_UP) this.log(this.lex.t('stairs.up.here', { n: this.run.depth - 1 }), 'info');
     const sh = floor.shrine;
     if (sh && !sh.used && sh.pos.x === p.x && sh.pos.y === p.y) this.openShrine();
     const grave = this.graveAt(p.x, p.y);
@@ -422,7 +426,7 @@ export class Game implements RuleHost {
     }
     this.enterFloor(depth, 'down');
     this.events.push({ type: 'floor', depth });
-    this.log(this.lex.t('stairs.descend', { depth }), 'info');
+    this.log(this.lex.t('stairs.descend', { n: depth }), 'info');
     return true;
   }
 
@@ -436,7 +440,7 @@ export class Game implements RuleHost {
     const depth = this.run.depth - 1;
     this.enterFloor(depth, 'up');
     this.events.push({ type: 'floor', depth });
-    this.log(this.lex.t('stairs.ascend', { depth }), 'info');
+    this.log(this.lex.t('stairs.ascend', { n: depth }), 'info');
     return true;
   }
 
@@ -461,7 +465,7 @@ export class Game implements RuleHost {
       this.count('satietyEaten', p.satiety - before);
       this.count('satietyWasted', (item.nourish ?? 0) - (p.satiety - before));
       this.count('foodEaten');
-      this.log(this.lex.t('eat', { item: item.name }), 'good');
+      this.log(this.lex.t('eat', { item: this.lex.itemName(item) }), 'good');
     } else {
       return this.equip(id);
     }
@@ -767,7 +771,7 @@ export class Game implements RuleHost {
       if (w.dur <= 0) {
         dmg *= 3;
         p.weapon = null;
-        notes.push(this.lex.t('attack.note.shatter', { item: w.name }));
+        notes.push(this.lex.t('attack.note.shatter', { item: this.lex.itemName(w) }));
       }
     }
     m.hp -= dmg;
@@ -797,13 +801,13 @@ export class Game implements RuleHost {
       a.dur -= this.wear();
       if (a.dur <= 0) {
         p.armor = null;
-        this.log(this.lex.t('armor.breaks', { item: a.name }), 'bad');
+        this.log(this.lex.t('armor.breaks', { item: this.lex.itemName(a) }), 'bad');
       }
     }
     p.hp -= dmg;
     this.count('damageTaken', dmg);
     this.log(this.lex.t('foe.hit', { foe: name, n: dmg }), 'bad');
-    if (p.hp <= 0) this.die(this.lex.t('cause.slain', { a: article(name), foe: name, depth: this.run.depth }));
+    if (p.hp <= 0) this.die(this.lex.t('cause.slain', { a: article(name), foe: name, n: this.run.depth }));
   }
 
   monsterName(m: Monster): string {
@@ -910,7 +914,7 @@ export class Game implements RuleHost {
           p.hp -= 1;
           this.count('damageStarving');
           this.log(this.lex.t('starving'), 'bad');
-          if (p.hp <= 0) return this.die(this.lex.t('cause.starved', { depth: run.depth }));
+          if (p.hp <= 0) return this.die(this.lex.t('cause.starved', { n: run.depth }));
         }
       } else if (p.satiety >= MAX_SATIETY * H.regenAbove) {
         p.regenClock += 1;
@@ -943,7 +947,7 @@ export class Game implements RuleHost {
       p.hp -= burn;
       this.count('damageTaken', burn);
       this.log(this.lex.t('ember.you', { n: burn }), 'bad');
-      if (p.hp <= 0) return this.die(this.lex.t('cause.burned', { depth: run.depth }));
+      if (p.hp <= 0) return this.die(this.lex.t('cause.burned', { a: article(this.lex.element('ember').adj), n: run.depth }));
     }
     for (const m of [...run.monsters]) {
       if (f.glimmer[idx(f, m.x, m.y)] !== 'ember' || m.element === 'ember') continue;

@@ -220,7 +220,13 @@ explore floor → fight, loot, find shrine → draft a rule (or refuse)
   - `onAdopt(host)` — one-time effects and messages when it arrives
   - `notes(…)` — the shrine preview's personal notes
 - **Words live in premises** (`src/theme/`). A premise supplies every name, message,
-  glyph and colour a player sees; `The Old Stone` is the only one so far. The engine
+  glyph and colour a player sees. There are seven: six themed ones (*The Merger*, *The
+  Overgrown Choir*, *The Court of Barbs*, *The Tidepool*, *The Ministry of Forms*, *The
+  Night Shift*) and the rare classic, *The Old Stone*. *The Plain* is the mechanical
+  vocabulary behind the Plain labels option and the small glosses beside themed names.
+  A new world rolls its premise and may borrow 0–2 bundles (foes, arms, restoratives,
+  currency, sustenance) from another; items are named through a genotype key, so the
+  same dagger is a Stapler in one world and a Trowel in another. The engine
   writes messages as `lex.t('foe.hit', { foe, n })`; a test fails if prose appears in
   engine or rule source. Internal ids (`rat`, `ember`) keep their old names for save
   compatibility and are never shown.
@@ -252,6 +258,8 @@ explore floor → fight, loot, find shrine → draft a rule (or refuse)
 - [x] New World / Continue World, heir repeal, graves, chronicle
 - [x] Growing UI; codex of active rules
 - [x] Keyboard and touch controls
+- [x] Seven premises, rolled per world, with intrusions, floor names, glosses and Plain
+      labels (Roadmap Phase 1)
 
 ### What's next
 
