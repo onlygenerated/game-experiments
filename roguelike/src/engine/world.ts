@@ -1,5 +1,7 @@
 import { EMERGENT, RULE_ORDER } from '../rules/rules.ts';
 import { hashSeed, Rng } from './rng.ts';
+import { BALANCE as B } from './balance.ts';
+import { HARMS, type HarmId } from '../rules/harm.ts';
 import { BUNDLES, type BundleId } from '../theme/base.ts';
 import { DEFAULT_PREMISE, fill, PREMISES, ROLLABLE, type Intrusion } from '../theme/lexicon.ts';
 import type { PremiseId } from '../theme/premise.ts';
@@ -60,14 +62,36 @@ export function rollLook(seed: number): { premise: PremiseId; intrusions: Intrus
   return { premise, intrusions };
 }
 
+/** The rules that existed before Phase 2, whose variants roll on the world's own stream. */
+const FIRST_RULES: RuleId[] = ['halls', 'peril', 'things', 'growth', 'arms', 'durability', 'weight', 'elements', 'darkness', 'hunger', 'arcana', 'bestiary'];
+
+/**
+ * How harm works in a new world: settled now, or (null) left open for a schism
+ * shrine to settle when the first foes arrive.
+ */
+export function rollHarm(seed: number): HarmId | null {
+  const rng = new Rng(hashSeed(seed, 'harm'));
+  if (rng.chance(B.harm.openChance)) return null;
+  return rng.weighted(HARMS.map((h) => [h, B.harm.rollWeights[h]] as [HarmId, number]));
+}
+
 /** Create a world. Its look is rolled unless `look` pins it (tests, migrations). */
-export function newWorld(seed: number, look?: { premise: PremiseId; intrusions?: Intrusion[] }): World {
+export function newWorld(seed: number, look?: { premise?: PremiseId; intrusions?: Intrusion[]; harm?: HarmId | null }): World {
   const rng = new Rng(hashSeed(seed, 'world'));
   const variants: World['variants'] = {};
-  for (const id of RULE_ORDER) variants[id] = rng.chance(0.4) ? 'alt' : 'base';
+  // The first twelve rules roll on the world's own stream (as they always have);
+  // later rules each get a stream of their own, so adding one never reshuffles old worlds.
+  for (const id of RULE_ORDER) {
+    const r = FIRST_RULES.includes(id) ? rng : new Rng(hashSeed(seed, 'variant', id));
+    variants[id] = r.chance(0.4) ? 'alt' : 'base';
+  }
   const emergence = rollEmergenceTable(new Rng(hashSeed(seed, 'emergence')));
-  const rolled = look ? { premise: look.premise, intrusions: look.intrusions ?? [] } : rollLook(seed);
+  const rolled = look?.premise ? { premise: look.premise, intrusions: look.intrusions ?? [] } : rollLook(seed);
   const genome: Genome = { ...defaultGenome(), premise: rolled.premise, intrusions: rolled.intrusions };
+  // Means of Harm: rolled, or left open for a schism shrine. A pinned look strikes unless told otherwise.
+  const harm = look ? (look.harm === undefined ? 'strike' : look.harm) : rollHarm(seed);
+  genome.axioms = { ...genome.axioms, harm: harm ?? undefined };
+  if (!harm) delete genome.axioms.harm;
   const naming = PREMISES[genome.premise].naming;
   return {
     version: WORLD_VERSION,

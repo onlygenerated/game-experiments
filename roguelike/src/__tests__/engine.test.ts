@@ -108,7 +108,7 @@ describe('derived stats and the shrine preview', () => {
   const world = (rules: RuleId[]): Pick<World, 'rules' | 'variants'> => ({ rules, variants: {} });
 
   it('a heavy weapon is pure upside until Weight arrives', () => {
-    const g = Game.start(newWorld(1));
+    const g = Game.start(newWorld(1, { harm: 'strike' }));
     const p = g.run.player;
     p.weapon = greatsword();
     const before = derive(p, ctxOf(world(['things', 'arms'])));
@@ -120,7 +120,7 @@ describe('derived stats and the shrine preview', () => {
   });
 
   it('Weight rewards a strong character instead', () => {
-    const g = Game.start(newWorld(1));
+    const g = Game.start(newWorld(1, { harm: 'strike' }));
     const p = g.run.player;
     p.weapon = greatsword();
     p.str = 6;
@@ -140,11 +140,11 @@ describe('derived stats and the shrine preview', () => {
   });
 
   it('Iron World variant makes everything heavier', () => {
-    const g = Game.start(newWorld(1));
+    const g = Game.start(newWorld(1, { harm: 'strike' }));
     const p = g.run.player;
     p.weapon = { ...greatsword(), weight: 3 };
-    const base = derive(p, { rules: new Set(['things', 'arms', 'weight']), variants: {} });
-    const iron = derive(p, { rules: new Set(['things', 'arms', 'weight']), variants: { weight: 'alt' } });
+    const base = derive(p, { rules: new Set(['things', 'arms', 'weight']), variants: {}, harm: 'strike' });
+    const iron = derive(p, { rules: new Set(['things', 'arms', 'weight']), variants: { weight: 'alt' }, harm: 'strike' });
     expect(base.attackCost).toBe(1);
     expect(iron.attackCost).toBe(2);
   });
@@ -153,7 +153,7 @@ describe('derived stats and the shrine preview', () => {
 describe('game', () => {
   it('Tier 0 is one quiet room with a shrine', () => {
     for (let seed = 1; seed <= 20; seed++) {
-      const g = Game.start(newWorld(seed));
+      const g = Game.start(newWorld(seed, { harm: 'strike' }));
       expect(g.world.rules).toEqual([]);
       expect(g.run.items).toEqual([]);
       expect(g.run.monsters).toEqual([]);
@@ -164,7 +164,7 @@ describe('game', () => {
 
   it('the first shrine offers at least two rules, all of which have emerged', () => {
     for (let seed = 1; seed <= 200; seed++) {
-      const g = Game.start(newWorld(seed));
+      const g = Game.start(newWorld(seed, { harm: 'strike' }));
       const sh = g.run.floor.shrine!;
       g.run.player.x = sh.pos.x - 1;
       g.run.player.y = sh.pos.y;
@@ -177,7 +177,7 @@ describe('game', () => {
   });
 
   it('Halls arriving mid-floor opens the room into the full floor', () => {
-    const g = Game.start(newWorld(8));
+    const g = Game.start(newWorld(8, { harm: 'strike' }));
     const before = g.run.floor;
     const open = (f: typeof before) => f.tiles.filter((t) => t !== T_WALL).length;
     g.adopt('halls', 'shrine');
@@ -190,7 +190,7 @@ describe('game', () => {
   });
 
   it('Peril arriving mid-floor brings rats, but not right beside you', () => {
-    const g = Game.start(newWorld(9));
+    const g = Game.start(newWorld(9, { harm: 'strike' }));
     g.adopt('peril', 'shrine');
     const p = g.run.player;
     expect(g.run.monsters.length).toBeGreaterThanOrEqual(2);
@@ -198,7 +198,7 @@ describe('game', () => {
   });
 
   it('imposed rules arrive by themselves once emerged', () => {
-    const world = newWorld(12);
+    const world = newWorld(12, { harm: 'strike' });
     world.rules = ['peril', 'halls', 'growth'];
     world.emergence.bestiary = 3;
     const g = Game.start(world);
@@ -214,7 +214,7 @@ describe('game', () => {
   });
 
   it('the fifth kill brings Things, which fills the current floor', () => {
-    const world = newWorld(5);
+    const world = newWorld(5, { harm: 'strike' });
     world.rules = ['peril', 'halls'];
     const g = Game.start(world);
     const p = g.run.player;
@@ -244,9 +244,10 @@ describe('game', () => {
     expect(g.run.items.length).toBeGreaterThan(0);
   });
 
-  it('bots play hundreds of turns without breaking invariants, under every rule', () => {
-    for (let seed = 1; seed <= 24; seed++) {
-      const world = newWorld(seed);
+  it('bots play hundreds of turns without breaking invariants, under every rule and every means of harm', () => {
+    for (let seed = 1; seed <= 30; seed++) {
+      // Every means, and open worlds that a schism shrine settles mid-run.
+      const world = newWorld(seed, { harm: (['strike', 'volley', 'arcanum', 'discourse', null] as const)[seed % 5] });
       // Half the worlds start with everything on, so late rules get exercised.
       if (seed % 2 === 0) world.rules = RULE_ORDER.filter((r) => r !== 'bestiary');
       else if (seed % 3 === 0) world.rules = ['peril'];
@@ -257,6 +258,9 @@ describe('game', () => {
         const { player: p, monsters, floor } = g.run;
         expect(passable(floor, p.x, p.y)).toBe(true);
         if (!g.run.over) expect(p.hp).toBeLessThanOrEqual(g.stats.maxHp);
+        expect(p.mana).toBeLessThanOrEqual(Math.max(g.stats.maxMana, 0));
+        expect(p.ammo ?? 0).toBeGreaterThanOrEqual(0);
+        expect(p.gold).toBeGreaterThanOrEqual(0);
         const seen = new Set<number>();
         for (const m of monsters) {
           expect(passable(floor, m.x, m.y)).toBe(true);
@@ -267,10 +271,10 @@ describe('game', () => {
         }
       }
     }
-  }, 30_000);
+  }, 60_000);
 
   it('death leaves a grave and a chronicle; the next heir inherits the rulebook', () => {
-    const world = newWorld(11);
+    const world = newWorld(11, { harm: 'strike' });
     world.rules = ['peril', 'halls', 'things', 'arms'];
     const g = Game.start(world);
     g.run.player.weapon = greatsword();
@@ -295,7 +299,7 @@ describe('game', () => {
 
   it('a saved run resumes exactly', () => {
     const store = new Store(memoryKV());
-    const world = newWorld(21);
+    const world = newWorld(21, { harm: 'strike' });
     world.rules = ['peril', 'halls', 'things', 'growth', 'arms', 'weight', 'darkness'];
     const g = Game.start(world);
     const rng = new Rng(5);
@@ -315,7 +319,7 @@ describe('game', () => {
 });
 
 describe('emergence', () => {
-  const worlds = Array.from({ length: 4000 }, (_, i) => newWorld(i + 1));
+  const worlds = Array.from({ length: 4000 }, (_, i) => newWorld(i + 1, { harm: 'strike' }));
   const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
   it('is usually early, with a small chance of a long wait', () => {
@@ -343,7 +347,7 @@ describe('emergence', () => {
   });
 
   it('old saved worlds keep the rats and rooms they always had', () => {
-    const old = { ...newWorld(77), version: undefined, emergence: undefined, rules: ['things'] as RuleId[] } as unknown as World;
+    const old = { ...newWorld(77, { harm: 'strike' }), version: undefined, emergence: undefined, rules: ['things'] as RuleId[] } as unknown as World;
     const m = migrateWorld(old);
     expect(m.rules).toEqual(['halls', 'peril', 'things']);
     expect(m.emergence.bestiary).toBe(4);

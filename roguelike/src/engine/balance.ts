@@ -96,4 +96,55 @@ export const BALANCE = {
     emberBurn: 2,
     wildfireBurn: 4,
   },
+  /** Commerce: what things cost. Selling fetches half. */
+  commerce: {
+    potion: [10, 2] as [number, number],
+    food: [6, 2] as [number, number],
+    /** Arms: base + value × perPoint + depth × perDepth. */
+    weapon: [8, 5, 2] as [number, number, number],
+    armor: [8, 6, 2] as [number, number, number],
+    ammoEach: 2,
+    /** Paying a shrine to show other offers: base + depth × perDepth. */
+    reroll: [15, 5] as [number, number],
+    /** The Fair Prices variant. */
+    discount: 0.75,
+  },
+  /** Means of Harm (Phase 2). Strike has no numbers of its own: it is everything above. */
+  harm: {
+    /** Volley: how far a shot flies; Weight takes 1 off per 3 weight of a launcher within STR. */
+    volleyRange: 6,
+    minRange: 2,
+    /** Shots you start with when Volley is revealed, and in every new heir's quiver. */
+    startAmmo: 8,
+    /** Chance a spent shot breaks where it lands (Durability raises it). */
+    ammoBreak: 0.15,
+    ammoBreakDurability: 0.3,
+    /** Bundles of shots lying on each floor under Volley: count and size. */
+    ammoPiles: [1, 2] as [number, number],
+    ammoPile: [2, 5] as [number, number],
+    /** Chance a felled foe leaves a shot or two. */
+    ammoDrop: 0.3,
+    /** Volley: skirmishers shoot from this far, and keep at least this far back. */
+    skirmishRange: 5,
+    skirmishKeep: 2,
+    /** Arcanum: a bolt's reach, its price, the pool and its refill. */
+    arcanumRange: 4,
+    boltCost: 1,
+    arcanumMana: 3,
+    /** +1 mana every this many turns under Arcanum. */
+    arcanumManaEvery: 3,
+    /** Discourse: how far a barb carries, by path, around corners. */
+    earshot: 3,
+    /** Discourse: a foe left unaddressed this many turns regains 1 composure (HP) per this many turns. */
+    composureEvery: 2,
+    /** Harm at a distance lands softer: attack × this, rounded up (so the first floors play alike). */
+    power: { strike: 1, volley: 0.65, arcanum: 0.6, discourse: 0.65 },
+    /** Strike: you guard as you close in. Blows from foes beside you land this much lighter. */
+    strikeGuard: 1,
+    /** How many Means of Harm a schism shrine offers. */
+    schismOffers: 3,
+    /** New worlds: chance the means is left open for a schism shrine, else rolled by weight. */
+    openChance: 0.4,
+    rollWeights: { strike: 30, volley: 25, arcanum: 25, discourse: 20 },
+  },
 } as const;

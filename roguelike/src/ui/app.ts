@@ -6,7 +6,9 @@ import { defaultKV, heirName, newWorld, randomSeed, Store } from '../engine/worl
 import { repealable, RULE_ORDER } from '../rules/rules.ts';
 import { lexiconFor } from '../theme/lexicon.ts';
 import { describeTile } from './describe.ts';
+import { aims, type HarmId } from '../rules/harm.ts';
 import {
+  axiomBannerHTML,
   bannerHTML,
   codexHTML,
   confirmDescendHTML,
@@ -18,6 +20,8 @@ import {
   lookCardHTML,
   optionsHTML,
   premiseLine,
+  schismHTML,
+  shopHTML,
   shrineHTML,
   sidebarHTML,
   topbarHTML,
@@ -27,6 +31,7 @@ import { COLORS, Renderer } from './render.ts';
 
 type Overlay =
   | { kind: 'banner'; rule: RuleId; how: 'shrine' | 'mastery' | 'milestone' }
+  | { kind: 'axiom'; harm: HarmId; how: 'rolled' | 'schism' }
   | { kind: 'codex' }
   | { kind: 'help' }
   | { kind: 'options' }
@@ -194,6 +199,7 @@ export class App {
           <button data-cmd="wait">Wait</button>
           <button data-cmd="pickup" class="pad-pickup" disabled>Pick up</button>
           <button data-cmd="look" class="pad-look" aria-pressed="false">Look</button>
+          <button data-cmd="fire" class="pad-fire" hidden>Aim</button>
         </div>
       </nav>
       <aside class="side"></aside>
@@ -320,7 +326,9 @@ export class App {
     const game = this.game;
     if (!slot || !game) return;
     const at = this.look ?? this.hover;
-    const html = at ? lookCardHTML(describeTile(game, at.x, at.y), this.look ? 'look' : 'hover') : '';
+    const p = game.run.player;
+    const aim = this.look && this.canAim() && !(at!.x === p.x && at!.y === p.y) ? game.lex.t('hud.fire') : null;
+    const html = at ? lookCardHTML(describeTile(game, at.x, at.y), this.look ? 'look' : 'hover', aim) : '';
     if (slot.dataset.html !== html) {
       slot.innerHTML = html;
       slot.dataset.html = html;
@@ -329,6 +337,18 @@ export class App {
       this.renderer.lookCursor = this.look;
       this.renderer.hoverCursor = this.look ? null : this.hover;
     }
+  }
+
+  /** Can the player aim harm right now (a settled means that reaches, with foes in the world)? */
+  private canAim(): boolean {
+    const g = this.game;
+    return !!g && g.has('peril') && g.harmSettled && aims(g.ctx.harm);
+  }
+
+  /** Aimed harm: at a tile, or at the nearest foe in reach. */
+  private fire(at?: Pos) {
+    if (!this.canAim()) return;
+    this.act(at ? { type: 'fire', x: at.x, y: at.y } : { type: 'fire' });
   }
 
   /** Descend, unless that would leave an unanswered shrine behind and the player wants a warning. */
@@ -398,6 +418,12 @@ export class App {
     if (stairsBtn) stairsBtn.textContent = this.stairsHere() === 'up' ? 'Climb up' : 'Descend';
     const pickup = q('.pad-pickup') as HTMLButtonElement | null;
     if (pickup) pickup.disabled = game.itemsHere().length === 0;
+    const fireBtn = q('.pad-fire');
+    if (fireBtn) {
+      fireBtn.hidden = !this.canAim();
+      fireBtn.textContent = game.lex.t('hud.fire');
+    }
+    if (this.renderer) this.renderer.target = this.canAim() ? (game.targets()[0] ?? null) : null;
     const lookBtn = q('.pad-look');
     if (lookBtn) {
       lookBtn.classList.toggle('on', !!this.look);
@@ -422,10 +448,13 @@ export class App {
     else if (top?.kind === 'help') html = helpHTML(game?.lex);
     else if (!game) html = '';
     else if (top?.kind === 'banner') html = bannerHTML(top.rule, top.how, game.world, game.lex);
+    else if (top?.kind === 'axiom') html = axiomBannerHTML(top.harm, top.how, game.lex);
     else if (top?.kind === 'codex') html = codexHTML(game.world, game.lex);
     else if (top?.kind === 'confirm-stairs') html = confirmDescendHTML(game, top.dir);
     else if (game.run.pending?.kind === 'shrine') html = shrineHTML(game);
     else if (game.run.pending?.kind === 'levelup') html = levelupHTML(game);
+    else if (game.run.pending?.kind === 'schism') html = schismHTML(game);
+    else if (game.run.pending?.kind === 'shop') html = shopHTML(game);
     el.hidden = !html;
     if (el.dataset.html !== html) {
       el.innerHTML = html;
@@ -481,6 +510,8 @@ export class App {
         this.fresh.add(e.rule);
       }
       if (e.type === 'floor') this.layout();
+      if (e.type === 'axiom') this.overlays.push({ kind: 'axiom', harm: e.harm, how: e.how });
+      if (e.type === 'shot') this.renderer?.shot(e.path);
     }
   }
 
@@ -549,6 +580,25 @@ export class App {
       }
       return;
     }
+    if (pending?.kind === 'schism') {
+      const offers = game.run.floor.schism?.offers ?? [];
+      const n = Number(k);
+      if (n >= 1 && n <= offers.length) {
+        handled();
+        this.act({ type: 'schism', harm: offers[n - 1] });
+      } else if (k === 'Escape') {
+        handled();
+        this.act({ type: 'schism', harm: null });
+      }
+      return;
+    }
+    if (pending?.kind === 'shop') {
+      if (k === 'Escape' || k === 'Enter') {
+        handled();
+        this.act({ type: 'leaveShop' });
+      }
+      return;
+    }
     if (pending?.kind === 'levelup') {
       const stat = ({ '1': 'str', '2': 'agi', '3': 'vit' } as const)[k as '1' | '2' | '3'];
       if (stat) {
@@ -577,6 +627,13 @@ export class App {
         const t = this.look;
         this.setLook(null);
         this.startTravel(t);
+        return;
+      }
+      if (k === 'f' && this.canAim()) {
+        handled();
+        const t = this.look;
+        this.setLook(null);
+        this.fire(t);
         return;
       }
       this.setLook(null);
@@ -640,6 +697,10 @@ export class App {
         if (food) this.act({ type: 'use', id: food.id });
         break;
       }
+      case 'f':
+        handled();
+        this.fire();
+        break;
       case 'z':
         this.act({ type: 'ability', ability: 'cleave' });
         break;
@@ -823,6 +884,11 @@ export class App {
       return;
     }
     const p = game.run.player;
+    // Tapping a foe your means can reach harms it from where you stand.
+    if (this.canAim() && game.targets().some((m) => m.x === t.x && m.y === t.y)) {
+      this.fire(t);
+      return;
+    }
     const dx = Math.sign(t.x - p.x);
     const dy = Math.sign(t.y - p.y);
     if (dx === 0 && dy === 0) {
@@ -899,6 +965,30 @@ export class App {
         break;
       case 'look':
         this.toggleLook();
+        break;
+      case 'fire':
+        this.fire();
+        break;
+      case 'look-fire': {
+        const t = this.look;
+        this.setLook(null);
+        if (t) this.fire(t);
+        break;
+      }
+      case 'schism':
+        this.act({ type: 'schism', harm: (d.harm || null) as HarmId | null });
+        break;
+      case 'buy':
+        this.act({ type: 'buy', id: Number(d.id) });
+        break;
+      case 'sell':
+        this.act({ type: 'sell', id: Number(d.id) });
+        break;
+      case 'leave-shop':
+        this.act({ type: 'leaveShop' });
+        break;
+      case 'reroll':
+        this.act({ type: 'reroll' });
         break;
       case 'look-walk': {
         const t = this.look;

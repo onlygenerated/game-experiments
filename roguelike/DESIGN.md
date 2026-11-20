@@ -230,6 +230,12 @@ explore floor → fight, loot, find shrine → draft a rule (or refuse)
   writes messages as `lex.t('foe.hit', { foe, n })`; a test fails if prose appears in
   engine or rule source. Internal ids (`rat`, `ember`) keep their old names for save
   compatibility and are never shown.
+- **Means of Harm** (`src/rules/harm.ts`): the first axiom family. Strike, Volley,
+  Arcanum and Discourse decide what walking into a foe does, how aimed harm travels
+  (`src/engine/aim.ts`: lines, piercing lines, paths around corners), its reach and its
+  cost. One `harm()` pipeline in the engine serves them all; the words for each come from
+  the premise's `means` (a premise speaks differently under each). A world rolls its means
+  or leaves it open for a schism shrine to settle, permanently.
 - **The world genome** (`World.genome`): premise, intrusions, settled axioms and the pool
   of rules the world can ever discover. Rules in the same exclusive group can't coexist
   and can't be repealed.
@@ -260,6 +266,8 @@ explore floor → fight, loot, find shrine → draft a rule (or refuse)
 - [x] Keyboard and touch controls
 - [x] Seven premises, rolled per world, with intrusions, floor names, glosses and Plain
       labels (Roadmap Phase 1)
+- [x] Four Means of Harm with schism shrines, targeting and probe parity; Commerce
+      (Roadmap Phase 2)
 
 ### What's next
 

@@ -3,8 +3,9 @@ import type { TileInfo } from './describe.ts';
 import { OPTION_DEFS, type OptionDef, type Options } from './options.ts';
 import { CLEAVE_COST, MEND_COST, xpNeeded, type Game } from '../engine/game.ts';
 import { BALANCE } from '../engine/balance.ts';
-import { DEFAULT_PREMISE, lexiconOf, PREMISES, type Lexicon } from '../theme/lexicon.ts';
+import { DEFAULT_PREMISE, lexiconFor, lexiconOf, PREMISES, type Lexicon } from '../theme/lexicon.ts';
 import type { Item, RuleId, World } from '../engine/types.ts';
+import { aims, MEANS, type HarmId } from '../rules/harm.ts';
 import {
   alt,
   derive,
@@ -102,10 +103,11 @@ export function sidebarHTML(game: Game, fresh: ReadonlySet<string>): string {
   let vitals = game.has('peril')
     ? bar(L.t('hud.hp'), p.hp, s.maxHp, 'hp', undefined, L.roleGloss('hp'))
     : `<p class="muted small">${esc(L.t('hud.unhurt'))}</p>`;
-  if (game.has('arcana')) vitals += bar(L.t('hud.mana'), p.mana, s.maxMana, 'mana', undefined, L.roleGloss('mana'));
+  if (s.maxMana > 0) vitals += bar(L.t('hud.mana'), p.mana, s.maxMana, 'mana', undefined, L.roleGloss('mana'));
   if (game.has('hunger'))
     vitals += bar(L.t('hud.satiety'), p.satiety, MAX_SATIETY, p.satiety < 100 ? 'food low' : 'food', L.t(p.satiety <= 0 ? 'hud.starving' : p.satiety < MAX_SATIETY / 2 ? 'hud.hungry' : 'hud.fed'), L.roleGloss('satiety'));
   if (game.has('growth')) vitals += bar(L.t('hud.level', { n: p.level }), p.xp, xpNeeded(p.level, game.ctx), 'xp', L.t('hud.xp', { n: p.xp, max: xpNeeded(p.level, game.ctx) }), L.roleGloss('xp'));
+  if (game.has('peril')) vitals += meansHTML(game);
   out.push(section('core', esc(p.name), vitals, fresh));
 
   if (game.has('growth') || game.has('arms')) {
@@ -264,7 +266,7 @@ export function shrineHTML(game: Game): string {
       <h1>Choose a rule for ${esc(game.world.name)}</h1>
       <p class="muted">Adopting a rule changes this world for every ${esc(L.role('heir'))} who follows${game.has('peril') ? `, and the ${esc(L.role('shrine'))} heals you fully` : ''}. Rules you pass over may be offered again.</p></header>
     <div class="cards">${cards.join('')}</div>
-    <footer><button data-cmd="shrine" data-rule="" class="ghost"><kbd>Esc</kbd> Step away — you can return while you’re on this ${esc(L.role('floor'))}</button></footer>
+    <footer>${rerollHTML(game)}<button data-cmd="shrine" data-rule="" class="ghost"><kbd>Esc</kbd> Step away — you can return while you’re on this ${esc(L.role('floor'))}</button></footer>
   </div>`;
 }
 
@@ -319,6 +321,7 @@ export function codexHTML(world: World, L: Lexicon): string {
     <header class="modal-head"><span class="eyebrow">Codex of ${esc(world.name)}</span><h1>The rules of this world</h1>
       <p class="muted premise-name">${esc(premiseLine(world))}</p>
       ${borrowed.length ? `<ul class="borrowed">${borrowed.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}</header>
+    ${world.rules.includes('peril') ? codexMeansHTML(world, L) : ''}
     <div class="codex-list">${active
       .map((r) => `<article class="codex-entry"><h2>${esc(L.rule(r).name)}${glossHTML(L.ruleGloss(r))} <span class="tier">Tier ${RULES[r].tier}</span></h2>
         <p class="tagline">${esc(L.rule(r).tagline)}</p>${ruleBody(r, world.variants, L)}</article>`)
@@ -341,6 +344,7 @@ export function helpHTML(L: Lexicon = lexiconOf(DEFAULT_PREMISE)): string {
       <div><dt>&gt; · &lt; · Enter</dt><dd>Go down / up stairs (Enter takes whichever you're on)</dd></div>
       <div><dt>q / e</dt><dd>${esc(L.t('help.use'))}</dd></div>
       <div><dt>z / x</dt><dd>${esc(L.t('help.abilities'))}</dd></div>
+      <div><dt>f</dt><dd>${esc(L.t('help.fire'))}</dd></div>
       <div><dt>g · ,</dt><dd>Pick up what's here</dd></div>
       <div><dt>; · v</dt><dd>Look: inspect any tile (arrows move the cursor, Esc leaves)</dd></div>
       <div><dt>c</dt><dd>Codex</dd></div>
@@ -358,12 +362,13 @@ export function helpHTML(L: Lexicon = lexiconOf(DEFAULT_PREMISE)): string {
 // Look card, options, confirmations
 // ---------------------------------------------------------------------------
 
-export function lookCardHTML(info: TileInfo, mode: 'look' | 'hover'): string {
+/** `aim`: label for an Aim button (this world's means can be aimed at this tile), or null. */
+export function lookCardHTML(info: TileInfo, mode: 'look' | 'hover', aim: string | null = null): string {
   return `<div class="lookcard${mode === 'hover' ? ' hover' : ''}" role="status">
     <p class="lc-title">${esc(info.title)}</p>
     ${info.lines.map((l) => `<p class="lc-line">${esc(l)}</p>`).join('')}
     ${mode === 'look'
-      ? `<div class="lc-btns">${info.walkable && info.known ? '<button data-cmd="look-walk">Walk here</button>' : ''}<button data-cmd="look" class="ghost">Done <kbd>Esc</kbd></button></div>`
+      ? `<div class="lc-btns">${aim ? `<button data-cmd="look-fire" class="aim">${esc(aim)} <kbd>F</kbd></button>` : ''}${info.walkable && info.known ? '<button data-cmd="look-walk">Walk here</button>' : ''}<button data-cmd="look" class="ghost">Done <kbd>Esc</kbd></button></div>`
       : ''}
   </div>`;
 }
@@ -402,5 +407,106 @@ export function confirmDescendHTML(game: Game, dir: 'up' | 'down'): string {
       <button class="ghost" data-cmd="dismiss"><kbd>Esc</kbd> Stay</button>
     </footer>
     <p class="muted small">You can turn this warning off in Options.</p>
+  </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Means of Harm and Commerce
+// ---------------------------------------------------------------------------
+
+/** One means, as a card or banner body: what it is, and what it costs. */
+function meansBody(id: HarmId, L: Lexicon): string {
+  const m = L.means(id);
+  return `<p class="summary">${esc(m.summary)}</p>
+    <p class="up"><b>+</b> ${esc(m.upside)}</p>
+    <p class="down"><b>−</b> ${esc(m.downside)}</p>`;
+}
+
+/** The sidebar's line on how harm works here, with what you have to harm with. */
+function meansHTML(game: Game): string {
+  const L = game.lex;
+  const p = game.run.player;
+  if (!game.harmSettled) return `<p class="means muted small">${esc(L.t('hud.harm.open'))}</p>`;
+  const id = game.ctx.harm;
+  const m = L.means(id);
+  const bits = [`<b>${esc(m.name)}</b>${glossHTML(L.ruleGlossOf(m.name, lexiconOf('plain').means(id).name))}`];
+  if (aims(id)) bits.push(`${esc(L.t('preview.range'))} ${game.stats.range}`);
+  if (MEANS[id].cost === 'ammo') bits.push(`<span class="ammo${(p.ammo ?? 0) === 0 ? ' out' : ''}">${esc(L.t('hud.ammo'))} ${p.ammo ?? 0}</span>`);
+  return `<p class="means small" title="${esc(m.summary)}">${bits.join(' · ')}</p>`;
+}
+
+function codexMeansHTML(world: World, L: Lexicon): string {
+  const id = world.genome?.axioms.harm;
+  if (!id) return `<section class="codex-axiom"><h2>${esc(L.t('hud.harm'))}</h2><p class="muted">${esc(L.t('hud.harm.open'))}</p></section>`;
+  const m = L.means(id);
+  return `<section class="codex-axiom"><span class="eyebrow">${esc(L.t('hud.harm'))}</span>
+    <h2>${esc(m.name)}${glossHTML(L.ruleGlossOf(m.name, lexiconOf('plain').means(id).name))}</h2><p class="tagline">${esc(m.tagline)}</p>${meansBody(id, L)}</section>`;
+}
+
+/** The banner shown when a world's means becomes known. */
+export function axiomBannerHTML(id: HarmId, how: 'rolled' | 'schism', L: Lexicon): string {
+  const m = L.means(id);
+  return `<div class="modal banner axiom" role="dialog" aria-label="How harm works">
+    <span class="eyebrow">${how === 'schism' ? 'Settled for good' : 'This world was always this way'}</span>
+    <p class="new-rule">${esc(L.t('hud.harm'))}</p>
+    <h1>${esc(m.name)}</h1>
+    <p class="tagline">${esc(m.tagline)}</p>
+    ${meansBody(id, L)}
+    ${aims(id) ? '<p class="muted small">Press <kbd>F</kbd> (or Aim on the pad) to harm the nearest foe in reach; aim anywhere with Look.</p>' : ''}
+    <button class="primary" data-cmd="dismiss"><kbd>Enter</kbd> Continue</button>
+  </div>`;
+}
+
+/** A schism shrine's question: one card per offered means. */
+export function schismHTML(game: Game): string {
+  const L = game.lex;
+  const offers = game.run.floor.schism?.offers ?? [];
+  const cards = offers.map((id, i) => {
+    // Each card speaks in the words that means would bring.
+    const W = lexiconFor(game.world, L.plain, id);
+    const m = W.means(id);
+    return `<article class="rule-card schism-card">
+      <header><span class="tier">${esc(L.t('hud.harm'))}</span><h2>${esc(m.name)}${glossHTML(L.ruleGlossOf(m.name, lexiconOf('plain').means(id).name))}</h2><p class="tagline">${esc(m.tagline)}</p></header>
+      ${meansBody(id, W)}
+      <button class="primary" data-cmd="schism" data-harm="${id}"><kbd>${i + 1}</kbd> Choose ${esc(m.name)}</button>
+    </article>`;
+  });
+  return `<div class="modal shrine schism" role="dialog" aria-label="${esc(L.role('schism'))}">
+    <header class="modal-head"><span class="eyebrow">${esc(L.t('look.schism'))} · ${esc(L.t('hud.depth', { n: game.run.depth }))}</span>
+      <h1>How should harm work in ${esc(game.world.name)}?</h1>
+      <p class="muted">This choice is permanent. Every ${esc(L.role('heir'))} who follows lives with it, and it can never be repealed.</p></header>
+    <div class="cards">${cards.join('')}</div>
+    <footer><button data-cmd="schism" data-harm="" class="ghost"><kbd>Esc</kbd> Not yet — it will ask again</button></footer>
+  </div>`;
+}
+
+function rerollHTML(game: Game): string {
+  const cost = game.rerollCost();
+  if (cost === null) return '';
+  const L = game.lex;
+  const poor = game.run.player.gold < cost;
+  return `<button data-cmd="reroll" class="ghost"${poor ? ' disabled' : ''}>${esc(L.t('shrine.reroll.button', { n: cost }))}</button>`;
+}
+
+/** A merchant's wares and what you could sell. */
+export function shopHTML(game: Game): string {
+  const L = game.lex;
+  const p = game.run.player;
+  const mc = game.run.floor.merchant;
+  const stock = mc?.stock ?? [];
+  const row = (it: Item, price: number, cmd: 'buy' | 'sell', ok: boolean) => {
+    const facts = itemFacts(it, game);
+    return `<li class="item kind-${it.kind}"><div class="item-main"><span class="item-name">${esc(itemLabel(it, game.ctx, L))}</span>${glossHTML(L.itemGloss(it))}
+      <span class="item-facts">${facts.map(esc).join(' · ')}</span></div>
+      <div class="item-btns"><button data-cmd="${cmd}" data-id="${it.id}"${ok ? '' : ' disabled'}>${cmd === 'buy' ? 'Buy' : 'Sell'} · ${esc(L.t('shop.price', { n: price }))}</button></div></li>`;
+  };
+  const buy = stock.map((it) => row(it, game.priceOf(it), 'buy', p.gold >= game.priceOf(it))).join('');
+  const sell = p.inventory.map((it) => row(it, game.sellPriceOf(it), 'sell', true)).join('');
+  return `<div class="modal shop" role="dialog" aria-label="${esc(L.role('merchant'))}">
+    <header class="modal-head"><span class="eyebrow">${esc(L.t('look.merchant'))} · ${esc(L.t('hud.depth', { n: game.run.depth }))}</span>
+      <h1>${esc(L.t('item.currency', { n: p.gold }))}</h1></header>
+    <h3>For sale</h3>${buy ? `<ul class="items">${buy}</ul>` : `<p class="muted">${esc(L.t('shop.empty'))}</p>`}
+    <h3>Sell</h3>${sell ? `<ul class="items">${sell}</ul>` : '<p class="muted">Nothing to sell.</p>'}
+    <footer><button data-cmd="leave-shop" class="primary"><kbd>Esc</kbd> Done</button></footer>
   </div>`;
 }

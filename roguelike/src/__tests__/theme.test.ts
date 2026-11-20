@@ -6,7 +6,8 @@ import { Game } from '../engine/game.ts';
 import type { RuleId, World } from '../engine/types.ts';
 import { memoryKV, migrateWorld, newWorld, Store, WORLD_VERSION } from '../engine/world.ts';
 import { eligible, frontier, repealable, RULE_ORDER, RULES } from '../rules/rules.ts';
-import { BASE_TEXT, ROLE_KEYS, THEMED_KEYS, type MessageKey } from '../theme/base.ts';
+import { BASE_TEXT, MEANS_ROLES, MEANS_THEMED_KEYS, ROLE_KEYS, THEMED_KEYS, type MessageKey } from '../theme/base.ts';
+import { HARMS } from '../rules/harm.ts';
 import { fill, lexiconFor, lexiconOf, placeholders, PREMISES, ROLLABLE } from '../theme/lexicon.ts';
 import { OLD_STONE } from '../theme/old-stone.ts';
 import type { PremiseId } from '../theme/premise.ts';
@@ -26,11 +27,32 @@ describe('premise data', () => {
     describe(premise.name, () => {
       const lex = lexiconOf(premise.id);
 
-      it('says every message with nothing left unfilled', () => {
-        for (const key of Object.keys(BASE_TEXT) as MessageKey[]) {
-          const out = lex.t(key, callVars(key));
-          expect(out, key).not.toMatch(/\{\w+\}/);
-          expect(out.trim(), key).not.toBe('');
+      it('says every message with nothing left unfilled, under every means of harm', () => {
+        for (const harm of HARMS) {
+          const L = lexiconOf(premise.id, [], false, harm);
+          for (const key of Object.keys(BASE_TEXT) as MessageKey[]) {
+            const out = L.t(key, callVars(key));
+            expect(out, `${harm} ${key}`).not.toMatch(/\{\w+\}/);
+            expect(out.trim(), `${harm} ${key}`).not.toBe('');
+          }
+          const m = L.means(harm);
+          for (const s of [m.name, m.tagline, m.summary, m.upside, m.downside]) expect(s, `${harm} means`).not.toMatch(/\{\w+\}/);
+        }
+      });
+
+      it('expresses every means of harm in its own words', () => {
+        for (const harm of HARMS) {
+          const m = premise.means[harm];
+          expect(m.name.trim() && m.tagline.trim() && m.summary.trim(), harm).toBeTruthy();
+          if (m.weapons) expect(m.weapons, harm).toHaveLength(WEAPONS.length);
+          if (premise.id === 'plain' || premise.id === 'old-stone') continue;
+          for (const r of MEANS_ROLES[harm]) expect(m.roles?.[r]?.trim(), `${harm} role ${r}`).toBeTruthy();
+          for (const key of MEANS_THEMED_KEYS[harm]) {
+            const template = m.text?.[key];
+            expect(template?.trim(), `${harm} ${key}`).toBeTruthy();
+            const allowed = new Set(Object.keys(callVars(key)));
+            for (const ph of placeholders(template!)) expect(allowed.has(ph) || isBuiltin(ph), `${premise.id} ${harm} ${key} uses {${ph}}`).toBe(true);
+          }
         }
       });
 
@@ -97,6 +119,7 @@ describe('worlds look nothing alike', () => {
       ...p.items.weapons,
       ...p.items.armors,
       ...RULE_ORDER.flatMap((r) => [lex.rule(r).name, lex.rule(r).variant.name]),
+      ...HARMS.flatMap((h) => [p.means[h].name, ...Object.values(p.means[h].roles ?? {}), ...(p.means[h].weapons ?? [])]),
       p.elements.ember.adj,
       p.elements.frost.adj,
     ];

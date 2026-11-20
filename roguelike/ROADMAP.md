@@ -207,12 +207,40 @@ the Codex name the premise and its borrowings. The exit criterion is a test (no 
 rollable premises share a noun), with a second test that no host line still names a thing
 it has borrowed, over every host × bundle × donor.
 
-### Phase 2 — Means of Harm (the first schism) and a use for money
+### Phase 2 — Means of Harm (the first schism) and a use for money — **done**
 
 **Volley**, **Arcanum** and **Discourse**, with harm channels, targeting and adapters for
 every existing rule. **Commerce** (M-42), because currency is dead weight today. Schism
 shrines. **Exit:** probe parity across Strike / Volley / Arcanum / Discourse; a player
 who has only played Strike worlds has to relearn how to fight.
+
+*Shipped as:* `src/rules/harm.ts` (the four means as modules: what a bump does, how
+harm travels, its reach and cost) and one `harm()` pipeline in the engine that every
+channel shares (hit chance, element, sneak, armour, wear, stagger), proved faithful by
+the golden games playing identically under Strike before anything new was switched on.
+`fire` aims along a line (`src/engine/aim.ts`) or around corners. **Volley**: the first
+body in the line takes the shot; bumping shoves; shots are spent, land, and can break
+(more under Durability); Weight shortens a launcher's reach; goblins become skirmishers
+that back off and shoot. **Arcanum**: a mana pool from the start, a bolt that pierces
+every body on its line, bumping shoves; Arcana deepens the pool and speeds it. **Discourse**:
+reaches anyone within three steps by path, around corners; everyone in earshot hears it
+and turns; foes left alone regain composure. Harm at range lands softer (65% / 60% /
+65% of attack, rounded up so the first floors play alike), and Strike guards as it
+closes in (blows from adjacent foes land 1 lighter). A new world rolls its means (40% are
+left open) and reveals it when the first foes arrive; an open world raises a **schism
+shrine** (◈) on every floor until it is answered, and the answer is permanent. Every
+premise expresses all four means — role words, six implements, combat lines — and its
+words change with the means (a Merger at Volley throws Paper Airplanes from a Stapler
+Sling). **Commerce** (tier 3, after Growth): a merchant (&) on every floor, buy and
+sell, pay a shrine once for other offers; one fewer free restorative per floor. Targeting:
+`f`, an Aim button on the pad, tap a foe in reach, or aim anywhere from Look.
+
+*Parity* (`npx vite-node tools/probe.ts 160 harm`, explorer bot, rules arriving as in
+play): median depth Strike 10, Volley 9, Arcanum 9, Discourse 9; means 9.2 / 8.8 / 8.8 /
+8.7. A test holds the means within 1.5 floors. *Deviations:* Commerce sits behind Growth
+(offered alongside the first rules it diluted them, costing the bot three floors);
+schism shrines exist for Means of Harm only so far; Discourse registers (Mockery,
+Flattery…) still ride on Elements' two kinds rather than five of their own.
 
 ### Phase 3 — Space, time, and an ending
 
@@ -258,15 +286,16 @@ Until then, graves stay as they work today.
 - **Rule-specific item traits:** traits that only exist under certain rules
   ("Featherweight" only means something under Weight).
 
-### First steps for Phase 2
+### First steps for Phase 3
 
-1. Harm channels and targeting in the engine (§1.6): an attack becomes *who, by what
-   channel, how much*, so Volley and Arcanum are adapters rather than forks.
-2. **Volley** first, as the first exclusive *Means of Harm* member besides Strike, with
-   its role words (ammunition, launcher) added to every premise.
-3. A schism shrine: offers one axiom family member, once, early, with a clear warning.
-4. **Commerce** (M-42) so currency has a use; it needs a merchant role per premise.
-5. Probe parity runs for Strike vs Volley before Arcanum and Discourse.
+1. A second axiom family, **Shape of Space**: Caverns as an exclusive alternative to
+   Halls, with the schism shrine generalised to offer any open family.
+2. **Tide Clock** for Flow of Time, which needs an `onTurn` hook in rule modules.
+3. **The Heart** (M-55): a deepest floor and a way to complete a world, so a world's
+   Age and its winner can be recorded.
+4. Premise words for both families in all seven premises, with the same tests (no
+   leaks, no shared nouns, nothing unfilled) extended over every family.
+5. Probe parity per space and time axiom, as for harm.
 
 ---
 

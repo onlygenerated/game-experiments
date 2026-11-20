@@ -50,6 +50,8 @@ try {
 
     await page.click('text=Begin a new world');
     await page.waitForTimeout(200);
+    // The main walk-through strikes; each other means gets its own section below.
+    await page.evaluate(() => { const a = window.unfolding; a.game.world.genome.axioms.harm = 'strike'; a.applyOptions(); a.refresh(); });
     ok(`${vp.name}: play screen with canvas`, await page.isVisible('.board canvas'));
     ok(`${vp.name}: tier 0 shows no pack`, !(await page.isVisible('[data-rule="things"]')));
     const tier0 = await page.evaluate(() => {
@@ -71,7 +73,8 @@ try {
     await shot(page, `${vp.name}-2a-first-shrine`);
     await page.click('.modal.shrine .rule-card >> nth=0 >> button.primary');
     ok(`${vp.name}: first rule announced`, await page.isVisible('.modal.banner'));
-    await page.click('[data-cmd="dismiss"]');
+    // Peril also says how harm works here: one banner after another.
+    while (await page.isVisible('.modal.banner')) await page.click('[data-cmd="dismiss"]');
 
     // Bring in Peril and Halls (whichever is missing) the way a shrine would, mid-floor.
     const opened = await page.evaluate(() => {
@@ -315,17 +318,23 @@ try {
     const lookFrom = await page.evaluate(() => ({ ...window.unfolding.look }));
     if (vp.isMobile) {
       // Tap a tile a few steps away, then Walk here.
+      // Pressing the pad's Look button may have scrolled the page down to it: bring the board back.
+      await page.evaluate(() => document.querySelector('.board').scrollIntoView({ block: 'start' }));
+      await page.waitForTimeout(100);
+      // A tile a few steps away whose spot on screen is the map itself, not the look card over it.
       const goal = await page.evaluate(() => {
-        const a = window.unfolding, g = a.game, p = g.run.player, f = g.run.floor;
-        for (let r = 3; r >= 1; r--) for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
+        const a = window.unfolding, g = a.game, p = g.run.player, f = g.run.floor, v = a.renderer.view;
+        const canvas = document.querySelector('.board canvas');
+        const r0 = canvas.getBoundingClientRect();
+        for (let r = 3; r >= 1; r--) for (const [dx, dy] of [[1, 0], [-1, 0], [0, -1], [0, 1]]) {
           const x = p.x + dx * r, y = p.y + dy * r;
           let open = true;
           for (let k = 1; k <= r; k++) if (f.tiles[(p.y + dy * k) * f.w + p.x + dx * k] === 0) open = false;
-          if (open) return { x, y };
+          if (!open) continue;
+          const sx = r0.left + x * v.cell - v.camX + v.cell / 2, sy = r0.top + y * v.cell - v.camY + v.cell / 2;
+          if (document.elementFromPoint(sx, sy) === canvas) return { x, y };
         }
       });
-      // Pressing the pad's Look button may have scrolled the page down to it: bring the board back.
-      await page.evaluate(() => document.querySelector('.board').scrollIntoView({ block: 'start' }));
       // Let the camera and layout settle (the Look card can reflow the board) before aiming.
       const camKey = () => page.evaluate(() => { const v = window.unfolding.renderer.view, r = document.querySelector('.board canvas').getBoundingClientRect(); return `${v.camX},${v.camY},${v.cell},${r.x},${r.y}`; });
       for (let i = 0, prev = ''; i < 40; i++) { const k = await camKey(); if (k === prev) break; prev = k; await page.waitForTimeout(60); }
@@ -474,6 +483,83 @@ try {
     ok(`${vp.name}: repeal removed Weight (${rules})`, !rules.includes('weight') && rules.includes('arms'));
     const graves = await page.evaluate(() => window.unfolding.game.world.graves.length);
     ok(`${vp.name}: grave of the first heir exists (${graves})`, graves === 1);
+
+    // ---- Means of Harm: aim, a schism shrine, a merchant --------------------
+    await page.click('[data-cmd="leave"]');
+    await page.click('text=Begin a new world');
+    const aimed = await page.evaluate(() => {
+      const a = window.unfolding, g = a.game;
+      g.world.genome.axioms.harm = 'volley';
+      a.applyOptions();
+      // No Growth here: without it every shot lands, so the check is exact.
+      for (const r of ['peril', 'halls', 'things']) if (!g.world.rules.includes(r)) g.adopt(r, 'shrine');
+      g.events.splice(0);
+      a.overlays = [];
+      g.run.pending = null;
+      // One rat, three tiles away along an open row or column.
+      const { player: p, floor: f } = g.run;
+      g.run.monsters = [];
+      const open = (x, y) => x >= 0 && y >= 0 && x < f.w && y < f.h && f.tiles[y * f.w + x] !== 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if ([1, 2, 3].every((k) => open(p.x + dx * k, p.y + dy * k))) {
+          g.run.monsters.push({ id: 9300, kind: 'rat', x: p.x + dx * 3, y: p.y + dy * 3, hp: 30, maxHp: 30, atk: 0, def: 0, xp: 1, aware: true, stun: 999, element: null });
+          break;
+        }
+      }
+      g.run.player.ammo = 5;
+      g.refreshVision();
+      a.refresh();
+      return { foes: g.run.monsters.length, button: !document.querySelector('.pad-fire').hidden };
+    });
+    ok(`${vp.name}: under Volley there is something to aim at, and an Aim button`, aimed.foes === 1 && aimed.button);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    if (vp.isMobile) await page.click('.pad-fire');
+    else await page.keyboard.press('f');
+    const fired = await page.evaluate(() => { const g = window.unfolding.game; return { hp: g.run.monsters[0]?.hp, ammo: g.run.player.ammo, means: document.querySelector('.side .means')?.textContent ?? '' }; });
+    ok(`${vp.name}: aiming harms the foe at range and spends a shot (${fired.hp}/30, ${fired.ammo} left)`, fired.hp < 30 && fired.ammo === 4);
+    ok(`${vp.name}: the sidebar says how harm works here ("${fired.means.trim()}")`, /4/.test(fired.means));
+    await shot(page, `${vp.name}-7a-volley`);
+
+    await page.evaluate(() => {
+      const a = window.unfolding, g = a.game;
+      delete g.world.genome.axioms.harm;
+      a.applyOptions();
+      g.run.floor.schism = null;
+      g.placeSchism();
+      const sc = g.run.floor.schism;
+      g.run.monsters = [];
+      g.run.player.x = sc.pos.x;
+      g.run.player.y = sc.pos.y;
+      g.enterTile();
+      a.refresh();
+    });
+    ok(`${vp.name}: a schism shrine asks how harm should work`, await page.isVisible('.modal.schism'));
+    await shot(page, `${vp.name}-7b-schism`);
+    await page.click('.modal.schism .schism-card >> nth=0 >> button.primary');
+    const settled = await page.evaluate(() => window.unfolding.game.world.genome.axioms.harm);
+    ok(`${vp.name}: choosing settles the world (${settled}) and announces it`, !!settled && (await page.isVisible('.modal.banner.axiom')));
+    await page.click('[data-cmd="dismiss"]');
+
+    await page.evaluate(() => {
+      const a = window.unfolding, g = a.game;
+      g.adopt('commerce', 'shrine');
+      g.events.splice(0);
+      a.overlays = [];
+      const mc = g.run.floor.merchant;
+      g.run.player.gold = 500;
+      g.run.player.x = mc.pos.x;
+      g.run.player.y = mc.pos.y;
+      g.enterTile();
+      a.refresh();
+    });
+    ok(`${vp.name}: a merchant opens shop`, await page.isVisible('.modal.shop'));
+    const packBefore = await page.evaluate(() => window.unfolding.game.run.player.inventory.length);
+    await page.click('.modal.shop [data-cmd="buy"] >> nth=0');
+    const bought = await page.evaluate(() => ({ n: window.unfolding.game.run.player.inventory.length, gold: window.unfolding.game.run.player.gold }));
+    ok(`${vp.name}: buying spends currency and fills the pack`, bought.n === packBefore + 1 && bought.gold < 500);
+    await shot(page, `${vp.name}-7c-shop`);
+    await page.click('.modal.shop [data-cmd="leave-shop"]');
+    ok(`${vp.name}: leaving the shop closes it`, !(await page.isVisible('.modal.shop')));
 
     // ---- Every premise speaks its own words -----------------------------
     // New worlds roll their premise; keep making them until each one has shown up.

@@ -25,7 +25,9 @@ run in progress are saved in `localStorage`.
 
 Arrows / vi keys / numpad move; tap the map to step, hold a spot to walk there, drag to
 look around. `;` or `v` (or **Look**) inspects any tile without moving; `g` picks up
-what's underfoot. **Options** (`o`) is saved per browser:
+what's underfoot. In worlds where harm reaches (Volley, Arcanum, Discourse), `f` (or
+**Aim**, or tapping a foe) harms the nearest foe in reach, and `f` in Look mode aims at
+the cursor. **Options** (`o`) is saved per browser:
 
 | Option | Choices |
 |---|---|
@@ -46,6 +48,8 @@ what's underfoot. **Options** (`o`) is saved per browser:
 |---|---|
 | `src/rules/modules.ts` | Each rule's behaviour: prerequisites and hooks |
 | `src/rules/rules.ts` | The rule graph (frontier, groups, pool), derived stats, shrine previews |
+| `src/rules/harm.ts` | Means of Harm: Strike, Volley, Arcanum, Discourse |
+| `src/engine/aim.ts` | Aiming geometry: lines and rays |
 | `src/theme/` | The lexicon, base vocabulary and bundles; *The Old Stone* and *The Plain* |
 | `src/theme/premises/` | The six themed premises: every word a world of that kind shows |
 | `src/engine/game.ts` | Turn loop, combat, shrines, rule adoption, death and graves |
@@ -76,5 +80,9 @@ per-world emergence depths (basic rules usually arrive early, occasionally very 
 mastery and imposed arrivals, rolled world variants, new world / new heir with one repeal, graves and a chronicle, keyboard
 and touch controls. Every world rolls one of seven premises — an office mid-merger, a
 singing garden, a society season, a tide pool, a bureaucracy, a dream — so no two worlds
-share a noun; Plain labels turns the costume off. Every tuning number is in `src/engine/balance.ts`; see DESIGN.md §8
+share a noun; Plain labels turns the costume off. And worlds fight differently: each
+rolls (or settles at a schism shrine) a Means of Harm — strike up close, shoot along a
+line with shots you have to collect, pierce lines with mana, or say things that carry
+around corners — with its own words in every premise. Commerce puts a merchant on
+every floor. `npx vite-node tools/probe.ts 160 harm` measures parity between the means. Every tuning number is in `src/engine/balance.ts`; see DESIGN.md §8
 for what the probe measures and the targets.

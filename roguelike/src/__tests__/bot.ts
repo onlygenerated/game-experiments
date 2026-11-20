@@ -5,11 +5,49 @@ import { T_UP, type Item } from '../engine/types.ts';
 import { derive } from '../rules/rules.ts';
 
 /**
+ * How to fight, whatever the world's Means of Harm: aim at whatever is in
+ * reach, shove what's in the way when there's nothing to aim with, and wait
+ * for mana rather than walk into a crowd empty-handed. Null: nothing to fight.
+ */
+export function fightAction(g: Game): Action | null {
+  const p = g.run.player;
+  const adjacent = DIRS.find((d) => g.monsterAt(p.x + d.x, p.y + d.y));
+  const means = g.means;
+  if (means.reach === 'adjacent') return adjacent ? { type: 'move', dx: adjacent.x, dy: adjacent.y } : null;
+  const loaded = means.cost === 'ammo' ? (p.ammo ?? 0) > 0 : means.cost === 'mana' ? p.mana >= 1 : true;
+  const target = g.targets()[0];
+  if (target && loaded) return { type: 'fire', x: target.x, y: target.y };
+  if (adjacent) return { type: 'move', dx: adjacent.x, dy: adjacent.y };
+  // Arcanum, out of mana with foes about: let it come back.
+  if (means.cost === 'mana' && target) return { type: 'wait' };
+  return null;
+}
+
+/** Answer whatever is pending that isn't a rule shrine or a level-up: schisms and shops. */
+function pendingAction(g: Game, rng: Rng): Action | null {
+  const run = g.run;
+  if (run.pending?.kind === 'schism') {
+    const offers = run.floor.schism?.offers ?? [];
+    return { type: 'schism', harm: offers.length ? rng.pick(offers) : null };
+  }
+  if (run.pending?.kind === 'shop') {
+    const p = run.player;
+    const stock = run.floor.merchant?.stock ?? [];
+    const want = stock.find((i) => (i.kind === 'potion' || i.kind === 'ammo' || (i.kind === 'food' && g.has('hunger'))) && g.priceOf(i) <= p.gold && (i.kind === 'ammo' || p.inventory.length < 10));
+    if (want) return { type: 'buy', id: want.id };
+    return { type: 'leaveShop' };
+  }
+  return null;
+}
+
+/**
  * A simple greedy player used by tests to drive real runs: fight what's near,
  * drink when low, take the first shrine offer, otherwise head for the stairs.
  */
 /** Per-game memory for the explorer: which rooms of the current floor it has stood in. */
 const seenRooms = new WeakMap<Game, { floor: unknown; rooms: Set<number> }>();
+/** Floors whose merchant the explorer has already visited. */
+const visitedShop = new WeakSet<object>();
 
 /**
  * A thorough player: visits every room before descending, eats when Hungry,
@@ -20,6 +58,8 @@ export function explorerAction(g: Game, rng: Rng, opts: { shrines?: boolean } = 
   const run = g.run;
   const p = run.player;
   const f = run.floor;
+  const other = pendingAction(g, rng);
+  if (other) return other;
   if (run.pending?.kind === 'shrine') {
     const offers = f.shrine?.offers ?? [];
     if (opts.shrines === false) {
@@ -52,7 +92,8 @@ export function explorerAction(g: Game, rng: Rng, opts: { shrines?: boolean } = 
     const a = better('armor');
     if (a) return { type: 'equip', id: a.id };
   }
-  for (const d of DIRS) if (g.monsterAt(p.x + d.x, p.y + d.y)) return { type: 'move', dx: d.x, dy: d.y };
+  const fight = fightAction(g);
+  if (fight) return fight;
   // Like a person, drop spare arms (keeping one spare weapon) rather than walk past food with a full pack.
   const spares = p.inventory.filter((i) => i.kind === 'weapon' || i.kind === 'armor');
   const junk = spares.find((i) => i.kind === 'armor') ?? (spares.length > 1 ? spares[0] : undefined);
@@ -71,7 +112,7 @@ export function explorerAction(g: Game, rng: Rng, opts: { shrines?: boolean } = 
   };
   const loot = run.items
     .filter((i) => {
-      if (i.item.kind === 'gold') return true;
+      if (i.item.kind === 'gold' || i.item.kind === 'ammo') return true;
       if (p.inventory.length >= 10) return false;
       if (i.item.kind !== 'weapon' && i.item.kind !== 'armor') return true;
       if (!g.has('arms')) return false;
@@ -81,7 +122,11 @@ export function explorerAction(g: Game, rng: Rng, opts: { shrines?: boolean } = 
     })
     .map((i) => ({ x: i.x, y: i.y }));
   const shrine = f.shrine && !f.shrine.used ? [f.shrine.pos] : [];
-  const target = near(loot) ?? near(shrine) ?? (unseen.length ? near(unseen.map(centre)) : undefined);
+  if (f.schism && !f.schism.used && !g.harmSettled) shrine.push(f.schism.pos);
+  // Visit a merchant once per floor, with something to spend.
+  const shop = f.merchant && g.has('commerce') && p.gold >= 15 && !visitedShop.has(f) ? [f.merchant.pos] : [];
+  if (f.merchant && p.x === f.merchant.pos.x && p.y === f.merchant.pos.y) visitedShop.add(f);
+  const target = near(loot) ?? near(shrine) ?? near(shop) ?? (unseen.length ? near(unseen.map(centre)) : undefined);
   if (!target) {
     if (p.x === f.stairs.x && p.y === f.stairs.y) return { type: 'descend' };
     return stepToward(g, f.stairs, rng);
@@ -120,6 +165,8 @@ function gearScore(g: Game, kind: 'weapon' | 'armor', it: Item | null): number {
 export function botAction(g: Game, rng: Rng): Action {
   const run = g.run;
   const p = run.player;
+  const other = pendingAction(g, rng);
+  if (other) return other;
   if (run.pending?.kind === 'shrine') {
     const offers = run.floor.shrine?.offers ?? [];
     return { type: 'shrine', rule: offers.length ? offers[0] : null };
@@ -142,9 +189,8 @@ export function botAction(g: Game, rng: Rng): Action {
     const a = p.inventory.find((i) => i.kind === 'armor' && (i.def ?? 0) > (p.armor?.def ?? 0));
     if (a) return { type: 'equip', id: a.id };
   }
-  for (const d of DIRS) {
-    if (g.monsterAt(p.x + d.x, p.y + d.y)) return { type: 'move', dx: d.x, dy: d.y };
-  }
+  const fight = fightAction(g);
+  if (fight) return fight;
   const f = run.floor;
   if (p.x === f.stairs.x && p.y === f.stairs.y && rng.chance(0.7)) return { type: 'descend' };
   // Now and then, go back up — exercises remembered floors.

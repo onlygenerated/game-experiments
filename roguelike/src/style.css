@@ -1181,3 +1181,70 @@ button.linkish:hover:not(:disabled) {
   animation: none !important;
   transition: none !important;
 }
+
+/* ---------------------------------------------------------------- means of harm & commerce */
+
+/* The sidebar line: how harm works here, its reach, and what's left to harm with. */
+.means {
+  margin: 0.6em 0 0;
+  padding-top: 0.5em;
+  border-top: 1px dashed var(--line, #2c3342);
+  font-family: var(--mono);
+  color: var(--text, #e8e4d8);
+}
+.means b {
+  color: #7fe0cf;
+  font-weight: 600;
+}
+.means .ammo.out {
+  color: var(--bad);
+}
+.codex-axiom {
+  margin: 0 0 1em;
+  padding: 0.8em 1em;
+  border: 1px solid #2f5a54;
+  border-radius: 10px;
+  background: rgba(127, 224, 207, 0.06);
+}
+.codex-axiom h2 {
+  margin: 0.1em 0;
+}
+.modal.banner.axiom h1,
+.schism-card h2 {
+  color: #7fe0cf;
+}
+.schism-card {
+  border-color: #2f5a54;
+}
+.lookcard .aim {
+  background: #7fe0cf;
+  border-color: #7fe0cf;
+  color: #0d2420;
+}
+.pad-fire {
+  grid-column: span 2;
+  color: #7fe0cf;
+  border-color: #2f5a54;
+}
+.pad-fire[hidden] {
+  display: none;
+}
+.modal.shop {
+  max-width: 560px;
+}
+.modal.shop h3 {
+  margin: 1em 0 0.4em;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.modal.shop footer {
+  margin-top: 1em;
+}
+.modal.shrine footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}

@@ -6,7 +6,7 @@ import type { RuleId } from '../engine/types.ts';
 import { newWorld } from '../engine/world.ts';
 
 function quietGame(seed: number, rules: RuleId[] = []) {
-  const world = newWorld(seed);
+  const world = newWorld(seed, { harm: 'strike' });
   world.rules = rules;
   const g = Game.start(world);
   g.run.monsters = [];

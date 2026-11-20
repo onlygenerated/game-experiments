@@ -1,3 +1,4 @@
+import type { HarmId } from '../rules/harm.ts';
 import type { PremiseId } from '../theme/premise.ts';
 
 export type RuleId =
@@ -12,7 +13,8 @@ export type RuleId =
   | 'darkness'
   | 'hunger'
   | 'arcana'
-  | 'bestiary';
+  | 'bestiary'
+  | 'commerce';
 
 export type Element = 'ember' | 'frost';
 
@@ -41,6 +43,18 @@ export interface Shrine {
   used: boolean;
   /** Left unanswered when its floor was left behind; it offers nothing now. */
   dark?: boolean;
+  /** Commerce: it has been paid once to show other offers. */
+  rerolled?: boolean;
+}
+
+/**
+ * A schism shrine: it settles an axiom family the world left open, once and
+ * for all. One stands on every floor until it has been answered.
+ */
+export interface Schism {
+  pos: Pos;
+  offers: HarmId[];
+  used: boolean;
 }
 
 export interface Floor {
@@ -58,9 +72,17 @@ export interface Floor {
   explored: number[];
   /** A single-room floor (no Halls yet): its one room is the largest room of the full layout. */
   solo?: boolean;
+  schism?: Schism | null;
+  /** Commerce: who sells on this floor, and what is left. */
+  merchant?: Merchant | null;
 }
 
-export type ItemKind = 'potion' | 'gold' | 'weapon' | 'armor' | 'food';
+export interface Merchant {
+  pos: Pos;
+  stock: Item[];
+}
+
+export type ItemKind = 'potion' | 'gold' | 'weapon' | 'armor' | 'food' | 'ammo';
 
 /**
  * Items carry every property for every rule, active or not. Weight, element and
@@ -107,6 +129,8 @@ export interface Monster {
   stun: number;
   /** Latent: only matters once Elements is adopted. */
   element: Element | null;
+  /** The turn you last harmed it (Discourse: composure returns to the unaddressed). */
+  heard?: number;
 }
 
 export interface Player {
@@ -130,6 +154,8 @@ export interface Player {
   regenClock: number;
   manaClock: number;
   starveClock: number;
+  /** Shots carried (Volley). Absent until a world's means needs them. */
+  ammo?: number;
 }
 
 export interface Grave {
@@ -161,8 +187,11 @@ export interface Genome {
   premise: PremiseId;
   /** Bundles of roles borrowed from another premise. */
   intrusions: { bundle: 'restorative' | 'foes' | 'arms' | 'currency' | 'sustenance'; from: PremiseId }[];
-  /** Axiom options settled so far. Every world today is strike / rooms / turns / single / plain. */
-  axioms: Partial<Record<AxiomFamily, string>>;
+  /**
+   * Axiom options settled so far. A family left out is open: a schism shrine
+   * will settle it. Means of Harm is rolled or open; the rest are fixed for now.
+   */
+  axioms: Partial<Record<AxiomFamily, string>> & { harm?: HarmId };
   /** The rules this world can ever discover; null means every rule. */
   pool: RuleId[] | null;
 }
@@ -211,6 +240,8 @@ export interface StoredFloor {
 export type Pending =
   | { kind: 'shrine' }
   | { kind: 'levelup' }
+  | { kind: 'schism' }
+  | { kind: 'shop' }
   | null;
 
 export interface RunState {

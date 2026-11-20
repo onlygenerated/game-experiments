@@ -48,6 +48,10 @@ export const PLAIN: Premise = {
     stone: 'hazard',
     stones: 'hazards',
     pack: 'pack',
+    ammo: 'shot',
+    ammos: 'shots',
+    schism: 'schism shrine',
+    merchant: 'merchant',
   },
   foes: {
     rat: { name: 'common foe', plural: 'common foes', glyph: 'r', color: '#c49a6c' },
@@ -68,7 +72,7 @@ export const PLAIN: Premise = {
   },
   rules: {
     halls: { name: 'Halls', tagline: 'Floors get more rooms.', summary: 'Floors grow from a single room into many rooms joined by corridors.', variant: 'Sprawl' },
-    peril: { name: 'Peril', tagline: 'Foes and health.', summary: 'Foes appear. You have HP; walk into a foe to attack it. If it runs out, an heir carries on.', variant: 'Frail' },
+    peril: { name: 'Peril', tagline: 'Foes and health.', summary: 'Foes appear, and you have HP. If it runs out, an heir carries on.', variant: 'Frail' },
     things: { name: 'Things', tagline: 'Items exist.', summary: 'Healing items and currency appear. You carry what you find.', variant: 'Generous' },
     growth: { name: 'Growth', tagline: 'Experience and levels.', summary: 'XP and levels. STR adds damage, AGI aids hitting and dodging, VIT adds HP.', variant: 'Quick' },
     arms: { name: 'Arms', tagline: 'Weapons and armour.', summary: 'Weapons and armour appear and can be equipped.', variant: 'Plentiful' },
@@ -79,6 +83,49 @@ export const PLAIN: Premise = {
     hunger: { name: 'Hunger', tagline: 'A food meter.', summary: 'Satiety drains each turn. Food appears.', variant: 'Lean' },
     arcana: { name: 'Arcana', tagline: 'Mana and abilities.', summary: 'Mana (3 + level), regenerating slowly. Area attack ({cleaveCost}): strike every adjacent foe. Heal ({mendCost}): heal {mendPct}%.', variant: 'Fast mana' },
     bestiary: { name: 'Bestiary', tagline: 'More kinds of foe.', summary: 'Fast, armoured and tough foes join the common ones.', variant: 'Crowded' },
+    commerce: { name: 'Commerce', tagline: 'A use for currency.', summary: 'A merchant on every floor: buy and sell.', variant: 'Discount' },
+  },
+  means: {
+    strike: {
+      name: 'Strike',
+      tagline: 'Melee.',
+      summary: 'Walk into a foe to attack it.',
+    },
+    volley: {
+      name: 'Volley',
+      tagline: 'Ranged.',
+      summary: 'Fire along a line; the first foe in the line is hit.',
+      roles: {
+        weapon: 'launcher',
+        weapons: 'launchers',
+        fists: 'thrown rocks',
+        ammo: 'shot',
+        ammos: 'shots',
+      },
+      weapons: ['Launcher (tier 1)', 'Launcher (tier 2)', 'Launcher (tier 3)', 'Launcher (tier 4)', 'Launcher (tier 5)', 'Launcher (tier 6)'],
+    },
+    arcanum: {
+      name: 'Arcanum',
+      tagline: 'Magic.',
+      summary: 'A mana-paid bolt pierces every foe on a line.',
+      roles: {
+        weapon: 'focus',
+        weapons: 'foci',
+        fists: 'no focus',
+      },
+      weapons: ['Focus (tier 1)', 'Focus (tier 2)', 'Focus (tier 3)', 'Focus (tier 4)', 'Focus (tier 5)', 'Focus (tier 6)'],
+    },
+    discourse: {
+      name: 'Discourse',
+      tagline: 'Verbal.',
+      summary: 'Harm any foe within earshot, around corners.',
+      roles: {
+        weapon: 'barb',
+        weapons: 'barbs',
+        fists: 'plain words',
+      },
+      weapons: ['Barb (tier 1)', 'Barb (tier 2)', 'Barb (tier 3)', 'Barb (tier 4)', 'Barb (tier 5)', 'Barb (tier 6)'],
+    },
   },
   naming: { worldAdjectives: ['Plain'], worldNouns: ['World'], world: 'The {adj} {noun}', heirs: ['Heir'], floors: [] },
   text: {
@@ -141,5 +188,11 @@ export const PLAIN: Premise = {
     'look.glimmer.ember': 'Will be a hot hazard under Elements.',
     'look.glimmer.frost': 'Will be a cold hazard under Elements.',
     'look.rock': 'Impassable.',
+    'shop.open': 'Merchant: buy and sell here.',
+    'shop.poor': 'Not enough currency.',
+    'shrine.reroll': 'The rule shrine shows other offers.',
+    'schism.appears': 'A schism shrine appears on this floor. It settles how harm works in this world, permanently.',
+    'schism.open': 'Schism shrine: choose how harm works here. Permanent, and every heir inherits it.',
+    'adopt.commerce': 'A merchant appears on this floor.',
   },
 };

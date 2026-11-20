@@ -29,6 +29,7 @@ export const RULE_ORDER: RuleId[] = [
   'hunger',
   'arcana',
   'bestiary',
+  'commerce',
 ];
 
 export const MASTERY_KILLS = 5;

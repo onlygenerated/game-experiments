@@ -7,7 +7,7 @@ import { newWorld } from '../engine/world.ts';
 const ups = (tiles: number[]) => tiles.filter((t) => t === T_UP).length;
 
 function start(rules: RuleId[], seed = 21) {
-  const world = newWorld(seed);
+  const world = newWorld(seed, { harm: 'strike' });
   world.rules = rules;
   return Game.start(world);
 }

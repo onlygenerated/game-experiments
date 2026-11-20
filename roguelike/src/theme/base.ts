@@ -13,6 +13,7 @@
  *  - call-site values: {n}, {item}, {foe}, {name}…
  */
 import type { RuleId } from '../engine/types.ts';
+import type { HarmId } from '../rules/harm.ts';
 
 export const ROLE_KEYS = [
   'heir',
@@ -51,6 +52,13 @@ export const ROLE_KEYS = [
   'stone',
   'stones',
   'pack',
+  /** Volley: one shot, many shots. Every premise names them, whatever its means. */
+  'ammo',
+  'ammos',
+  /** The shrine that settles an open question about the world, once. */
+  'schism',
+  /** Commerce: who sells. */
+  'merchant',
 ] as const;
 
 export type RoleKey = (typeof ROLE_KEYS)[number];
@@ -98,6 +106,8 @@ export const BASE_TEXT = {
   'heavy.armor': 'The {item} is heavier than your {str}. Moving will take 2 turns.',
   'unequip': 'You put away the {item}.',
   'item.currency': '{n} {currency}',
+  'item.ammo': '{n} {ammos}',
+  'pickup.ammo': 'You gather {n} {ammos}.',
   'item.elemental': '{Element} {item}',
 
   // --- Abilities -----------------------------------------------------------
@@ -142,6 +152,36 @@ export const BASE_TEXT = {
   'grave.full': 'Your {pack} is too full to take what they left.',
   'grave.recover': 'You recover their {item}.',
 
+  // --- Commerce ------------------------------------------------------------
+  'shop.open': 'The {merchant} shows you what they have.',
+  'shop.buy': 'You buy the {item} for {n} {currency}.',
+  'shop.sell': 'You sell the {item} for {n} {currency}.',
+  'shop.poor': 'You can’t afford that.',
+  'shop.leave': 'You leave the {merchant}.',
+  'shop.empty': 'The {merchant} has nothing left to sell.',
+  'shop.price': '{n} {currency}',
+  'shrine.reroll': 'The {shrine} reconsiders, and offers something else.',
+  'shrine.reroll.button': 'Pay {n} {currency} for other offers',
+  'adopt.commerce': 'Somewhere on this {floor}, a {merchant} sets up.',
+  'note.commerce': 'A {merchant} sets up on this {floor} and every {floor} after.',
+
+  // --- Means of Harm -------------------------------------------------------
+  'axiom.harm': 'HOW HARM WORKS — {name}: {tagline}',
+  'schism.appears': 'A {schism} rises on this {floor}. It will settle how harm works in this world, for good.',
+  'schism.open': 'The {schism} asks how harm should work here. Whatever you choose, every {heir} after you inherits.',
+  'schism.stepback': 'You step away from the {schism}. It will ask again.',
+  'fire.strike': 'Here, harm is done up close: walk into {a:foe}.',
+  'fire.none': 'Nothing within reach.',
+  'volley.empty': 'You are out of {ammos}.',
+  'volley.wide': 'The shot goes wide.',
+  'arcanum.nomana': 'Not enough {mana}: a bolt needs {n}.',
+  'arcanum.fizzle': 'The bolt strikes nothing.',
+  'discourse.overheard': '{n} more overhear you, and turn.',
+  'shove': 'You shove the {foe} back. It stumbles.',
+  'shove.stuck': 'The {foe} has nowhere to go.',
+  'foe.shoots': 'The {foe} hits you from afar for {n}.',
+  'foe.shoots.miss': 'The {foe} aims at you and misses.',
+
   // --- Combat --------------------------------------------------------------
   'foe.elemental': '{element} {foe}',
   'attack.miss': 'You miss the {foe}.',
@@ -185,6 +225,7 @@ export const BASE_TEXT = {
   'preview.sight': 'Sight',
   'preview.sneak': 'Sneak attack',
   'preview.maxMana': '{Mana}',
+  'preview.range': 'Reach',
   'turns.one': '1 turn',
   'turns.many': '{n} turns',
   'sight.all': 'whole {floor}',
@@ -229,6 +270,10 @@ export const BASE_TEXT = {
   'hud.heir': '{heir} {n}',
   'hud.shrineDepth': '{shrineName} · {depth} {n}',
   'hud.pack': '{Pack}',
+  'hud.ammo': '{Ammos}',
+  'hud.harm': 'How harm works',
+  'hud.harm.open': 'Unsettled: a {schism} will decide. Until then you strike.',
+  'hud.fire': 'Aim',
   'fact.heals': 'Heals {n}',
   'fact.nourish': '{Satiety} +{n}',
   'fact.attack': 'Attack +{n}',
@@ -243,6 +288,7 @@ export const BASE_TEXT = {
   'levelup.maxHp': 'Max {hp} {a} → {b}',
   'help.use': 'Use {restoratives} / {food}',
   'help.abilities': '{cleave} / {mend} (with {arcana})',
+  'help.fire': 'Harm the nearest {foe} in reach (or aim with Look)',
   'help.legend':
     'Legend: <b>@</b> you · <b>&gt;</b> {stairsDown} · <b>&lt;</b> {stairsUp} · <b>Ω</b> {shrine} · <b>†</b> {grave} · <b>!</b> {restorative} · <b>$</b> {currency} · <b>)</b> {weapon} · <b>[</b> {armor} · <b>%</b> {food} · ◇ a property you can\'t perceive yet',
 
@@ -294,6 +340,11 @@ export const BASE_TEXT = {
   'look.underfoot': 'Underfoot: {terrain}.',
   'look.rock': 'Solid.',
   'look.gloss': '{what}',
+  'look.merchant': '{Merchant}',
+  'look.merchant.line': 'Step onto it to trade. {n} things for sale.',
+  'look.schism': '{Schism}',
+  'look.schism.line': 'Step onto it to settle how harm works in this world. Offers: {list}.',
+  'look.inReach': 'Within your reach.',
 };
 
 export type MessageKey = keyof typeof BASE_TEXT;
@@ -362,6 +413,12 @@ export const THEMED_KEYS = [
   'look.glimmer.ember',
   'look.glimmer.frost',
   'look.rock',
+  'shop.open',
+  'shop.poor',
+  'shrine.reroll',
+  'schism.appears',
+  'schism.open',
+  'adopt.commerce',
 ] as const satisfies readonly MessageKey[];
 
 export type ThemedKey = (typeof THEMED_KEYS)[number];
@@ -428,6 +485,11 @@ export const BASE_RULE_TEXT: Record<RuleId, { upside: string; downside: string; 
     downside: '−4 max {hp}.',
     variant: '{Mana} returns twice as fast.',
   },
+  commerce: {
+    upside: 'A {merchant} on every {floor}: buy what you need, sell what you don’t. Pay a {shrine} to show other offers.',
+    downside: 'Fewer {restoratives} lie about for free, and prices rise as you go deeper.',
+    variant: 'Everything costs a quarter less.',
+  },
   bestiary: {
     upside: 'More {xp} and more drops.',
     downside: 'More dangerous {foes}.',
@@ -449,3 +511,79 @@ export const BUNDLES = {
 } as const satisfies Record<string, { roles: readonly RoleKey[]; items: readonly string[]; text: readonly MessageKey[]; foes?: boolean }>;
 
 export type BundleId = keyof typeof BUNDLES;
+
+// ---------------------------------------------------------------------------
+// Means of Harm
+// ---------------------------------------------------------------------------
+
+/**
+ * Lines each means says differently from Strike, in the base vocabulary. A
+ * premise's own means words override these, which override its Strike lines.
+ */
+export const BASE_MEANS_TEXT: Record<HarmId, Partial<Record<MessageKey, string>>> = {
+  strike: {},
+  volley: {
+    'attack.hit': 'Your shot hits the {foe} for {n}{notes}.',
+    'attack.miss': 'Your shot misses the {foe}.',
+    'attack.stagger': 'The {foe} reels from the impact.',
+    'attack.note.shatter': 'your {item} gives out on a final shot',
+    'fire.none': 'No clear shot at anything.',
+    'cleave': 'You loose a spray at point-blank range!',
+    'cleave.none': 'Nothing is close enough for a spray.',
+    'look.foeHits': 'hits you for {n}',
+  },
+  arcanum: {
+    'attack.hit': 'The bolt sears the {foe} for {n}{notes}.',
+    'attack.miss': 'The bolt slides past the {foe}.',
+    'attack.stagger': 'The {foe} is thrown off balance.',
+    'attack.note.shatter': 'your {item} burns out on a final bolt',
+    'fire.none': 'Nothing on a line within reach.',
+    'cleave': 'Power bursts out of you in every direction!',
+  },
+  discourse: {
+    'attack.hit': 'Your words land on the {foe}: {n}{notes}.',
+    'attack.miss': 'The {foe} isn’t listening.',
+    'attack.stagger': 'The {foe} is flustered and loses a turn.',
+    'attack.note.shatter': 'your {item} is worn out, and goes out with a bang',
+    'attack.note.sneak': 'caught off guard!',
+    'foe.dies': 'The {foe} has heard enough, and leaves.',
+    'fire.none': 'No one within earshot.',
+    'cleave': 'You address the whole room at once!',
+  },
+};
+
+/** Lines every themed premise must write for each means other than Strike. */
+export const MEANS_THEMED_KEYS: Record<HarmId, readonly MessageKey[]> = {
+  strike: [],
+  volley: ['attack.hit', 'attack.miss', 'attack.stagger', 'volley.wide', 'shove', 'fire.none'],
+  arcanum: ['attack.hit', 'attack.miss', 'attack.stagger', 'arcanum.fizzle', 'shove', 'fire.none'],
+  discourse: ['attack.hit', 'attack.miss', 'attack.stagger', 'foe.dies', 'discourse.overheard', 'fire.none'],
+};
+
+/** Role words a themed premise must re-word for each means (what you harm with, and with what). */
+export const MEANS_ROLES: Record<HarmId, readonly RoleKey[]> = {
+  strike: [],
+  volley: ['weapon', 'weapons', 'fists', 'ammo', 'ammos'],
+  arcanum: ['weapon', 'weapons', 'fists'],
+  discourse: ['weapon', 'weapons', 'fists'],
+};
+
+/** What each means does, in mechanical terms: the Codex, banner and schism cards. */
+export const BASE_MEANS_RULE: Record<HarmId, { upside: string; downside: string }> = {
+  strike: {
+    upside: 'Walk into {a:foe} to harm it, at full strength. You guard as you close in: blows from {foes} beside you land {strikeGuard} lighter.',
+    downside: 'You have to be next to whatever you harm.',
+  },
+  volley: {
+    upside: 'Harm from up to {volleyRange} tiles away: the first body in the line takes the shot.',
+    downside: 'Shots hit at {volleyPower}% of your attack, and walking into {a:foe} only shoves it. Every shot spends one of your {ammos}; collect them where they land. Some {foes} keep their distance and shoot back.',
+  },
+  arcanum: {
+    upside: 'A bolt reaches {arcanumRange} tiles and passes through everything on its line.',
+    downside: 'Bolts hit at {arcanumPower}% of your attack, and walking into {a:foe} only shoves it. Each bolt costs {boltCost} {mana}, and {mana} comes back slowly.',
+  },
+  discourse: {
+    upside: 'Harm anyone within {earshot} steps, around corners, without a clear line.',
+    downside: 'Words land at {discoursePower}% of your attack. Everyone within earshot hears them and turns, and {foes} left alone gather their {hp} again.',
+  },
+};

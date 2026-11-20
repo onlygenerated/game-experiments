@@ -19,6 +19,7 @@ import type { GenCtx } from '../engine/content.ts';
 import type { Item, ItemKind, Player, RuleId, RunState, Tone } from '../engine/types.ts';
 import type { Lexicon } from '../theme/lexicon.ts';
 import { alt, has, weightOf, type Derived, type RuleCtx } from './ctx.ts';
+import { MEANS } from './harm.ts';
 
 export const BASE_HP = B.player.hp;
 export const BASE_STAT = 3;
@@ -37,6 +38,8 @@ export interface RuleHost {
   spawnFoes(fraction: number, minDistance: number): void;
   /** Open a single-room floor into its full layout. */
   expandFloor(): void;
+  /** Commerce: put a merchant on the current floor. */
+  placeMerchant(): void;
 }
 
 export interface NoteCtx {
@@ -80,7 +83,18 @@ export const MODULES: Record<RuleId, RuleModule> = {
     id: 'peril',
     tier: 1,
     prereqs: [],
-    reinterpretFloor: (h) => h.spawnFoes(0.6, 3),
+    // Volley: shots lie about wherever there are foes to shoot.
+    loot: (depth, g, make) => {
+      if (g.ctx.harm !== 'volley') return [];
+      const out: Item[] = [];
+      const n = g.rng.int(...B.harm.ammoPiles);
+      for (let i = 0; i < n; i++) out.push(make('ammo', depth, g));
+      return out;
+    },
+    reinterpretFloor: (h) => {
+      h.spawnFoes(0.6, 3);
+      if (h.ctx.harm === 'volley') h.spawnLoot('peril');
+    },
     onAdopt: (h) => h.log(h.lex.t('adopt.peril'), 'bad'),
     notes: ({ lex }) => [lex.t('note.peril')],
   },
@@ -90,7 +104,8 @@ export const MODULES: Record<RuleId, RuleModule> = {
     prereqs: [],
     loot: (depth, g, make) => {
       const out: Item[] = [];
-      const potions = g.rng.int(...B.loot.potionsPerFloor);
+      // Commerce: what was free now has a price; one fewer lies about.
+      const potions = g.rng.int(...B.loot.potionsPerFloor) - (has(g.ctx, 'commerce') ? 1 : 0);
       for (let i = 0; i < potions; i++) out.push(make('potion', depth, g));
       const gold = g.rng.int(...B.loot.goldPilesPerFloor);
       for (let i = 0; i < gold; i++) out.push(make('gold', depth, g));
@@ -109,6 +124,8 @@ export const MODULES: Record<RuleId, RuleModule> = {
       d.attack += p.str - BASE_STAT;
       d.hit = clamp(0.85 + 0.03 * (p.agi - BASE_STAT), 0.5, 0.98);
       d.enemyHit = clamp(0.8 - 0.04 * (p.agi - BASE_STAT), 0.3, 0.95);
+      // Arcanum: the pool deepens as you do.
+      if (d.maxMana > 0) d.maxMana += p.level - 1;
     },
     notes: ({ lex }) => [lex.t('note.growth')],
   },
@@ -153,7 +170,11 @@ export const MODULES: Record<RuleId, RuleModule> = {
       if (p.weapon) {
         const w = weightOf(p.weapon, ctx);
         if (w > p.str) d.attackCost = 2;
-        else d.stagger = Math.min(0.6, w * 0.08);
+        else {
+          d.stagger = Math.min(0.6, w * 0.08);
+          // Volley: a heavy launcher hits as hard but doesn't carry as far.
+          if (ctx.harm === 'volley') d.range = Math.max(B.harm.minRange, d.range - Math.floor(w / 3));
+        }
       }
       if (p.armor) {
         const w = weightOf(p.armor, ctx);
@@ -231,13 +252,22 @@ export const MODULES: Record<RuleId, RuleModule> = {
     tier: 4,
     prereqs: ['growth'],
     derive: (d, p) => {
-      d.maxMana = 3 + p.level;
+      d.maxMana += 3 + p.level;
       d.maxHp -= 4;
     },
     onAdopt: (h) => {
       h.run.player.mana = h.stats.maxMana;
     },
     notes: ({ lex, p }) => [lex.t('note.arcana', { c: B.arcana.cleaveCost, m: B.arcana.mendCost, n: 3 + p.level })],
+  },
+  commerce: {
+    id: 'commerce',
+    tier: 3,
+    // Trade needs someone with needs: it comes after Growth, not in the first handful of shrines.
+    prereqs: ['things', 'growth'],
+    reinterpretFloor: (h) => h.placeMerchant(),
+    onAdopt: (h) => h.log(h.lex.t('adopt.commerce'), 'dim'),
+    notes: ({ lex }) => [lex.t('note.commerce')],
   },
   bestiary: {
     id: 'bestiary',
@@ -261,8 +291,10 @@ export function baseDerived(ctx: RuleCtx): Derived {
     stagger: 0,
     sight: Infinity,
     sneak: 1,
-    maxMana: 0,
+    // Arcanum: harm is paid for in mana, so there is a pool before any rule adds one.
+    maxMana: ctx.harm === 'arcanum' ? B.harm.arcanumMana : 0,
     regen: false,
+    range: MEANS[ctx.harm].range,
   };
 }
 

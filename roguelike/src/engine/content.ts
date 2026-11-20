@@ -30,7 +30,7 @@ export const ARMORS: ArmsDef[] = [
 ];
 
 /** Foe genotypes. Names, glyphs and colours come from the premise. */
-interface MonsterDef {
+export interface MonsterDef {
   hp: number;
   atk: number;
   def: number;
@@ -38,12 +38,15 @@ interface MonsterDef {
   /** Ticks per action: 2 = acts twice per turn, 0.5 = every other turn. */
   speed: number;
   erratic: boolean;
+  /** Volley only: keeps its distance and shoots back. */
+  skirmish?: boolean;
 }
 
 export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   rat: { hp: 3, atk: 1, def: 0, xp: 2, speed: 1, erratic: false },
   bat: { hp: 4, atk: 2, def: 0, xp: 3, speed: 2, erratic: true },
-  goblin: { hp: 8, atk: 3, def: 1, xp: 5, speed: 1, erratic: false },
+  // Under Volley, goblins keep their distance and shoot back.
+  goblin: { hp: 8, atk: 3, def: 1, xp: 5, speed: 1, erratic: false, skirmish: true },
   slime: { hp: 12, atk: 2, def: 0, xp: 4, speed: 0.5, erratic: false },
 };
 
@@ -70,6 +73,8 @@ export function makeItem(kind: ItemKind, depth: number, g: GenCtx): Item {
       return { ...base, key: 'potion', name: g.lex.premise.items.restorative, heal: B.potion.heal };
     case 'gold':
       return { ...base, key: 'gold', name: g.lex.premise.items.currency, amount: rng.int(B.loot.goldPile[0], B.loot.goldPile[1]) + depth * B.loot.goldPerDepth };
+    case 'ammo':
+      return { ...base, key: 'ammo', name: g.lex.role('ammos'), amount: rng.int(B.harm.ammoPile[0], B.harm.ammoPile[1]) };
     case 'food': {
       const i = rng.weighted(B.food.kinds.map((k, i) => [i, k[1]] as [number, number]));
       return { ...base, key: `food:${i}`, name: g.lex.premise.items.foods[i], nourish: B.food.kinds[i][0] };
@@ -186,11 +191,12 @@ export function populate(floor: Floor, g: GenCtx): { monsters: Monster[]; items:
 /** What an item is called right now: currency shows its amount, and Elements reveals an element. */
 export function itemLabel(item: Item, ctx: RuleCtx, lex: Lexicon): string {
   if (item.kind === 'gold') return lex.t('item.currency', { n: item.amount ?? 0 });
+  if (item.kind === 'ammo') return lex.t('item.ammo', { n: item.amount ?? 0 });
   const name = lex.itemName(item);
   if (item.element && has(ctx, 'elements')) return lex.t('item.elemental', { Element: lex.element(item.element).Adj, item: name });
   return name;
 }
 
 export function itemGlyph(item: Item): string {
-  return { potion: '!', gold: '$', weapon: ')', armor: '[', food: '%' }[item.kind];
+  return { potion: '!', gold: '$', weapon: ')', armor: '[', food: '%', ammo: '/' }[item.kind];
 }

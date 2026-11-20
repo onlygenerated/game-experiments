@@ -7,6 +7,7 @@
  * premise decides what a player is shown.
  */
 import type { Element, MonsterKind, RuleId } from '../engine/types.ts';
+import type { HarmId } from '../rules/harm.ts';
 import type { MessageKey, Roles, ThemedKey } from './base.ts';
 
 export type PremiseId =
@@ -58,6 +59,31 @@ export interface RuleWords {
   imposed?: string;
 }
 
+/**
+ * How a premise expresses one Means of Harm. Under Strike only the name and
+ * lines are needed (its role words and lines are the premise's own); every
+ * other means re-words what you harm with (MEANS_ROLES), names the implements,
+ * and writes its combat lines (MEANS_THEMED_KEYS).
+ */
+export interface MeansWords {
+  name: string;
+  tagline: string;
+  summary: string;
+  roles?: Partial<Roles>;
+  /** Implements under this means, index-aligned with WEAPONS in content.ts. */
+  weapons?: string[];
+  text?: Partial<Record<MessageKey, string>>;
+}
+
+/** A Means of Harm's full text, as the UI shows it. */
+export interface MeansText {
+  name: string;
+  tagline: string;
+  summary: string;
+  upside: string;
+  downside: string;
+}
+
 /** A rule's full text, as the UI shows it. */
 export interface RuleText {
   name: string;
@@ -95,6 +121,8 @@ export interface Premise {
   };
   /** Rule texts are templates over role words and balance numbers (see lexicon.ts). */
   rules: Record<RuleId, RuleWords>;
+  /** Each Means of Harm in this premise's words. */
+  means: Record<HarmId, MeansWords>;
   naming: {
     worldAdjectives: string[];
     worldNouns: string[];

@@ -14,10 +14,12 @@ import { describe, expect, it } from 'vitest';
 import { Game } from '../engine/game.ts';
 import { Rng } from '../engine/rng.ts';
 import type { RuleId } from '../engine/types.ts';
+import type { HarmId } from '../rules/harm.ts';
+import type { PremiseId } from '../theme/premise.ts';
 import { newWorld } from '../engine/world.ts';
 import { RULE_ORDER } from '../rules/rules.ts';
 import { describeTile } from '../ui/describe.ts';
-import { bannerHTML, codexHTML, helpHTML, levelupHTML, logHTML, shrineHTML, sidebarHTML, topbarHTML } from '../ui/hud.ts';
+import { bannerHTML, codexHTML, helpHTML, levelupHTML, logHTML, schismHTML, shopHTML, shrineHTML, sidebarHTML, topbarHTML } from '../ui/hud.ts';
 import { botAction, explorerAction } from './bot.ts';
 
 const FILE = new URL('./golden.json', import.meta.url);
@@ -29,6 +31,9 @@ interface Case {
   rules: RuleId[] | null;
   bot: 'greedy' | 'explorer';
   actions: number;
+  /** Phase 2: the world's means (null = open, settled at a schism shrine) and premise. Default: strike, The Old Stone. */
+  harm?: HarmId | null;
+  premise?: PremiseId;
 }
 
 const ALL = RULE_ORDER.filter((r) => r !== 'bestiary');
@@ -43,10 +48,17 @@ const CASES: Case[] = [
     actions: 2000,
   })),
   ...[31, 32, 33, 34].map((seed) => ({ name: `full-greedy-${seed}`, seed, rules: ALL, bot: 'greedy' as const, actions: 1500 })),
+  // Each Means of Harm, fresh and with every rule, in a themed world.
+  ...(['volley', 'arcanum', 'discourse'] as const).flatMap((harm, k) => [
+    { name: `${harm}-fresh-${41 + k}`, seed: 41 + k, rules: null, bot: 'explorer' as const, actions: 2000, harm, premise: (['merger', 'tidepool', 'court-of-barbs'] as const)[k] },
+    { name: `${harm}-full-${44 + k}`, seed: 44 + k, rules: ALL, bot: 'explorer' as const, actions: 2000, harm, premise: (['ministry', 'night-shift', 'overgrown-choir'] as const)[k] },
+  ]),
+  // Open worlds: a schism shrine settles the means.
+  ...[47, 48].map((seed) => ({ name: `open-fresh-${seed}`, seed, rules: null, bot: 'explorer' as const, actions: 2000, harm: null })),
 ];
 
 function fingerprint(c: Case): string {
-  const world = newWorld(c.seed * 7919, { premise: 'old-stone' });
+  const world = newWorld(c.seed * 7919, { premise: c.premise ?? 'old-stone', harm: c.harm === undefined ? 'strike' : c.harm });
   if (c.rules) world.rules = [...c.rules];
   const g = Game.start(world);
   const rng = new Rng(c.seed);
@@ -61,6 +73,8 @@ function fingerprint(c: Case): string {
       texts.push(sidebarHTML(g, new Set()), topbarHTML(g, false), logHTML(g));
       if (g.run.pending?.kind === 'shrine') texts.push(shrineHTML(g));
       if (g.run.pending?.kind === 'levelup') texts.push(levelupHTML(g));
+      if (g.run.pending?.kind === 'schism') texts.push(schismHTML(g));
+      if (g.run.pending?.kind === 'shop') texts.push(shopHTML(g));
       for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [-1, -1], [3, 2]]) {
         const t = describeTile(g, p.x + dx, p.y + dy);
         texts.push(`${t.title}|${t.lines.join('|')}`);

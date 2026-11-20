@@ -1,9 +1,10 @@
 import { BALANCE } from '../engine/balance.ts';
 import type { Element, Item, MonsterKind, RuleId, World } from '../engine/types.ts';
-import { BASE_RULE_TEXT, BASE_TEXT, BUNDLES, type BundleId, type MessageKey } from './base.ts';
+import type { HarmId } from '../rules/harm.ts';
+import { BASE_MEANS_RULE, BASE_MEANS_TEXT, BASE_RULE_TEXT, BASE_TEXT, BUNDLES, type BundleId, type MessageKey } from './base.ts';
 import { OLD_STONE } from './old-stone.ts';
 import { PLAIN } from './plain.ts';
-import type { ElementLook, FoeLook, Premise, PremiseId, RuleText } from './premise.ts';
+import type { ElementLook, FoeLook, MeansText, Premise, PremiseId, RuleText } from './premise.ts';
 import { COURT_OF_BARBS } from './premises/court-of-barbs.ts';
 import { MERGER } from './premises/merger.ts';
 import { MINISTRY } from './premises/ministry.ts';
@@ -50,6 +51,15 @@ export const RULE_TEXT_VARS: Vars = {
   cleaveCost: BALANCE.arcana.cleaveCost,
   mendCost: BALANCE.arcana.mendCost,
   mendPct: Math.round(BALANCE.arcana.mendFraction * 100),
+  volleyRange: BALANCE.harm.volleyRange,
+  arcanumRange: BALANCE.harm.arcanumRange,
+  earshot: BALANCE.harm.earshot,
+  boltCost: BALANCE.harm.boltCost,
+  startAmmo: BALANCE.harm.startAmmo,
+  strikeGuard: BALANCE.harm.strikeGuard,
+  volleyPower: Math.round(BALANCE.harm.power.volley * 100),
+  arcanumPower: Math.round(BALANCE.harm.power.arcanum * 100),
+  discoursePower: Math.round(BALANCE.harm.power.discourse * 100),
 };
 
 const capFirst = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
@@ -83,8 +93,24 @@ export function placeholders(template: string): string[] {
   return [...template.matchAll(/\{(?:[aA]:)?(\w+)\}/g)].map((m) => m[1]);
 }
 
-/** A premise with borrowed bundles folded in. */
-export function compose(base: Premise, intrusions: readonly Intrusion[] = []): Premise {
+/**
+ * A premise as it speaks under one Means of Harm: the means' role words,
+ * implement names and lines laid over its own. Strike changes nothing.
+ */
+export function withMeans(p: Premise, harm: HarmId): Premise {
+  if (harm === 'strike') return p;
+  const m = p.means[harm];
+  return {
+    ...p,
+    roles: { ...p.roles, ...m.roles },
+    items: { ...p.items, weapons: m.weapons ?? p.items.weapons },
+    text: { ...p.text, ...BASE_MEANS_TEXT[harm], ...m.text },
+  };
+}
+
+/** A premise with borrowed bundles folded in (each donor speaking under the same means). */
+export function compose(base: Premise, intrusions: readonly Intrusion[] = [], harm: HarmId = 'strike'): Premise {
+  base = withMeans(base, harm);
   if (!intrusions.length) return base;
   const out: Premise = {
     ...base,
@@ -94,7 +120,7 @@ export function compose(base: Premise, intrusions: readonly Intrusion[] = []): P
     foes: { ...base.foes },
   };
   for (const { bundle, from } of intrusions) {
-    const donor = PREMISES[from];
+    const donor = withMeans(PREMISES[from], harm);
     const b = BUNDLES[bundle];
     for (const r of b.roles) out.roles[r] = donor.roles[r];
     for (const it of b.items) (out.items as Record<string, unknown>)[it] = donor.items[it as keyof Premise['items']];
@@ -199,6 +225,11 @@ export class Lexicon {
     return this.plain || t === plainWord.toLowerCase() || t === classic.toLowerCase() ? null : plainWord;
   }
 
+  /** A gloss for any themed name, against its plain one (the classic word is the plain one here). */
+  ruleGlossOf(themed: string, plainWord: string): string | null {
+    return this.gloss(themed, plainWord, plainWord);
+  }
+
   ruleGloss(id: RuleId): string | null {
     return this.gloss(this.rule(id).name, lexiconOf('plain').rule(id).name, lexiconOf(DEFAULT_PREMISE).rule(id).name);
   }
@@ -216,6 +247,20 @@ export class Lexicon {
     return this.gloss(this.itemName(item), lexiconOf('plain').itemName(item), lexiconOf(DEFAULT_PREMISE).itemName(item));
   }
 
+  /** A Means of Harm in this world's words, with its mechanics spelled out. */
+  means(id: HarmId): MeansText {
+    const words = this.premise.means[id];
+    const vars: Vars = { ...this.builtins, ...RULE_TEXT_VARS };
+    const f = (s: string) => fill(s, vars);
+    return {
+      name: f(words.name),
+      tagline: f(words.tagline),
+      summary: f(words.summary),
+      upside: f(BASE_MEANS_RULE[id].upside),
+      downside: f(BASE_MEANS_RULE[id].downside),
+    };
+  }
+
   /** "a, b and c" in this premise's words. */
   list(parts: string[]): string {
     if (parts.length <= 1) return parts.join('');
@@ -231,29 +276,30 @@ export class Lexicon {
 const cache = new Map<string, Lexicon>();
 
 /** A lexicon for a premise, with optional intrusions; `plain` swaps in The Plain words but keeps the world's look. */
-export function lexiconOf(id: PremiseId, intrusions: readonly Intrusion[] = [], plain = false): Lexicon {
-  const key = `${id}|${intrusions.map((i) => `${i.bundle}:${i.from}`).join(',')}|${plain}`;
+export function lexiconOf(id: PremiseId, intrusions: readonly Intrusion[] = [], plain = false, harm: HarmId = 'strike'): Lexicon {
+  const key = `${id}|${intrusions.map((i) => `${i.bundle}:${i.from}`).join(',')}|${plain}|${harm}`;
   let lex = cache.get(key);
   if (!lex) {
-    const world = compose(PREMISES[id] ?? PREMISES[DEFAULT_PREMISE], intrusions);
-    lex = plain ? new Lexicon(plainWords(world), true) : new Lexicon(world);
+    const world = compose(PREMISES[id] ?? PREMISES[DEFAULT_PREMISE], intrusions, harm);
+    lex = plain ? new Lexicon(plainWords(world, harm), true) : new Lexicon(world);
     cache.set(key, lex);
   }
   return lex;
 }
 
 /** The Plain vocabulary, but drawn with this world's glyphs and colours. */
-function plainWords(world: Premise): Premise {
+function plainWords(world: Premise, harm: HarmId): Premise {
+  const PLAIN_HERE = withMeans(PLAIN, harm);
   const foes = { ...PLAIN.foes };
   for (const k of Object.keys(foes) as MonsterKind[]) foes[k] = { ...PLAIN.foes[k], glyph: world.foes[k].glyph, color: world.foes[k].color };
   const elements = { ...PLAIN.elements };
   for (const el of ['ember', 'frost'] as Element[]) {
     elements[el] = { ...world.elements[el], adj: PLAIN.elements[el].adj, Adj: PLAIN.elements[el].Adj };
   }
-  return { ...PLAIN, id: world.id, name: world.name, foes, elements, naming: { ...world.naming, floors: [] } };
+  return { ...PLAIN_HERE, id: world.id, name: world.name, foes, elements, naming: { ...world.naming, floors: [] } };
 }
 
 /** The lexicon a world speaks in. */
-export function lexiconFor(world: Pick<World, 'genome'>, plain = false): Lexicon {
-  return lexiconOf(world.genome?.premise ?? DEFAULT_PREMISE, world.genome?.intrusions ?? [], plain);
+export function lexiconFor(world: Pick<World, 'genome'>, plain = false, harm?: HarmId): Lexicon {
+  return lexiconOf(world.genome?.premise ?? DEFAULT_PREMISE, world.genome?.intrusions ?? [], plain, harm ?? world.genome?.axioms.harm ?? 'strike');
 }

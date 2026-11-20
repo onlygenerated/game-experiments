@@ -1,13 +1,16 @@
 /** The small shared vocabulary every rule module and the engine use to ask "which rules are on?". */
 import type { Item, Player, RuleId, World } from '../engine/types.ts';
+import type { HarmId } from './harm.ts';
 
 export interface RuleCtx {
   rules: ReadonlySet<RuleId>;
   variants: Partial<Record<RuleId, 'base' | 'alt'>>;
+  /** How harm works here. A world that hasn't settled it yet strikes, for want of anything else. */
+  harm: HarmId;
 }
 
-export function ctxOf(world: Pick<World, 'rules' | 'variants'>): RuleCtx {
-  return { rules: new Set(world.rules), variants: world.variants };
+export function ctxOf(world: Pick<World, 'rules' | 'variants'> & { genome?: World['genome'] }): RuleCtx {
+  return { rules: new Set(world.rules), variants: world.variants, harm: world.genome?.axioms.harm ?? 'strike' };
 }
 
 export function has(ctx: RuleCtx, id: RuleId): boolean {
@@ -20,7 +23,7 @@ export function alt(ctx: RuleCtx, id: RuleId): boolean {
 }
 
 export function withRule(ctx: RuleCtx, id: RuleId): RuleCtx {
-  return { rules: new Set([...ctx.rules, id]), variants: ctx.variants };
+  return { rules: new Set([...ctx.rules, id]), variants: ctx.variants, harm: ctx.harm };
 }
 
 export function weightOf(item: Item, ctx: RuleCtx): number {
@@ -44,6 +47,8 @@ export interface Derived {
   sneak: number;
   maxMana: number;
   regen: boolean;
+  /** How far aimed harm reaches (1 under Strike). */
+  range: number;
 }
 
 export type { Player };

@@ -5,6 +5,7 @@ import { T_STAIRS, T_UP, T_WALL } from '../engine/types.ts';
 import { alt, hiddenProps } from '../rules/rules.ts';
 import { BALANCE } from '../engine/balance.ts';
 import { itemFacts } from './hud.ts';
+import { lexiconFor } from '../theme/lexicon.ts';
 
 export interface TileInfo {
   title: string;
@@ -53,6 +54,7 @@ export function describeTile(game: Game, x: number, y: number): TileInfo {
     if (def.speed > 1) lines.push(L.t('look.fast'));
     if (def.speed < 1) lines.push(L.t('look.slow'));
     if (m.stun > 0) lines.push(L.t('look.stunned'));
+    if (game.has('peril') && game.harmSettled && game.means.reach !== 'adjacent' && game.targets().includes(m)) lines.push(L.t('look.inReach'));
     if (dark && !m.aware) lines.push(L.t('look.unaware', { n: game.stats.sneak }));
     const w = p.weapon;
     if (m.element && w?.element && game.has('elements') && game.has('arms')) {
@@ -91,6 +93,16 @@ export function describeTile(game: Game, x: number, y: number): TileInfo {
     else if (sh.used) lines.push(L.t('look.shrine.spent'));
     else if (sh.offers?.length) lines.push(L.t('look.shrine.offers', { list: sh.offers.map((r) => L.rule(r).name).join(L.t('list.sep')) }));
     else lines.push(L.t('look.shrine.unseen'));
+  }
+  const sc = f.schism;
+  if (sc && !sc.used && !game.harmSettled && sc.pos.x === x && sc.pos.y === y) {
+    terrain = L.t('look.schism');
+    lines.push(L.t('look.schism.line', { list: sc.offers.map((h) => lexiconFor(game.world, L.plain, h).means(h).name).join(L.t('list.sep')) }));
+  }
+  const mc = f.merchant;
+  if (mc && game.has('commerce') && mc.pos.x === x && mc.pos.y === y) {
+    terrain = L.t('look.merchant');
+    lines.push(L.t('look.merchant.line', { n: mc.stock.length }));
   }
   if (grave) {
     terrain = L.t('look.grave', { name: grave.name });

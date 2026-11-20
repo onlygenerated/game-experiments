@@ -14,11 +14,17 @@ export const COLORS = {
   stairsUp: '#b9a27a',
   shrine: '#c9a2ff',
   shrineUsed: '#4a4458',
+  schism: '#7fe0cf',
+  merchant: '#f2c46d',
+  /** The trail aimed harm leaves, and the auto-target marker. */
+  shot: '#ffe7a3',
+  target: '#ff8a7a',
   grave: '#cfd3dc',
   /** The stun marker. Foe and hazard colours come from the premise. */
   stun: '#7cc8ff',
   potion: '#ff8fb8',
   gold: '#f2c46d',
+  ammo: '#c9d3e0',
   weapon: '#d9dde6',
   armor: '#9fb3c8',
   food: '#d6b48a',
@@ -56,6 +62,9 @@ export class Renderer {
   tileRange: readonly [number, number] = [16, 32];
   /** Skip hit flashes. */
   reduceMotion = false;
+  /** Who "fire" would hit right now (the nearest foe in reach), marked on the map. */
+  target: { x: number; y: number } | null = null;
+  private trails: { path: { x: number; y: number }[]; until: number }[] = [];
   private boundsOf: Floor | null = null;
   private boundsCache: { x0: number; y0: number; x1: number; y1: number } | null = null;
   /** Tile index → time it should stop flashing (hit feedback). */
@@ -64,6 +73,12 @@ export class Renderer {
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
+  }
+
+  /** Draw the line aimed harm just flew along, briefly. */
+  shot(path: { x: number; y: number }[]) {
+    if (this.reduceMotion || !path.length) return;
+    this.trails.push({ path, until: performance.now() + 260 });
   }
 
   flash(x: number, y: number, color: string) {
@@ -240,6 +255,10 @@ export class Renderer {
       const s = f.shrine;
       glyph('Ω', s.pos.x, s.pos.y, s.used ? COLORS.shrineUsed : COLORS.shrine, true, 0.8);
     }
+    const sc = f.schism;
+    if (sc && !sc.used && !game.harmSettled && remembered(sc.pos.x, sc.pos.y)) glyph('◈', sc.pos.x, sc.pos.y, COLORS.schism, true, 0.85);
+    const mc = f.merchant;
+    if (mc && game.has('commerce') && remembered(mc.pos.x, mc.pos.y)) glyph('&', mc.pos.x, mc.pos.y, COLORS.merchant, true, 0.8);
     for (const g of game.floorGraves()) {
       if (remembered(g.x, g.y)) glyph('†', g.x, g.y, g.looted ? '#5d6270' : COLORS.grave, true, 0.8);
     }
@@ -283,6 +302,16 @@ export class Renderer {
       ctx.restore();
     }
     glyph('@', p.x, p.y, COLORS.player, true, 0.82);
+    if (this.target && canShow(this.target.x, this.target.y)) {
+      // Corner brackets: the nearest foe your means can reach.
+      const t = this.target;
+      ctx.fillStyle = COLORS.target;
+      const k = Math.max(3, c * 0.25);
+      for (const [cx, cy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+        ctx.fillRect(sxOf(t.x) + cx * (c - k), syOf(t.y) + cy * (c - 2), k, 2);
+        ctx.fillRect(sxOf(t.x) + cx * (c - 2), syOf(t.y) + cy * (c - k), 2, k);
+      }
+    }
     if (this.hoverCursor) {
       const h = this.hoverCursor;
       ctx.strokeStyle = 'rgba(232, 228, 216, 0.35)';
@@ -304,6 +333,13 @@ export class Renderer {
     }
 
     const now = performance.now();
+    this.trails = this.trails.filter((tr) => tr.until > now);
+    for (const tr of this.trails) {
+      ctx.globalAlpha = (tr.until - now) / 260;
+      ctx.fillStyle = COLORS.shot;
+      for (const t of tr.path) ctx.fillRect(sxOf(t.x) + c / 2 - 2, syOf(t.y) + c / 2 - 2, 4, 4);
+    }
+    ctx.globalAlpha = 1;
     for (const [k, until] of this.flashes) {
       if (until < now) {
         this.flashes.delete(k);
@@ -331,6 +367,6 @@ export class Renderer {
   }
 
   get animating(): boolean {
-    return this.flashes.size > 0;
+    return this.flashes.size > 0 || this.trails.length > 0;
   }
 }

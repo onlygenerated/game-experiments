@@ -6,7 +6,8 @@ import type { World } from '../engine/types.ts';
 import { newWorld, rollLook } from '../engine/world.ts';
 import { RULE_ORDER } from '../rules/rules.ts';
 import { BASE_TEXT, BUNDLES, ROLE_KEYS, type BundleId, type MessageKey } from '../theme/base.ts';
-import { lexiconFor, lexiconOf, placeholders, PREMISES, ROLLABLE } from '../theme/lexicon.ts';
+import { lexiconFor, lexiconOf, placeholders, PREMISES, ROLLABLE, withMeans } from '../theme/lexicon.ts';
+import { HARMS } from '../rules/harm.ts';
 import { OLD_STONE } from '../theme/old-stone.ts';
 import { PLAIN } from '../theme/plain.ts';
 import type { PremiseId } from '../theme/premise.ts';
@@ -90,13 +91,16 @@ describe('intrusions', () => {
 
   // No host line may still name a thing its world borrowed from elsewhere:
   // a Merger full of crabs mustn't say "interns pour out of the stairwell".
-  it('no host line names what was borrowed', () => {
+  it('no host line names what was borrowed, under any means of harm', () => {
     const problems: string[] = [];
     const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    for (const host of HOSTS) {
-      const hp = PREMISES[host];
+    for (const harm of HARMS) for (const host of HOSTS) {
+      const hp = withMeans(PREMISES[host], harm);
       // Rule names are the host's own, borrowed bundle or not, and are quoted inside other rules' texts.
-      const ruleNames = RULE_ORDER.flatMap((r) => [lexiconOf(host).rule(r).name, lexiconOf(host).rule(r).variant.name]);
+      const ruleNames = [
+        ...RULE_ORDER.flatMap((r) => [lexiconOf(host).rule(r).name, lexiconOf(host).rule(r).variant.name]),
+        ...HARMS.map((h) => hp.means[h].name),
+      ];
       const unquote = (t: string) => ruleNames.reduce((s, n) => s.split(n).join('§'), t);
       for (const bundle of BUNDLE_IDS) {
         const b = BUNDLES[bundle];
@@ -109,7 +113,7 @@ describe('intrusions', () => {
         const check = [...words].filter((w) => !kept.includes(w.toLowerCase()));
         for (const donor of ROLLABLE) {
           if (donor === host) continue;
-          const lex = lexiconOf(host, [{ bundle, from: donor }]);
+          const lex = lexiconOf(host, [{ bundle, from: donor }], false, harm);
           const texts: [string, string][] = (Object.keys(BASE_TEXT) as MessageKey[])
             .filter((k) => !(b.text as readonly string[]).includes(k))
             .map((k) => [k, lex.t(k, callVars(k))]);
@@ -117,8 +121,10 @@ describe('intrusions', () => {
             const t = lex.rule(r);
             texts.push([`rule ${r}`, [t.tagline, t.summary, t.upside, t.downside, t.variant.text, t.earned ?? '', t.imposed ?? ''].join(' | ')]);
           }
+          const m = lex.means(harm);
+          texts.push([`means ${harm}`, [m.tagline, m.summary, m.upside, m.downside].join(' | ')]);
           for (const [k, t] of texts) {
-            for (const w of check) if (new RegExp(`\\b${esc(w)}\\b`, 'i').test(unquote(t))) problems.push(`${host}+${bundle} from ${donor}: ${k} says "${w}"`);
+            for (const w of check) if (new RegExp(`\\b${esc(w)}\\b`, 'i').test(unquote(t))) problems.push(`${harm}: ${host}+${bundle} from ${donor}: ${k} says "${w}"`);
           }
         }
       }

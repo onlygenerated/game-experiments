@@ -27,7 +27,9 @@ import {
   spawnMonsters,
   type GenCtx,
 } from './content.ts';
-import { DIRS, distanceMap, generateLayout, idx, passable, soloRoom, type LayoutOpts } from './dungeon.ts';
+import { DIRS, distanceMap, generateLayout, idx, passable, randomFloorTile, soloRoom, type LayoutOpts } from './dungeon.ts';
+import { ray } from './aim.ts';
+import { HARMS, MEANS, type HarmId, type MeansModule } from '../rules/harm.ts';
 import { article, lexiconFor, PREMISES, type Lexicon } from '../theme/lexicon.ts';
 import type { RuleHost } from '../rules/modules.ts';
 import { computeVisible, lineOfSight } from './fov.ts';
@@ -48,10 +50,24 @@ export type Action =
   | { type: 'pickup'; id?: number }
   | { type: 'ability'; ability: 'cleave' | 'mend' }
   | { type: 'shrine'; rule: RuleId | null }
-  | { type: 'levelup'; stat: 'str' | 'agi' | 'vit' };
+  | { type: 'levelup'; stat: 'str' | 'agi' | 'vit' }
+  /** Aimed harm: at a tile, or (without one) at the nearest foe in reach. */
+  | { type: 'fire'; x?: number; y?: number }
+  /** Commerce, while trading with a merchant. */
+  | { type: 'buy'; id: number }
+  | { type: 'sell'; id: number }
+  | { type: 'leaveShop' }
+  /** Commerce: pay the shrine you're answering to show other offers. */
+  | { type: 'reroll' }
+  /** Answer a schism shrine: settle how harm works, or step away (null). */
+  | { type: 'schism'; harm: HarmId | null };
 
 export type GameEvent =
   | { type: 'rule'; rule: RuleId; how: 'shrine' | 'mastery' | 'milestone' }
+  /** The world's Means of Harm became known: rolled at its creation, or chosen at a schism shrine. */
+  | { type: 'axiom'; harm: HarmId; how: 'rolled' | 'schism' }
+  /** Aimed harm flew over these tiles (for the renderer to draw). */
+  | { type: 'shot'; path: Pos[] }
   | { type: 'death' }
   /** The player moved to another floor (either direction). */
   | { type: 'floor'; depth: number };
@@ -159,6 +175,7 @@ export class Game implements RuleHost {
     const d = game.stats;
     p.hp = d.maxHp;
     p.mana = d.maxMana;
+    if (game.ctx.harm === 'volley') p.ammo = B.harm.startAmmo;
     if (world.rules.length === 0) {
       game.log(game.lex.t('start.fresh'), 'info');
       game.log(game.lex.t('start.hint'), 'dim');
@@ -182,6 +199,16 @@ export class Game implements RuleHost {
 
   has(id: RuleId): boolean {
     return this.world.rules.includes(id);
+  }
+
+  /** How harm works in this world right now (Strike while a schism is still open). */
+  get means(): MeansModule {
+    return MEANS[this.ctx.harm];
+  }
+
+  /** Has this world settled its Means of Harm? Open worlds wait for a schism shrine. */
+  get harmSettled(): boolean {
+    return !!this.world.genome?.axioms.harm;
   }
 
   /** Persistable state, with the RNG position folded in. */
@@ -257,6 +284,8 @@ export class Game implements RuleHost {
       run.items = items;
       this.countSpawned(items.map((fi) => fi.item));
       this.count('floorsEntered');
+      if (this.has('peril') && !this.harmSettled) this.placeSchism();
+      if (this.has('commerce')) this.placeMerchant();
     }
     arrive();
     this.clearArrival();
@@ -318,7 +347,19 @@ export class Game implements RuleHost {
     if (run.over) return false;
     if (run.pending) {
       if (run.pending.kind === 'shrine' && a.type === 'shrine') return this.resolveShrine(a.rule);
+      if (run.pending.kind === 'shrine' && a.type === 'reroll') return this.reroll();
+      if (run.pending.kind === 'shop') {
+        if (a.type === 'buy') return this.buy(a.id);
+        if (a.type === 'sell') return this.sell(a.id);
+        if (a.type === 'leaveShop') {
+          run.pending = null;
+          this.log(this.lex.t('shop.leave'), 'dim');
+          this.settlePending();
+          return true;
+        }
+      }
       if (run.pending.kind === 'levelup' && a.type === 'levelup') return this.resolveLevelUp(a.stat);
+      if (run.pending.kind === 'schism' && a.type === 'schism') return this.resolveSchism(a.harm);
       return false;
     }
     let cost = 0;
@@ -351,6 +392,9 @@ export class Game implements RuleHost {
       case 'ability':
         cost = this.ability(a.ability);
         break;
+      case 'fire':
+        cost = this.fire(a.x === undefined || a.y === undefined ? undefined : { x: a.x, y: a.y });
+        break;
       default:
         return false;
     }
@@ -369,7 +413,8 @@ export class Game implements RuleHost {
     const ny = p.y + dy;
     const m = this.monsterAt(nx, ny);
     if (m) {
-      this.playerAttack(m);
+      if (this.means.bump === 'harm') this.harm(m);
+      else this.shove(m, dx, dy);
       return this.stats.attackCost;
     }
     if (!passable(floor, nx, ny)) return 0;
@@ -385,10 +430,11 @@ export class Game implements RuleHost {
     let extra = 0;
     const left: string[] = [];
     for (const fi of this.itemsHere()) {
-      const auto = this.autoPickup === 'all' || (this.autoPickup === 'gold' && fi.item.kind === 'gold');
+      const counted = fi.item.kind === 'gold' || fi.item.kind === 'ammo';
+      const auto = this.autoPickup === 'all' || (this.autoPickup === 'gold' && counted);
       if (auto && this.take(fi, true)) continue;
       const label = itemLabel(fi.item, this.ctx, this.lex);
-      left.push(fi.item.kind === 'gold' ? label : `${article(label)} ${label}`);
+      left.push(counted ? label : `${article(label)} ${label}`);
     }
     if (left.length) this.log(this.lex.t('pickup.see', { what: this.lex.list(left) }), 'info');
     const g = floor.glimmer[idx(floor, p.x, p.y)];
@@ -406,6 +452,16 @@ export class Game implements RuleHost {
     if (floor.tiles[idx(floor, p.x, p.y)] === T_UP) this.log(this.lex.t('stairs.up.here', { n: this.run.depth - 1 }), 'info');
     const sh = floor.shrine;
     if (sh && !sh.used && sh.pos.x === p.x && sh.pos.y === p.y) this.openShrine();
+    const mc = floor.merchant;
+    if (mc && mc.pos.x === p.x && mc.pos.y === p.y && this.has('commerce')) {
+      this.log(this.lex.t(mc.stock.length ? 'shop.open' : 'shop.empty'), 'info');
+      this.run.pending = { kind: 'shop' };
+    }
+    const sc = floor.schism;
+    if (sc && !sc.used && !this.harmSettled && sc.pos.x === p.x && sc.pos.y === p.y) {
+      this.log(this.lex.t('schism.open'), 'rule');
+      this.run.pending = { kind: 'schism' };
+    }
     const grave = this.graveAt(p.x, p.y);
     if (grave) this.visitGrave(grave);
     return extra;
@@ -516,6 +572,9 @@ export class Game implements RuleHost {
     if (fi.item.kind === 'gold') {
       p.gold += fi.item.amount ?? 0;
       this.log(this.lex.t('pickup.currency', { n: fi.item.amount ?? 0 }), 'good');
+    } else if (fi.item.kind === 'ammo') {
+      p.ammo = (p.ammo ?? 0) + (fi.item.amount ?? 0);
+      this.log(this.lex.t('pickup.ammo', { n: fi.item.amount ?? 0 }), 'good');
     } else if (p.inventory.length >= INVENTORY_CAP) {
       if (!quietWhenFull) this.log(this.lex.t('pickup.full', { item: itemLabel(fi.item, this.ctx, this.lex) }), 'dim');
       return false;
@@ -565,7 +624,7 @@ export class Game implements RuleHost {
       }
       p.mana -= costMana;
       this.log(this.lex.t('cleave'), 'good');
-      for (const m of targets) if (this.run.monsters.includes(m)) this.playerAttack(m);
+      for (const m of targets) if (this.run.monsters.includes(m)) this.harm(m);
       return this.stats.attackCost;
     }
     p.mana -= costMana;
@@ -625,8 +684,298 @@ export class Game implements RuleHost {
     const p = this.run.player;
     this.reinterpretFloor(rule);
     RULES[rule].onAdopt?.(this);
+    if (rule === 'peril') this.revealHarm();
     p.hp = Math.min(p.hp, this.stats.maxHp);
     this.refreshVision();
+  }
+
+  // -------------------------------------------------------------------------
+  // Commerce
+  // -------------------------------------------------------------------------
+
+  /** What a merchant asks for an item here. */
+  priceOf(item: Item): number {
+    const C = B.commerce;
+    const d = this.run.depth;
+    const base =
+      item.kind === 'potion' ? C.potion[0] + C.potion[1] * d
+      : item.kind === 'food' ? C.food[0] + C.food[1] * d
+      : item.kind === 'weapon' ? C.weapon[0] + C.weapon[1] * (item.atk ?? 0) + C.weapon[2] * d
+      : item.kind === 'armor' ? C.armor[0] + C.armor[1] * (item.def ?? 0) + C.armor[2] * d
+      : item.kind === 'ammo' ? C.ammoEach * (item.amount ?? 0)
+      : 0;
+    return Math.max(1, Math.round(base * (alt(this.ctx, 'commerce') ? C.discount : 1)));
+  }
+
+  /** What a merchant pays for it: half. */
+  sellPriceOf(item: Item): number {
+    return Math.floor(this.priceOf(item) / 2);
+  }
+
+  /** What a shrine asks to show other offers, or null if it can't (or already has). */
+  rerollCost(): number | null {
+    const sh = this.run.floor.shrine;
+    if (!this.has('commerce') || !sh || sh.rerolled || sh.used) return null;
+    const others = frontier(new Set(this.world.rules), { depth: this.run.depth, emergence: this.world.emergence ?? {}, pool: this.world.genome?.pool })
+      .filter((r) => !sh.offers?.includes(r));
+    if (!others.length) return null;
+    const [base, per] = B.commerce.reroll;
+    return Math.round((base + per * this.run.depth) * (alt(this.ctx, 'commerce') ? B.commerce.discount : 1));
+  }
+
+  placeMerchant() {
+    const run = this.run;
+    const f = run.floor;
+    if (f.merchant) return;
+    const g = this.genCtx('merchant');
+    const p = run.player;
+    const pos = randomFloorTile(f, g.rng, (x, y) =>
+      Math.abs(x - p.x) <= 1 && Math.abs(y - p.y) <= 1 ||
+      (x === f.start.x && y === f.start.y) ||
+      (x === f.stairs.x && y === f.stairs.y) ||
+      (!!f.shrine && f.shrine.pos.x === x && f.shrine.pos.y === y) ||
+      (!!f.schism && f.schism.pos.x === x && f.schism.pos.y === y) ||
+      run.items.some((fi) => fi.x === x && fi.y === y) ||
+      !!this.monsterAt(x, y),
+    );
+    if (!pos) return;
+    delete f.glimmer[idx(f, pos.x, pos.y)];
+    const stock: Item[] = [makeItem('potion', run.depth, g), makeItem('potion', run.depth, g)];
+    if (this.has('hunger')) stock.push(makeItem('food', run.depth, g));
+    if (this.has('arms')) stock.push(makeItem('weapon', run.depth + 1, g), makeItem('armor', run.depth + 1, g));
+    if (this.ctx.harm === 'volley') stock.push(makeItem('ammo', run.depth, g));
+    f.merchant = { pos, stock };
+  }
+
+  private buy(id: number): boolean {
+    const p = this.run.player;
+    const mc = this.run.floor.merchant;
+    const item = mc?.stock.find((i) => i.id === id);
+    if (!mc || !item) return false;
+    const price = this.priceOf(item);
+    if (p.gold < price) {
+      this.log(this.lex.t('shop.poor'), 'dim');
+      return false;
+    }
+    if (item.kind === 'ammo') p.ammo = (p.ammo ?? 0) + (item.amount ?? 0);
+    else if (p.inventory.length >= INVENTORY_CAP) {
+      this.log(this.lex.t('pack.full'), 'dim');
+      return false;
+    } else p.inventory.push(item);
+    p.gold -= price;
+    mc.stock = mc.stock.filter((i) => i !== item);
+    this.count('goldSpent', price);
+    this.log(this.lex.t('shop.buy', { item: itemLabel(item, this.ctx, this.lex), n: price }), 'good');
+    return true;
+  }
+
+  private sell(id: number): boolean {
+    const p = this.run.player;
+    const mc = this.run.floor.merchant;
+    const item = p.inventory.find((i) => i.id === id);
+    if (!mc || !item) return false;
+    const price = this.sellPriceOf(item);
+    p.inventory = p.inventory.filter((i) => i !== item);
+    p.gold += price;
+    mc.stock.push(item);
+    this.log(this.lex.t('shop.sell', { item: itemLabel(item, this.ctx, this.lex), n: price }), 'info');
+    return true;
+  }
+
+  private reroll(): boolean {
+    const sh = this.run.floor.shrine;
+    const cost = this.rerollCost();
+    const p = this.run.player;
+    if (!sh || cost === null) return false;
+    if (p.gold < cost) {
+      this.log(this.lex.t('shop.poor'), 'dim');
+      return false;
+    }
+    p.gold -= cost;
+    this.count('goldSpent', cost);
+    sh.rerolled = true;
+    const others = frontier(new Set(this.world.rules), { depth: this.run.depth, emergence: this.world.emergence ?? {}, pool: this.world.genome?.pool })
+      .filter((r) => !sh.offers?.includes(r));
+    const rng = new Rng(hashSeed(this.world.seed, this.run.gen, this.run.depth, 'reroll', this.world.rules.length));
+    sh.offers = rng.shuffle(others).slice(0, 3);
+    this.log(this.lex.t('shrine.reroll'), 'rule');
+    return true;
+  }
+
+  // -------------------------------------------------------------------------
+  // Means of Harm: revealed with the first foes, or settled at a schism shrine
+  // -------------------------------------------------------------------------
+
+  /** Foes have arrived: say how harm works here, or raise a schism shrine to decide it. */
+  private revealHarm() {
+    const harm = this.world.genome?.axioms.harm;
+    if (!harm) {
+      this.placeSchism();
+      this.log(this.lex.t('schism.appears'), 'rule');
+      return;
+    }
+    this.announceHarm(harm, 'rolled');
+  }
+
+  private announceHarm(harm: HarmId, how: 'rolled' | 'schism') {
+    const m = this.lex.means(harm);
+    this.log(this.lex.t('axiom.harm', { name: m.name, tagline: m.tagline }), 'rule');
+    this.events.push({ type: 'axiom', harm, how });
+    const p = this.run.player;
+    if (harm === 'volley') p.ammo = Math.max(p.ammo ?? 0, B.harm.startAmmo);
+    if (harm === 'arcanum') p.mana = this.stats.maxMana;
+  }
+
+  /** One schism shrine per floor while the question is open, somewhere in the open. */
+  private placeSchism() {
+    const f = this.run.floor;
+    if (f.schism || this.harmSettled) return;
+    const g = this.genCtx('schism');
+    const p = this.run.player;
+    const pos = randomFloorTile(f, g.rng, (x, y) =>
+      (x === p.x && y === p.y) ||
+      (x === f.start.x && y === f.start.y) ||
+      (x === f.stairs.x && y === f.stairs.y) ||
+      (!!f.shrine && f.shrine.pos.x === x && f.shrine.pos.y === y) ||
+      this.run.items.some((fi) => fi.x === x && fi.y === y) ||
+      !!this.monsterAt(x, y),
+    );
+    if (!pos) return;
+    delete f.glimmer[idx(f, pos.x, pos.y)];
+    f.schism = { pos, offers: g.rng.shuffle([...HARMS]).slice(0, B.harm.schismOffers), used: false };
+  }
+
+  private resolveSchism(harm: HarmId | null): boolean {
+    const sc = this.run.floor.schism;
+    this.run.pending = null;
+    if (!sc) return true;
+    if (harm === null || !sc.offers.includes(harm)) {
+      this.log(this.lex.t('schism.stepback'), 'dim');
+    } else {
+      sc.used = true;
+      this.world.genome.axioms.harm = harm;
+      // A new means brings its own words for implements, shots and blows.
+      this.lex = lexiconFor(this.world, this.lex.plain);
+      this.announceHarm(harm, 'schism');
+    }
+    this.settlePending();
+    return true;
+  }
+
+  /**
+   * Foes the player could harm right now with an aimed use of their means,
+   * nearest first. Strike reaches only the adjacent.
+   */
+  targets(): Monster[] {
+    const { player: p, floor: f, monsters } = this.run;
+    const reach = this.means.reach;
+    const range = this.stats.range;
+    let out: Monster[];
+    if (reach === 'adjacent') out = monsters.filter((m) => cheb(m, p) === 1);
+    else if (reach === 'earshot') {
+      const heard = distanceMap(f, p);
+      out = monsters.filter((m) => {
+        const d = heard[idx(f, m.x, m.y)];
+        return d > 0 && d <= range;
+      });
+    } else {
+      out = monsters.filter((m) => {
+        if (!this.isVisible(m.x, m.y)) return false;
+        const path = ray(f, p, m, range);
+        const at = path.findIndex((t) => t.x === m.x && t.y === m.y);
+        if (at < 0) return false;
+        // A shot stops at the first body; a bolt passes through.
+        return reach === 'pierce' || !path.slice(0, at).some((t) => this.monsterAt(t.x, t.y));
+      });
+    }
+    return out.sort((a, b) => cheb(a, p) - cheb(b, p) || a.id - b.id);
+  }
+
+  /** Aimed harm. Returns turns spent (0 if nothing happened). */
+  private fire(at?: Pos): number {
+    const p = this.run.player;
+    const f = this.run.floor;
+    const means = this.means;
+    const s = this.stats;
+    if (means.reach === 'adjacent') {
+      this.log(this.lex.t('fire.strike'), 'dim');
+      return 0;
+    }
+    const goal = at ?? this.targets()[0];
+    if (!goal || (goal.x === p.x && goal.y === p.y)) {
+      this.log(this.lex.t('fire.none'), 'dim');
+      return 0;
+    }
+    if (means.reach === 'earshot') {
+      const m = this.monsterAt(goal.x, goal.y);
+      const heard = distanceMap(f, p)[idx(f, goal.x, goal.y)];
+      if (!m || heard <= 0 || heard > s.range) {
+        this.log(this.lex.t('fire.none'), 'dim');
+        return 0;
+      }
+      this.events.push({ type: 'shot', path: [{ x: m.x, y: m.y }] });
+      this.harm(m);
+      return s.attackCost;
+    }
+    const path = ray(f, p, goal, s.range);
+    if (means.reach === 'shot') {
+      if ((p.ammo ?? 0) <= 0) {
+        this.log(this.lex.t('volley.empty'), 'dim');
+        return 0;
+      }
+      p.ammo = (p.ammo ?? 0) - 1;
+      this.count('shots');
+      const hit = path.findIndex((t) => this.monsterAt(t.x, t.y));
+      const flown = hit >= 0 ? path.slice(0, hit + 1) : path;
+      this.events.push({ type: 'shot', path: flown });
+      const land = flown[flown.length - 1] ?? { x: p.x, y: p.y };
+      if (hit >= 0) this.harm(this.monsterAt(path[hit].x, path[hit].y)!);
+      else this.log(this.lex.t('volley.wide'), 'dim');
+      // The spent shot lands where it stopped, unless it broke.
+      const brittle = this.has('durability') ? B.harm.ammoBreakDurability : B.harm.ammoBreak;
+      if (!this.rng.chance(brittle)) this.dropAmmo(land, 1);
+      else this.count('shotsBroken');
+      return s.attackCost;
+    }
+    // Arcanum: a bolt along the line, through every body on it.
+    if (p.mana < B.harm.boltCost) {
+      this.log(this.lex.t('arcanum.nomana', { n: B.harm.boltCost }), 'dim');
+      return 0;
+    }
+    p.mana -= B.harm.boltCost;
+    this.events.push({ type: 'shot', path });
+    const struck = path.map((t) => this.monsterAt(t.x, t.y)).filter((m): m is Monster => !!m);
+    if (!struck.length) this.log(this.lex.t('arcanum.fizzle'), 'dim');
+    for (const m of struck) if (this.run.monsters.includes(m)) this.harm(m);
+    return s.attackCost;
+  }
+
+  private dropAmmo(at: Pos, n: number) {
+    const run = this.run;
+    const pile = run.items.find((fi) => fi.x === at.x && fi.y === at.y && fi.item.kind === 'ammo');
+    if (pile) {
+      pile.item.amount = (pile.item.amount ?? 0) + n;
+      return;
+    }
+    const item: Item = { id: run.nextId++, kind: 'ammo', key: 'ammo', name: this.lex.role('ammos'), amount: n, weight: 0, element: null, dur: 0, maxDur: 0 };
+    run.items.push({ item, x: at.x, y: at.y });
+  }
+
+  /** Volley and Arcanum: walking into a foe pushes it back a tile, and it loses its footing. */
+  private shove(m: Monster, dx: number, dy: number) {
+    const f = this.run.floor;
+    const nx = m.x + dx;
+    const ny = m.y + dy;
+    m.aware = true;
+    const name = this.monsterName(m);
+    if (passable(f, nx, ny) && !this.monsterAt(nx, ny)) {
+      m.x = nx;
+      m.y = ny;
+      m.stun = Math.max(m.stun, 1);
+      this.log(this.lex.t('shove', { foe: name }), 'info');
+    } else {
+      this.log(this.lex.t('shove.stuck', { foe: name }), 'dim');
+    }
   }
 
   /**
@@ -739,17 +1088,24 @@ export class Game implements RuleHost {
     return alt(this.ctx, 'durability') ? 2 : 1;
   }
 
-  private playerAttack(m: Monster) {
+  /**
+   * Harm one foe with the world's means. Every channel shares this: hit
+   * chance, the implement's element, sneak attacks, armour, wear, stagger.
+   * The words differ by means; the lexicon picks them.
+   */
+  private harm(m: Monster) {
     const s = this.stats;
     const p = this.run.player;
     const name = this.monsterName(m);
     const sneak = !m.aware && s.sneak > 1;
     m.aware = true;
+    if (this.ctx.harm !== 'strike') m.heard = this.run.turn;
+    if (this.ctx.harm === 'discourse') this.overheard(m);
     if (s.hit < 1 && !this.rng.chance(s.hit)) {
       this.log(this.lex.t('attack.miss', { foe: name }), 'dim');
       return;
     }
-    let dmg = s.attack;
+    let dmg = Math.ceil(s.attack * B.harm.power[this.ctx.harm]);
     const notes: string[] = [];
     const w = p.weapon;
     if (w?.element && m.element && this.has('elements') && this.has('arms')) {
@@ -787,15 +1143,32 @@ export class Game implements RuleHost {
     }
   }
 
-  private monsterAttack(m: Monster) {
+  /** Discourse: everyone within earshot hears what you said, and turns to look. */
+  private overheard(target: Monster) {
+    const f = this.run.floor;
+    const heard = distanceMap(f, this.run.player);
+    let n = 0;
+    for (const m of this.run.monsters) {
+      if (m === target || m.aware) continue;
+      const d = heard[idx(f, m.x, m.y)];
+      if (d > 0 && d <= this.stats.range) {
+        m.aware = true;
+        n++;
+      }
+    }
+    if (n) this.log(this.lex.t('discourse.overheard', { n }), 'dim');
+  }
+
+  private monsterAttack(m: Monster, ranged = false) {
     const s = this.stats;
     const p = this.run.player;
     const name = this.monsterName(m);
     if (s.enemyHit < 1 && !this.rng.chance(s.enemyHit)) {
-      this.log(this.lex.t('foe.miss', { foe: name }), 'dim');
+      this.log(this.lex.t(ranged ? 'foe.shoots.miss' : 'foe.miss', { foe: name }), 'dim');
       return;
     }
-    const dmg = Math.max(1, m.atk - s.defense);
+    const guard = !ranged && this.ctx.harm === 'strike' ? B.harm.strikeGuard : 0;
+    const dmg = Math.max(1, m.atk - s.defense - guard);
     const a = p.armor;
     if (a && this.has('durability') && this.has('arms')) {
       a.dur -= this.wear();
@@ -806,7 +1179,7 @@ export class Game implements RuleHost {
     }
     p.hp -= dmg;
     this.count('damageTaken', dmg);
-    this.log(this.lex.t('foe.hit', { foe: name, n: dmg }), 'bad');
+    this.log(this.lex.t(ranged ? 'foe.shoots' : 'foe.hit', { foe: name, n: dmg }), 'bad');
     if (p.hp <= 0) this.die(this.lex.t('cause.slain', { a: article(name), foe: name, n: this.run.depth }));
   }
 
@@ -840,6 +1213,7 @@ export class Game implements RuleHost {
     if (this.has('things') && this.rng.chance(D.potion * bonus)) drops.push(makeItem('potion', run.depth, g));
     if (this.has('hunger') && this.rng.chance(D.food * bonus)) drops.push(makeItem('food', run.depth, g));
     if (this.has('arms') && this.rng.chance(D.arms * bonus)) drops.push(makeItem(this.rng.chance(0.6) ? 'weapon' : 'armor', run.depth, g));
+    if (this.ctx.harm === 'volley' && this.rng.chance(B.harm.ammoDrop)) drops.push(makeItem('ammo', run.depth, g));
     for (const item of drops) run.items.push({ item, x: m.x, y: m.y });
     this.countSpawned(drops);
     this.count('kills');
@@ -903,6 +1277,7 @@ export class Game implements RuleHost {
     }
     this.environment();
     if (run.over) return;
+    if (this.ctx.harm === 'discourse') this.composure();
     if (this.has('hunger')) {
       const H = B.hunger;
       p.satiety = Math.max(0, p.satiety - H.drainPerTurn * (alt(this.ctx, 'hunger') ? H.leanMult : 1));
@@ -927,12 +1302,26 @@ export class Game implements RuleHost {
         }
       }
     }
-    if (this.has('arcana')) {
+    const arcanum = this.ctx.harm === 'arcanum';
+    if (this.has('arcana') || arcanum) {
       p.manaClock += 1;
-      if (p.manaClock >= (alt(this.ctx, 'arcana') ? B.arcana.leyManaEvery : B.arcana.manaEvery)) {
+      const every = arcanum
+        ? Math.ceil(B.harm.arcanumManaEvery / (this.has('arcana') ? 2 : 1))
+        : alt(this.ctx, 'arcana') ? B.arcana.leyManaEvery : B.arcana.manaEvery;
+      if (p.manaClock >= every) {
         p.manaClock = 0;
         p.mana = Math.min(this.stats.maxMana, p.mana + 1);
       }
+    }
+  }
+
+  /** Discourse: a foe left alone gathers itself again. */
+  private composure() {
+    const E = B.harm.composureEvery;
+    const turn = this.run.turn;
+    if (turn % E !== 0) return;
+    for (const m of this.run.monsters) {
+      if (m.hp < m.maxHp && turn - (m.heard ?? -E) >= E) m.hp += 1;
     }
   }
 
@@ -973,6 +1362,27 @@ export class Game implements RuleHost {
     if (!m.aware && sees) m.aware = true;
     else if (m.aware && dark && !sees && this.rng.chance(0.15)) m.aware = false;
 
+    if (m.aware && this.ctx.harm === 'volley' && MONSTERS[m.kind].skirmish) {
+      const d = cheb(m, p);
+      // Keep their distance if they can; shoot when they have a line.
+      if (d <= B.harm.skirmishKeep) {
+        const away = DIRS.filter((s) => {
+          const nx = m.x + s.x;
+          const ny = m.y + s.y;
+          return passable(f, nx, ny) && !this.monsterAt(nx, ny) && !(nx === p.x && ny === p.y) && cheb({ x: nx, y: ny }, p) > d;
+        });
+        if (away.length) {
+          const s = this.rng.pick(away);
+          m.x += s.x;
+          m.y += s.y;
+          return false;
+        }
+      }
+      if (d > 1 && d <= B.harm.skirmishRange && lineOfSight(f, m, p)) {
+        this.monsterAttack(m, true);
+        return true;
+      }
+    }
     if (m.aware && cheb(m, p) === 1) {
       this.monsterAttack(m);
       return true;

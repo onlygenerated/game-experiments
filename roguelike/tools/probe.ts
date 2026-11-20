@@ -14,6 +14,7 @@ import { Rng } from '../src/engine/rng.ts';
 import type { RuleId } from '../src/engine/types.ts';
 import { newWorld } from '../src/engine/world.ts';
 import { RULE_ORDER } from '../src/rules/rules.ts';
+import { HARMS } from '../src/rules/harm.ts';
 import { explorerAction } from '../src/__tests__/bot.ts';
 
 const N = Number(process.argv[2] ?? 60);
@@ -88,11 +89,41 @@ for (const [name, rules] of Object.entries(SCENARIOS)) {
 }
 
 // ---------------------------------------------------------------------------
+// Means of Harm parity: the same worlds, played under each means.
+// ---------------------------------------------------------------------------
+if (!only || only === 'harm') {
+  console.log(`\n=== harm: ${N} fresh runs per means (rules arrive as in play)`);
+  const medians: number[] = [];
+  for (const harm of HARMS) {
+    const depths: number[] = [];
+    const causes = new Map<string, number>();
+    const totals: Record<string, number> = {};
+    let floors = 0;
+    for (let seed = 1; seed <= N; seed++) {
+      const world = newWorld(seed * 7919, { premise: 'old-stone', harm });
+      const g = Game.start(world);
+      const rng = new Rng(seed);
+      for (let i = 0; i < MAX_ACTIONS && !g.run.over && g.run.depth <= MAX_DEPTH; i++) g.act(explorerAction(g, rng));
+      depths.push(g.run.depth);
+      floors += g.tally.floorsEntered ?? 0;
+      for (const [k, v] of Object.entries(g.tally)) totals[k] = (totals[k] ?? 0) + v;
+      const c = g.run.over ? (g.run.cause ?? '').replace(/ on depth \d+/, '').replace(/^slain by an? /, '') : g.run.depth > MAX_DEPTH ? `reached ${MAX_DEPTH + 1}` : 'timed out';
+      causes.set(c, (causes.get(c) ?? 0) + 1);
+    }
+    const per = (k: string) => f1((totals[k] ?? 0) / Math.max(1, floors));
+    medians.push(pct(depths, 0.5));
+    console.log(`  ${harm.padEnd(10)} depth p25/p50/p75 ${pct(depths, 0.25)}/${pct(depths, 0.5)}/${pct(depths, 0.75)}  mean ${f1(mean(depths))}   per floor: dmg taken ${per('damageTaken')} kills ${per('kills')} shots ${per('shots')} broken ${per('shotsBroken')}`);
+    console.log(`  ${''.padEnd(10)} ends: ${[...causes].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([c, n]) => `${c} ${n}`).join(', ')}`);
+  }
+  console.log(`  spread of medians: ${Math.max(...medians) - Math.min(...medians)} floors`);
+}
+
+// ---------------------------------------------------------------------------
 // Rule-by-rule: is each strategic rule a fair trade?
 // ---------------------------------------------------------------------------
 if (!only || only === 'rules') {
   const base: RuleId[] = ['peril', 'halls', 'things', 'growth', 'arms'];
-  const extras: (RuleId | null)[] = [null, 'weight', 'durability', 'elements', 'darkness', 'hunger', 'arcana', 'bestiary'];
+  const extras: (RuleId | null)[] = [null, 'weight', 'durability', 'elements', 'darkness', 'hunger', 'arcana', 'bestiary', 'commerce'];
   console.log(`\n=== rules: base ${base.join('+')}, ${N} runs each, shrines refused`);
   for (const extra of extras) {
     const depths: number[] = [];
