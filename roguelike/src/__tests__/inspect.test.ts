@@ -33,7 +33,7 @@ function besidePlayer(g: Game) {
 }
 
 function drop(g: Game, kind: ItemKind, x: number, y: number) {
-  const item = makeItem(kind, 1, { rng: new Rng(1), ctx: ctxOf(g.world), nextId: () => g.run.nextId++ });
+  const item = makeItem(kind, 1, { rng: new Rng(1), ctx: ctxOf(g.world), lex: g.lex, nextId: () => g.run.nextId++ });
   g.run.items.push({ item, x, y });
   return item;
 }

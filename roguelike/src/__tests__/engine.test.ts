@@ -133,7 +133,7 @@ describe('derived stats and the shrine preview', () => {
     const g = Game.start(newWorld(1));
     const p = g.run.player;
     p.weapon = greatsword();
-    const pv = previewRule(p, ctxOf(world(['things', 'arms'])), 'weight', { glimmers: 0, monsters: 0 });
+    const pv = previewRule(p, ctxOf(world(['things', 'arms'])), 'weight', { glimmers: 0, monsters: 0 }, g.lex);
     const cost = pv.changes.find((c) => c.label === 'Attack cost');
     expect(cost).toMatchObject({ from: '1 turn', to: '2 turns', good: false });
     expect(pv.notes.join(' ')).toMatch(/Greatsword weighs 6 vs your STR 3/);

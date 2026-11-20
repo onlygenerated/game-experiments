@@ -2,7 +2,8 @@ import { itemLabel, MONSTERS } from '../engine/content.ts';
 import { idx, inBounds } from '../engine/dungeon.ts';
 import type { Game } from '../engine/game.ts';
 import { T_STAIRS, T_UP, T_WALL } from '../engine/types.ts';
-import { alt, hiddenProps, RULES } from '../rules/rules.ts';
+import { alt, hiddenProps } from '../rules/rules.ts';
+import { BALANCE } from '../engine/balance.ts';
 import { itemFacts } from './hud.ts';
 
 export interface TileInfo {
@@ -22,47 +23,48 @@ export interface TileInfo {
 export function describeTile(game: Game, x: number, y: number): TileInfo {
   const run = game.run;
   const f = run.floor;
-  if (!inBounds(f, x, y)) return { title: 'Nothing', lines: [], known: false, walkable: false };
+  const L = game.lex;
+  if (!inBounds(f, x, y)) return { title: L.t('look.nothing'), lines: [], known: false, walkable: false };
   const i = idx(f, x, y);
   const dark = game.has('darkness');
   const visible = game.visible.has(i);
   if (dark && !visible && !f.explored[i]) {
-    return { title: 'Unknown', lines: ['You haven’t seen this part of the floor.'], known: false, walkable: false };
+    return { title: L.t('look.unknown'), lines: [L.t('look.unseen')], known: false, walkable: false };
   }
   const ctx = game.ctx;
   const p = run.player;
   const lines: string[] = [];
   const titles: string[] = [];
-  if (dark && !visible) lines.push('Remembered — you can’t see it from here.');
+  if (dark && !visible) lines.push(L.t('look.remembered'));
 
-  if (p.x === x && p.y === y) titles.push(`You (${p.name})`);
+  if (p.x === x && p.y === y) titles.push(L.t('look.you', { name: p.name }));
 
   const m = visible ? game.monsterAt(x, y) : undefined;
   if (m) {
     const name = game.monsterName(m);
     titles.push(name[0].toUpperCase() + name.slice(1));
-    const parts = [`HP ${m.hp}/${m.maxHp}`];
-    if (game.has('peril')) parts.push(`hits you for ${Math.max(1, m.atk - game.stats.defense)}`);
-    if (m.def) parts.push(`armour ${m.def}`);
+    const parts = [L.t('look.foeHp', { n: m.hp, max: m.maxHp })];
+    if (game.has('peril')) parts.push(L.t('look.foeHits', { n: Math.max(1, m.atk - game.stats.defense) }));
+    if (m.def) parts.push(L.t('look.foeArmor', { n: m.def }));
     lines.push(parts.join(' · '));
     const def = MONSTERS[m.kind];
-    if (def.speed > 1) lines.push('Fast and erratic.');
-    if (def.speed < 1) lines.push('Slow: acts every other turn.');
-    if (m.stun > 0) lines.push('Stunned.');
-    if (dark && !m.aware) lines.push(`It hasn’t noticed you: a sneak attack does ×${game.stats.sneak}.`);
+    if (def.speed > 1) lines.push(L.t('look.fast'));
+    if (def.speed < 1) lines.push(L.t('look.slow'));
+    if (m.stun > 0) lines.push(L.t('look.stunned'));
+    if (dark && !m.aware) lines.push(L.t('look.unaware', { n: game.stats.sneak }));
     const w = p.weapon;
     if (m.element && w?.element && game.has('elements') && game.has('arms')) {
-      lines.push(w.element === m.element ? `It resists your ${w.element} weapon (½ damage).` : `It’s weak to your ${w.element} weapon (×2 damage).`);
+      lines.push(L.t(w.element === m.element ? 'look.resists' : 'look.weak', { el: L.element(w.element).adj }));
     }
   }
 
   const items = visible ? run.items.filter((fi) => fi.x === x && fi.y === y) : [];
   for (const fi of items) {
-    const label = itemLabel(fi.item, ctx);
+    const label = itemLabel(fi.item, ctx, L);
     if (!m) titles.push(label);
     const facts = itemFacts(fi.item, game);
     const hidden = hiddenProps(fi.item, ctx);
-    const extra = hidden ? ` · ${hidden} ${hidden === 1 ? 'thing' : 'things'} you can’t perceive yet` : '';
+    const extra = hidden ? L.t(hidden === 1 ? 'look.hidden.one' : 'look.hidden.many', { n: hidden }) : '';
     lines.push(`${label}${facts.length ? ` — ${facts.join(' · ')}` : ''}${extra}`);
   }
 
@@ -70,43 +72,45 @@ export function describeTile(game: Game, x: number, y: number): TileInfo {
   const sh = f.shrine;
   const grave = game.floorGraves().find((g) => g.x === x && g.y === y);
   const gl = f.glimmer[i];
-  let terrain = t === T_WALL ? 'Wall' : 'Floor';
+  const floorWord = L.t('look.floor');
+  let terrain = t === T_WALL ? L.t('look.wall') : floorWord;
   if (t === T_STAIRS) {
-    terrain = 'Stairs down';
-    lines.push(`Leads to depth ${run.depth + 1}.`);
+    terrain = L.t('look.stairsDown');
+    lines.push(L.t('look.stairsDownLine', { n: run.depth + 1 }));
   }
   if (t === T_UP) {
-    terrain = 'Stairs up';
-    lines.push(`Leads back to depth ${run.depth - 1}, as you left it.`);
+    terrain = L.t('look.stairsUp');
+    lines.push(L.t('look.stairsUpLine', { n: run.depth - 1 }));
   }
   if (sh && sh.pos.x === x && sh.pos.y === y) {
-    terrain = 'Rule Shrine';
-    if (sh.dark) lines.push('Dark: you left this floor without answering it.');
-    else if (sh.used) lines.push('Spent: it has already changed this world.');
-    else if (sh.offers?.length) lines.push(`Offers: ${sh.offers.map((r) => RULES[r].name).join(', ')}. Step onto it to choose.`);
-    else lines.push('Step onto it to see what it offers.');
+    terrain = L.t('look.shrine');
+    if (sh.dark) lines.push(L.t('look.shrine.dark'));
+    else if (sh.used) lines.push(L.t('look.shrine.spent'));
+    else if (sh.offers?.length) lines.push(L.t('look.shrine.offers', { list: sh.offers.map((r) => L.rule(r).name).join(L.t('list.sep')) }));
+    else lines.push(L.t('look.shrine.unseen'));
   }
   if (grave) {
-    terrain = `Grave of ${grave.name}`;
-    lines.push(`Heir ${grave.gen}: ${grave.epitaph}.`);
-    lines.push(grave.looted || !grave.item ? 'Nothing is left in it.' : 'Something is buried with them.');
+    terrain = L.t('look.grave', { name: grave.name });
+    lines.push(L.t('look.grave.line', { gen: grave.gen, epitaph: grave.epitaph }));
+    lines.push(L.t(grave.looted || !grave.item ? 'look.grave.empty' : 'look.grave.full'));
   }
   if (gl) {
     if (game.has('elements')) {
-      terrain = gl === 'ember' ? 'Ember stone' : 'Frost stone';
+      terrain = L.t('look.stone', { Element: L.element(gl).Adj });
       lines.push(
         gl === 'ember'
-          ? `Burns anyone who ends a turn on it for ${alt(ctx, 'elements') ? 4 : 2}.`
-          : 'Freezes anyone who steps on it for a turn.',
+          ? L.t('look.ember', { n: alt(ctx, 'elements') ? BALANCE.elements.wildfireBurn : BALANCE.elements.emberBurn })
+          : L.t('look.frost'),
       );
     } else {
-      terrain = 'Glimmering stone';
-      lines.push(`It’s faintly ${gl === 'ember' ? 'warm' : 'cold'}. It does nothing — yet.`);
+      terrain = L.t('look.glimmer');
+      lines.push(L.t(gl === 'ember' ? 'look.glimmer.ember' : 'look.glimmer.frost'));
     }
   }
-  if (!titles.length || (titles.length === 1 && titles[0].startsWith('You'))) titles.push(terrain);
-  else if (terrain !== 'Floor') lines.push(`Underfoot: ${terrain.toLowerCase()}.`);
-  if (t === T_WALL) lines.push('Solid rock.');
+  const you = L.t('look.you', { name: p.name });
+  if (!titles.length || (titles.length === 1 && titles[0] === you)) titles.push(terrain);
+  else if (terrain !== floorWord) lines.push(L.t('look.underfoot', { terrain: terrain.toLowerCase() }));
+  if (t === T_WALL) lines.push(L.t('look.rock'));
 
   return { title: titles.join(' · '), lines, known: true, walkable: t !== T_WALL };
 }

@@ -1,8 +1,9 @@
 import { EMERGENT, RULE_ORDER } from '../rules/rules.ts';
 import { hashSeed, Rng } from './rng.ts';
-import type { RuleId, RunState, World } from './types.ts';
+import { DEFAULT_PREMISE, fill, PREMISES } from '../theme/lexicon.ts';
+import type { Genome, RuleId, RunState, World } from './types.ts';
 
-export const WORLD_VERSION = 2;
+export const WORLD_VERSION = 3;
 
 /**
  * When a basic rule first shows itself: usually depth 1–2, sometimes 3–4, and
@@ -33,27 +34,30 @@ function rollEmergenceTable(rng: Rng): World['emergence'] {
   return e;
 }
 
-const ADJ = ['Hollow', 'Sunken', 'Ashen', 'Verdant', 'Silent', 'Gilded', 'Drowned', 'Hungry', 'Pale', 'Iron', 'Weeping', 'Crooked'];
-const NOUN = ['Deep', 'Warren', 'Vault', 'Barrow', 'Maw', 'Cistern', 'Labyrinth', 'Undercroft', 'Hive', 'Spire', 'Reach', 'Well'];
-const NAMES = [
-  'Ada', 'Bram', 'Cass', 'Dov', 'Esme', 'Fen', 'Gil', 'Hale', 'Ines', 'Jory', 'Kit', 'Lark',
-  'Mira', 'Nell', 'Orrin', 'Pell', 'Quin', 'Rook', 'Sable', 'Tamsin', 'Ulric', 'Vesna', 'Wren', 'Yara',
-];
+/** Axiom options every world has today, before any alternatives exist. */
+export const DEFAULT_AXIOMS: Genome['axioms'] = { harm: 'strike', space: 'rooms', time: 'turns', self: 'single', knowledge: 'plain' };
+
+export function defaultGenome(): Genome {
+  return { premise: DEFAULT_PREMISE, intrusions: [], axioms: { ...DEFAULT_AXIOMS }, pool: null };
+}
 
 export function newWorld(seed: number): World {
   const rng = new Rng(hashSeed(seed, 'world'));
   const variants: World['variants'] = {};
   for (const id of RULE_ORDER) variants[id] = rng.chance(0.4) ? 'alt' : 'base';
   const emergence = rollEmergenceTable(new Rng(hashSeed(seed, 'emergence')));
+  const genome = defaultGenome();
+  const naming = PREMISES[genome.premise].naming;
   return {
     version: WORLD_VERSION,
     id: `w${seed.toString(36)}`,
-    name: `The ${rng.pick(ADJ)} ${rng.pick(NOUN)}`,
+    name: fill(naming.world, { adj: rng.pick(naming.worldAdjectives), noun: rng.pick(naming.worldNouns) }),
     seed,
     created: Date.now(),
     rules: [],
     variants,
     emergence,
+    genome,
     generation: 0,
     history: [],
     graves: [],
@@ -63,7 +67,7 @@ export function newWorld(seed: number): World {
 
 export function heirName(world: World, gen: number): string {
   const rng = new Rng(hashSeed(world.seed, 'heir', gen));
-  return rng.pick(NAMES);
+  return rng.pick(PREMISES[world.genome?.premise ?? DEFAULT_PREMISE].naming.heirs);
 }
 
 export function randomSeed(): number {
@@ -164,8 +168,17 @@ export class Store {
  * many rooms and rats. Keep them playing the way they were.
  */
 export function migrateWorld(w: World): World {
-  if ((w.version ?? 1) >= WORLD_VERSION) return w;
-  const rules: RuleId[] = [...w.rules];
-  for (const r of ['peril', 'halls'] as RuleId[]) if (!rules.includes(r)) rules.unshift(r);
-  return { ...w, version: WORLD_VERSION, rules, emergence: { bestiary: 4, ...(w.emergence ?? {}) } };
+  let out = w;
+  const v = out.version ?? 1;
+  if (v < 2) {
+    // v1: Halls and Peril were implicitly always on.
+    const rules: RuleId[] = [...out.rules];
+    for (const r of ['peril', 'halls'] as RuleId[]) if (!rules.includes(r)) rules.unshift(r);
+    out = { ...out, rules, emergence: { bestiary: 4, ...(out.emergence ?? {}) } };
+  }
+  if (v < 3) {
+    // v2: no genome. Everything made before premises looks like The Old Stone.
+    out = { ...out, genome: out.genome ?? defaultGenome() };
+  }
+  return out.version === WORLD_VERSION ? out : { ...out, version: WORLD_VERSION };
 }

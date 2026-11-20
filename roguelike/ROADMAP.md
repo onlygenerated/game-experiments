@@ -171,11 +171,19 @@ has 23 rules. You have found 9. Means of Harm: Discourse."
 
 In priority order. Each phase ends playable, with tests and probe targets met.
 
-### Phase 0 — Foundations (engine only)
+### Phase 0 — Foundations (engine only) — **done**
 
 Rule modules, lexicon, content-as-data, save v3 and migration, exclusive groups and
 genome in the rule graph. **Exit:** the game plays exactly as today, but *The Old Stone*
 is a data file and no player-visible string is hard-coded in the engine.
+
+*Shipped as:* `src/rules/modules.ts` (behaviour and hooks), `src/theme/` (premise type,
+*The Old Stone*, lexicon), `World.genome` with v2 → v3 migration, exclusive groups and
+the rule pool in `eligible`/`frontier`/`repealable`. Proved by a golden test of 22 seeded
+games (identical moves, log lines and rendered panels before and after), a premise
+validation suite, and a guard that fails on prose in engine source. Not yet done from
+§1.6: harm channels, targeting and the status framework — they arrive with the
+features that need them (Phase 2 and 4).
 
 ### Phase 1 — First premises
 
@@ -236,14 +244,15 @@ Until then, graves stay as they work today.
 - **Rule-specific item traits:** traits that only exist under certain rules
   ("Featherweight" only means something under Weight).
 
-### First steps for the next session
+### First steps for Phase 1
 
-1. Write the role list as a type, and a lexicon module with *The Old Stone* bindings.
-2. Route the log, HUD, Look and shrine text through the lexicon (no behaviour change).
-3. Move one rule (Things) to the module/hook shape and prove the pattern.
-4. Add premise data validation tests.
-5. Bind *The Merger* for the five Tier 0–1 roles (Vitality, Foe, Restorative, Currency,
-   Shrine) and play a floor of it.
+1. Write *The Merger* as a second premise file and let new worlds roll between the two;
+   the premise tests will list every key it still needs.
+2. Name the remaining themed chrome (the shrine's "Rule Shrine", the HUD's "Pack") per
+   premise, and add the Plain labels option with mechanical glosses in Look and the Codex.
+3. Intrusions: bind 0–2 roles from the other premise, with a generated justification.
+4. Naming grammar per premise for floors ("Sublevel 3 — Accounts Receivable").
+5. Add the next four premises.
 
 ---
 

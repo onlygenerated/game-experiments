@@ -29,11 +29,11 @@ export const BALANCE = {
     regenEvery: 10,
   },
   food: {
-    /** [name, satiety, weight] — which food a drop or floor spawn is. */
+    /** [satiety, weight] — which food a drop or floor spawn is. Names come from the premise. */
     kinds: [
-      ['Ration', 250, 0.55],
-      ['Dried Meat', 120, 0.45],
-    ] as [string, number, number][],
+      [250, 0.55],
+      [120, 0.45],
+    ] as [number, number][],
     /** Floor spawns: always this many… */
     perFloor: 1,
     /** …plus one more with this chance. */

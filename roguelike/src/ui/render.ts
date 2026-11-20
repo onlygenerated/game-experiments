@@ -1,4 +1,4 @@
-import { itemGlyph, MONSTERS } from '../engine/content.ts';
+import { itemGlyph } from '../engine/content.ts';
 import { idx } from '../engine/dungeon.ts';
 import type { Game } from '../engine/game.ts';
 import { T_STAIRS, T_UP, T_WALL, type Floor } from '../engine/types.ts';
@@ -15,14 +15,8 @@ export const COLORS = {
   shrine: '#c9a2ff',
   shrineUsed: '#4a4458',
   grave: '#cfd3dc',
-  ember: '#ff7a45',
-  frost: '#7cc8ff',
-  emberDim: '#3a2620',
-  frostDim: '#1d2a38',
-  rat: '#c49a6c',
-  bat: '#b38cff',
-  goblin: '#86d17a',
-  slime: '#c6e85a',
+  /** The stun marker. Foe and hazard colours come from the premise. */
+  stun: '#7cc8ff',
   potion: '#ff8fb8',
   gold: '#f2c46d',
   weapon: '#d9dde6',
@@ -227,12 +221,13 @@ export class Renderer {
         if (t === T_STAIRS) glyph('>', x, y, COLORS.stairs, true, 0.8);
         else if (t === T_UP) glyph('<', x, y, COLORS.stairsUp, true, 0.8);
         else if (g && elements) {
-          ctx.fillStyle = g === 'ember' ? COLORS.emberDim : COLORS.frostDim;
+          const look = game.lex.element(g);
+          ctx.fillStyle = look.tint;
           ctx.fillRect(sx + 1, sy + 1, c - 2, c - 2);
-          glyph(g === 'ember' ? '^' : '*', x, y, g === 'ember' ? COLORS.ember : COLORS.frost, true);
+          glyph(look.glyph, x, y, look.color, true);
         } else if (g) {
           // Dormant: a faint tint and a different dot. Means nothing — yet.
-          glyph('∙', x, y, g === 'ember' ? '#5a3a30' : '#2d4256', true, 0.9);
+          glyph('∙', x, y, game.lex.element(g).dormant, true, 0.9);
         } else glyph('·', x, y, COLORS.floorDot);
       }
     }
@@ -254,9 +249,9 @@ export class Renderer {
     }
     for (const m of run.monsters) {
       if (!canShow(m.x, m.y)) continue;
-      const def = MONSTERS[m.kind];
-      const color = elements && m.element ? COLORS[m.element] : COLORS[m.kind];
-      glyph(def.glyph, m.x, m.y, color, true, 0.8);
+      const look = game.lex.foe(m.kind);
+      const color = elements && m.element ? game.lex.element(m.element).color : look.color;
+      glyph(look.glyph, m.x, m.y, color, true, 0.8);
       // Health tick under wounded monsters, and a "?" over unaware ones in the dark.
       const sx = sxOf(m.x);
       const sy = syOf(m.y);
@@ -268,7 +263,7 @@ export class Renderer {
       }
       if (m.stun > 0) {
         ctx.font = `700 ${Math.round(c * 0.38)}px ${MONO}`;
-        ctx.fillStyle = COLORS.frost;
+        ctx.fillStyle = COLORS.stun;
         ctx.fillText('z', sx + c - 4, sy + 6);
       } else if (dark && !m.aware) {
         ctx.font = `700 ${Math.round(c * 0.38)}px ${MONO}`;

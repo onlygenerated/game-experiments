@@ -211,17 +211,30 @@ explore floor → fight, loot, find shrine → draft a rule (or refuse)
 ## 6. Architecture
 
 - **Pure TypeScript engine, no framework.** Canvas renders the map; DOM renders panels.
-- **Rules as modules.** Each rule declares id, prerequisites, text, variants and optional
-  hooks:
-  - `derive(stats, ctx)` — modify derived player stats (attack, attack cost, sight…)
-  - `preview(ctx)` — extra lines for the shrine's personal preview
-  - `onActivate(game)` — reinterpret the current floor when the rule arrives
-  - `populate(floor, ctx)` — place content when a floor is generated
-  - `onTurnEnd(game)`, `onPlayerHit(game, hit)` — per-turn and combat effects
+- **Rules as modules** (`src/rules/modules.ts`). Each rule is its behaviour only — tier,
+  prerequisites, optional exclusive group — plus hooks the engine calls:
+  - `derive(stats, player, ctx)` — modify derived stats (attack, attack cost, sight…)
+  - `loot(depth, gen, make)` — items the rule puts on a floor
+  - `reinterpretFloor(host)` — what the rule does to a floor when it arrives, here or
+    while you were elsewhere
+  - `onAdopt(host)` — one-time effects and messages when it arrives
+  - `notes(…)` — the shrine preview's personal notes
+- **Words live in premises** (`src/theme/`). A premise supplies every name, message,
+  glyph and colour a player sees; `The Old Stone` is the only one so far. The engine
+  writes messages as `lex.t('foe.hit', { foe, n })`; a test fails if prose appears in
+  engine or rule source. Internal ids (`rat`, `ember`) keep their old names for save
+  compatibility and are never shown.
+- **The world genome** (`World.genome`): premise, intrusions, settled axioms and the pool
+  of rules the world can ever discover. Rules in the same exclusive group can't coexist
+  and can't be repealed.
+- **Golden test** (`src/__tests__/golden.test.ts`): 22 seeded games fingerprinted —
+  moves, every log line, the rendered HUD and modals. Refactors must keep them; an
+  intended change in play or wording is recorded with `UPDATE_GOLDEN=1`.
 - **Derived stats are a pure function** of character + active rules. The shrine preview
   is just `derive(character, rules ∪ {candidate}) − derive(character, rules)`.
-- **Persistence:** `localStorage` holds worlds (seed, rules, variants, history, graves)
-  and at most one run in progress per world.
+- **Persistence:** `localStorage` holds worlds (seed, rules, variants, genome, history,
+  graves) and at most one run in progress per world. Older saves migrate on read
+  (v1 → Halls and Peril, v2 → a default genome).
 - **Determinism:** seeded RNG everywhere. Layout = f(world seed, depth); content =
   f(world seed, generation, depth).
 

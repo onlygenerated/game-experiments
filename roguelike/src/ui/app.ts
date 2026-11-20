@@ -1,10 +1,10 @@
-import { MONSTERS } from '../engine/content.ts';
 import { article, Game, type Action, type GameEvent } from '../engine/game.ts';
 import { canTravelTo, nearbyThreats, travelStep } from '../engine/travel.ts';
 import { T_UP, type Pos } from '../engine/types.ts';
 import type { RuleId, World } from '../engine/types.ts';
 import { defaultKV, heirName, newWorld, randomSeed, Store } from '../engine/world.ts';
-import { repealable, RULE_ORDER, RULES } from '../rules/rules.ts';
+import { repealable, RULE_ORDER } from '../rules/rules.ts';
+import { lexiconFor } from '../theme/lexicon.ts';
 import { describeTile } from './describe.ts';
 import {
   bannerHTML,
@@ -92,10 +92,10 @@ export class App {
         const run = this.store.run(w.id);
         const rules = RULE_ORDER.filter((r) => w.rules.includes(r));
         return `<li class="world-card">
-          <div class="wc-head"><h3>${esc(w.name)}</h3><span class="muted small">Age ${w.generation} · deepest ${w.deepest || '—'} · ${w.graves.length} ${w.graves.length === 1 ? 'grave' : 'graves'}</span></div>
-          <div class="chips">${rules.length ? rules.map((r) => `<span class="chip">${RULES[r].name}</span>`).join('') : '<span class="muted small">No rules yet</span>'}</div>
+          <div class="wc-head"><h3>${esc(w.name)}</h3><span class="muted small">Age ${w.generation} · deepest ${w.deepest || '—'} · ${esc(lexiconFor(w).t(w.graves.length === 1 ? 'screen.graves.one' : 'screen.graves.many', { n: w.graves.length }))}</span></div>
+          <div class="chips">${rules.length ? rules.map((r) => `<span class="chip">${esc(lexiconFor(w).rule(r).name)}</span>`).join('') : '<span class="muted small">No rules yet</span>'}</div>
           <div class="wc-btns">
-            ${run && !run.over ? `<button class="primary" data-cmd="resume" data-world="${w.id}">Resume ${esc(run.player.name)} · depth ${run.depth}</button>` : `<button class="primary" data-cmd="heir" data-world="${w.id}">New heir</button>`}
+            ${run && !run.over ? `<button class="primary" data-cmd="resume" data-world="${w.id}">${esc(lexiconFor(w).t('screen.resume', { name: run.player.name, n: run.depth }))}</button>` : `<button class="primary" data-cmd="heir" data-world="${w.id}">New heir</button>`}
             <button class="ghost danger" data-cmd="delete-world" data-world="${w.id}">Forget world</button>
           </div></li>`;
       })
@@ -129,6 +129,7 @@ export class App {
     const active = new Set(world.rules);
     const canRepeal = repealable(active);
     const rules = RULE_ORDER.filter((r) => active.has(r));
+    const L = lexiconFor(world);
     if (!rules.length && !world.history.length) {
       this.begin(world, null);
       return;
@@ -137,7 +138,7 @@ export class App {
     this.root.innerHTML = `<div class="screen heir-screen">
       <span class="eyebrow">${esc(world.name)} · age ${world.generation}</span>
       <h1>${esc(name)}, heir ${gen}</h1>
-      ${last ? `<p class="lede">${esc(last.name)} fell at depth ${last.depth}, ${esc(last.cause.replace(/ on depth \d+$/, ''))}. Their grave remains where they fell.</p>` : ''}
+      ${last ? `<p class="lede">${esc(L.t('screen.fell', { name: last.name, n: last.depth, cause: last.cause.replace(/ on depth \d+$/, '') }))}</p>` : ''}
       ${rules.length ? `<h2>The rules you inherit</h2>
       <p class="muted">You may repeal one — only a rule nothing else depends on. A repealed rule leaves the world and can be offered again at shrines.</p>
       <form class="repeal" id="repeal-form">
@@ -146,8 +147,8 @@ export class App {
           .map((r) => {
             const ok = canRepeal.includes(r);
             return `<label class="repeal-opt${ok ? '' : ' locked'}"><input type="radio" name="repeal" value="${r}" ${ok ? '' : 'disabled'}>
-              <span><b>${RULES[r].name}</b>${world.variants[r] === 'alt' ? ` <span class="variant-tag">✦ ${esc(RULES[r].variant.name)}</span>` : ''}
-              <span class="muted small">${esc(RULES[r].summary)}${ok ? '' : ` — others depend on it`}</span></span></label>`;
+              <span><b>${esc(L.rule(r).name)}</b>${world.variants[r] === 'alt' ? ` <span class="variant-tag">✦ ${esc(L.rule(r).variant.name)}</span>` : ''}
+              <span class="muted small">${esc(L.rule(r).summary)}${ok ? '' : ` — others depend on it`}</span></span></label>`;
           })
           .join('')}
       </form>` : '<p class="muted">This world still has no rules.</p>'}
@@ -161,7 +162,7 @@ export class App {
       world.rules = world.rules.filter((r) => r !== repeal);
     }
     const game = Game.start(world);
-    if (repeal) game.log(`${RULES[repeal].name} is repealed. It leaves the world.`, 'rule');
+    if (repeal) game.log(game.lex.t('rule.repealed', { rule: game.lex.rule(repeal).name }), 'rule');
     this.play(game);
     this.save();
   }
@@ -224,7 +225,7 @@ export class App {
         ${w.rules.includes('growth') ? `<div><dt>Level</dt><dd>${p.level}</dd></div>` : ''}
         <div><dt>World rules</dt><dd>${w.rules.length}</dd></div>
       </dl>
-      <p class="muted">Their grave now lies on depth ${run.depth}. The world keeps every rule it has learned.</p>
+      <p class="muted">${esc(game.lex.t('screen.graveNow', { n: run.depth }))}</p>
       <div class="heir-btns">
         <button class="primary big" data-cmd="heir" data-world="${w.id}">Send the next heir</button>
         <button class="ghost" data-cmd="new-world">New world</button>
@@ -412,7 +413,7 @@ export class App {
     const top = this.overlays[0];
     let html = '';
     if (top?.kind === 'options') html = optionsHTML(this.options);
-    else if (top?.kind === 'help') html = helpHTML();
+    else if (top?.kind === 'help') html = helpHTML(game?.lex);
     else if (!game) html = '';
     else if (top?.kind === 'banner') html = bannerHTML(top.rule, top.how, game.world);
     else if (top?.kind === 'codex') html = codexHTML(game.world);
@@ -504,7 +505,7 @@ export class App {
     }
     if (this.travel) {
       e.preventDefault();
-      this.stopTravel('You stop.');
+      this.stopTravel(this.game?.lex.t('travel.stop') ?? null);
       return;
     }
     const k = e.key;
@@ -663,7 +664,7 @@ export class App {
     const p = game.run.player;
     if (target.x === p.x && target.y === p.y) return;
     if (!canTravelTo(game, target)) {
-      game.log(game.has('darkness') ? 'You don’t know a way there.' : 'You can’t get there from here.', 'dim');
+      game.log(game.lex.t(game.has('darkness') ? 'travel.unknown' : 'travel.unreachable'), 'dim');
       this.refresh();
       return;
     }
@@ -671,7 +672,7 @@ export class App {
     if (adjacent) {
       {
         const n = game.monsterName(adjacent);
-        game.log(`Not with ${article(n)} ${n} beside you.`, 'dim');
+        game.log(game.lex.t('travel.adjacent', { a: article(n), foe: n }), 'dim');
       }
       this.refresh();
       return;
@@ -701,15 +702,15 @@ export class App {
     if (!game || !t) return;
     const p = game.run.player;
     const step = travelStep(game, t.target);
-    if (!step) return this.stopTravel('The way is blocked. You stop.');
+    if (!step) return this.stopTravel(game.lex.t('travel.blocked'));
     const hp = p.hp;
     const from = { x: p.x, y: p.y };
     this.act({ type: 'move', dx: step.x, dy: step.y }, true);
     if (this.travel !== t) return;
 
     if (game.run.over || game.run.pending || this.overlays.length) return this.stopTravel(null);
-    if (p.x === from.x && p.y === from.y) return this.stopTravel('Something is in the way. You stop.');
-    if (p.hp < hp) return this.stopTravel('You’re hurt! You stop.');
+    if (p.x === from.x && p.y === from.y) return this.stopTravel(game.lex.t('travel.inway'));
+    if (p.hp < hp) return this.stopTravel(game.lex.t('travel.hurt'));
     if (p.x === t.target.x && p.y === t.target.y) return this.stopTravel(null);
     const threats = nearbyThreats(game);
     const arrived = threats.find((m) => !t.known.has(m.id));
@@ -717,7 +718,11 @@ export class App {
     const stopFor = adjacent ?? arrived;
     if (stopFor) {
       const name = game.monsterName(stopFor);
-      return this.stopTravel(adjacent ? `${article(name) === 'an' ? 'An' : 'A'} ${name} is upon you! You stop.` : `You spot ${article(name)} ${name} (${MONSTERS[stopFor.kind].glyph}). You stop.`);
+      return this.stopTravel(
+        adjacent
+          ? game.lex.t('travel.upon', { A: article(name) === 'an' ? 'An' : 'A', foe: name })
+          : game.lex.t('travel.spot', { a: article(name), foe: name, glyph: game.lex.foe(stopFor.kind).glyph }),
+      );
     }
     t.timer = window.setTimeout(() => this.travelTick(), TRAVEL_STEP_MS[this.options.travelSpeed]);
   }
@@ -740,7 +745,7 @@ export class App {
     canvas.addEventListener('pointerdown', (e) => {
       if (this.drag || (e.pointerType === 'mouse' && e.button !== 0)) return;
       const stopper = !!this.travel;
-      if (stopper) this.stopTravel('You stop.');
+      if (stopper) this.stopTravel(this.game?.lex.t('travel.stop') ?? null);
       const d = {
         id: e.pointerId, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY,
         moved: false, hold: 0, held: false, stopper,

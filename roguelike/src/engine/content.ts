@@ -1,11 +1,12 @@
-import { alt, has, RULES, type RuleCtx } from '../rules/rules.ts';
+import { alt, has, RULE_ORDER, RULES, type RuleCtx } from '../rules/rules.ts';
+import type { Lexicon } from '../theme/lexicon.ts';
 import { BALANCE as B } from './balance.ts';
 import { idx, randomFloorTile } from './dungeon.ts';
 import type { Rng } from './rng.ts';
 import type { Element, Floor, FloorItem, Item, ItemKind, Monster, MonsterKind } from './types.ts';
 
+/** Arms genotypes. Their names come from the premise, index for index. */
 interface ArmsDef {
-  name: string;
   value: number;
   weight: number;
   dur: number;
@@ -14,23 +15,22 @@ interface ArmsDef {
 
 // Attack grows with weight, so the best weapons are exactly the ones Weight punishes.
 export const WEAPONS: ArmsDef[] = [
-  { name: 'Dagger', value: 2, weight: 1, dur: 30, minDepth: 1 },
-  { name: 'Short Sword', value: 3, weight: 2, dur: 40, minDepth: 1 },
-  { name: 'Spear', value: 4, weight: 3, dur: 35, minDepth: 2 },
-  { name: 'War Axe', value: 6, weight: 5, dur: 30, minDepth: 3 },
-  { name: 'Greatsword', value: 8, weight: 6, dur: 45, minDepth: 3 },
-  { name: 'Maul', value: 10, weight: 8, dur: 50, minDepth: 5 },
+  { value: 2, weight: 1, dur: 30, minDepth: 1 },
+  { value: 3, weight: 2, dur: 40, minDepth: 1 },
+  { value: 4, weight: 3, dur: 35, minDepth: 2 },
+  { value: 6, weight: 5, dur: 30, minDepth: 3 },
+  { value: 8, weight: 6, dur: 45, minDepth: 3 },
+  { value: 10, weight: 8, dur: 50, minDepth: 5 },
 ];
 
 export const ARMORS: ArmsDef[] = [
-  { name: 'Leather', value: 1, weight: 1, dur: 40, minDepth: 1 },
-  { name: 'Chain Mail', value: 2, weight: 3, dur: 50, minDepth: 2 },
-  { name: 'Plate', value: 4, weight: 5, dur: 60, minDepth: 4 },
+  { value: 1, weight: 1, dur: 40, minDepth: 1 },
+  { value: 2, weight: 3, dur: 50, minDepth: 2 },
+  { value: 4, weight: 5, dur: 60, minDepth: 4 },
 ];
 
+/** Foe genotypes. Names, glyphs and colours come from the premise. */
 interface MonsterDef {
-  name: string;
-  glyph: string;
   hp: number;
   atk: number;
   def: number;
@@ -41,22 +41,25 @@ interface MonsterDef {
 }
 
 export const MONSTERS: Record<MonsterKind, MonsterDef> = {
-  rat: { name: 'rat', glyph: 'r', hp: 3, atk: 1, def: 0, xp: 2, speed: 1, erratic: false },
-  bat: { name: 'bat', glyph: 'b', hp: 4, atk: 2, def: 0, xp: 3, speed: 2, erratic: true },
-  goblin: { name: 'goblin', glyph: 'g', hp: 8, atk: 3, def: 1, xp: 5, speed: 1, erratic: false },
-  slime: { name: 'slime', glyph: 's', hp: 12, atk: 2, def: 0, xp: 4, speed: 0.5, erratic: false },
+  rat: { hp: 3, atk: 1, def: 0, xp: 2, speed: 1, erratic: false },
+  bat: { hp: 4, atk: 2, def: 0, xp: 3, speed: 2, erratic: true },
+  goblin: { hp: 8, atk: 3, def: 1, xp: 5, speed: 1, erratic: false },
+  slime: { hp: 12, atk: 2, def: 0, xp: 4, speed: 0.5, erratic: false },
 };
 
 export interface GenCtx {
   rng: Rng;
   ctx: RuleCtx;
+  /** The world's words: what generated things are called. */
+  lex: Lexicon;
   nextId: () => number;
 }
 
-function pickArms(table: ArmsDef[], depth: number, rng: Rng): ArmsDef {
-  const ok = table.filter((d) => d.minDepth <= depth + 1);
+/** Index into the table of an arms entry for this depth. */
+function pickArms(table: ArmsDef[], depth: number, rng: Rng): number {
+  const ok = table.map((d, i) => [d, i] as const).filter(([d]) => d.minDepth <= depth + 1);
   // Favour the newest-unlocked entries so deeper floors feel like an upgrade.
-  return rng.weighted(ok.map((d, i) => [d, 1 + i] as [ArmsDef, number]));
+  return rng.weighted(ok.map(([, i], k) => [i, 1 + k] as [number, number]));
 }
 
 export function makeItem(kind: ItemKind, depth: number, g: GenCtx): Item {
@@ -64,20 +67,22 @@ export function makeItem(kind: ItemKind, depth: number, g: GenCtx): Item {
   const base = { id: g.nextId(), kind, weight: 0, element: null as Element | null, dur: 0, maxDur: 0 };
   switch (kind) {
     case 'potion':
-      return { ...base, name: 'Healing Potion', heal: B.potion.heal };
+      return { ...base, name: g.lex.premise.items.restorative, heal: B.potion.heal };
     case 'gold':
-      return { ...base, name: 'Gold', amount: rng.int(B.loot.goldPile[0], B.loot.goldPile[1]) + depth * B.loot.goldPerDepth };
+      return { ...base, name: g.lex.premise.items.currency, amount: rng.int(B.loot.goldPile[0], B.loot.goldPile[1]) + depth * B.loot.goldPerDepth };
     case 'food': {
-      const [name, nourish] = rng.weighted(B.food.kinds.map((k) => [k, k[2]] as [typeof k, number]));
-      return { ...base, name, nourish };
+      const i = rng.weighted(B.food.kinds.map((k, i) => [i, k[1]] as [number, number]));
+      return { ...base, name: g.lex.premise.items.foods[i], nourish: B.food.kinds[i][0] };
     }
     case 'weapon':
     case 'armor': {
-      const def = pickArms(kind === 'weapon' ? WEAPONS : ARMORS, depth, rng);
+      const table = kind === 'weapon' ? WEAPONS : ARMORS;
+      const i = pickArms(table, depth, rng);
+      const def = table[i];
       const element = kind === 'weapon' && rng.chance(B.loot.elementalWeaponChance) ? rng.pick<Element>(['ember', 'frost']) : null;
       return {
         ...base,
-        name: def.name,
+        name: (kind === 'weapon' ? g.lex.premise.items.weapons : g.lex.premise.items.armors)[i],
         ...(kind === 'weapon' ? { atk: def.value } : { def: def.value }),
         weight: def.weight,
         element,
@@ -122,27 +127,7 @@ export function monsterKindFor(depth: number, g: GenCtx): MonsterKind {
 
 /** Items a rule contributes to one floor. Used at generation and when a rule arrives mid-floor. */
 export function itemsForRule(rule: keyof typeof RULES, floor: Floor, g: GenCtx): Item[] {
-  const d = floor.depth;
-  const { rng } = g;
-  const out: Item[] = [];
-  if (rule === 'things') {
-    const potions = rng.int(...B.loot.potionsPerFloor);
-    for (let i = 0; i < potions; i++) out.push(makeItem('potion', d, g));
-    const gold = rng.int(...B.loot.goldPilesPerFloor);
-    for (let i = 0; i < gold; i++) out.push(makeItem('gold', d, g));
-  }
-  if (rule === 'arms') {
-    const n = alt(g.ctx, 'arms') ? 2 : 1;
-    for (let i = 0; i < n; i++) {
-      if (rng.chance(B.loot.weaponChance)) out.push(makeItem('weapon', d, g));
-      if (rng.chance(B.loot.armorChance)) out.push(makeItem('armor', d, g));
-    }
-  }
-  if (rule === 'hunger') {
-    for (let i = 0; i < B.food.perFloor; i++) out.push(makeItem('food', d, g));
-    if (rng.chance(B.food.extraChance)) out.push(makeItem('food', d, g));
-  }
-  return out;
+  return RULES[rule].loot?.(floor.depth, g, makeItem) ?? [];
 }
 
 export function scatter(items: Item[], floor: Floor, g: GenCtx, taken: (x: number, y: number) => boolean): FloorItem[] {
@@ -182,8 +167,8 @@ export function spawnMonsters(floor: Floor, g: GenCtx, count: number, avoid: (x:
 /** Loot from every active item-bearing rule. */
 export function lootFor(floor: Floor, g: GenCtx): Item[] {
   const loot: Item[] = [];
-  for (const rule of ['things', 'arms', 'hunger'] as const) {
-    if (has(g.ctx, rule)) loot.push(...itemsForRule(rule, floor, g));
+  for (const rule of RULE_ORDER) {
+    if (has(g.ctx, rule) && RULES[rule].loot) loot.push(...itemsForRule(rule, floor, g));
   }
   return loot;
 }
@@ -197,11 +182,11 @@ export function populate(floor: Floor, g: GenCtx): { monsters: Monster[]; items:
   return { monsters, items };
 }
 
-export function itemLabel(item: Item, ctx: RuleCtx): string {
-  let name = item.name;
-  if (item.kind === 'gold') return `${item.amount} gold`;
-  if (item.element && has(ctx, 'elements')) name = `${item.element === 'ember' ? 'Ember' : 'Frost'} ${name}`;
-  return name;
+/** What an item is called right now: currency shows its amount, and Elements reveals an element. */
+export function itemLabel(item: Item, ctx: RuleCtx, lex: Lexicon): string {
+  if (item.kind === 'gold') return lex.t('item.currency', { n: item.amount ?? 0 });
+  if (item.element && has(ctx, 'elements')) return lex.t('item.elemental', { Element: lex.element(item.element).Adj, item: item.name });
+  return item.name;
 }
 
 export function itemGlyph(item: Item): string {

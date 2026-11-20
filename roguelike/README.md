@@ -43,7 +43,9 @@ what's underfoot. **Options** (`o`) is saved per browser:
 
 | Path | What |
 |---|---|
-| `src/rules/rules.ts` | Rule definitions, the rule graph, derived stats, shrine previews |
+| `src/rules/modules.ts` | Each rule's behaviour: prerequisites and hooks |
+| `src/rules/rules.ts` | The rule graph (frontier, groups, pool), derived stats, shrine previews |
+| `src/theme/` | Premises (every player-visible word) and the lexicon; *The Old Stone* |
 | `src/engine/game.ts` | Turn loop, combat, shrines, rule adoption, death and graves |
 | `src/engine/dungeon.ts` | Floor layout — a pure function of world seed and depth |
 | `src/engine/content.ts` | Item and monster catalogues, floor population |

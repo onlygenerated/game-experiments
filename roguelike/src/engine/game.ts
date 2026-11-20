@@ -4,6 +4,7 @@ import {
   ctxOf,
   derive,
   frontier,
+  eligible,
   emergenceOf,
   MASTERY_KILLS,
   MAX_SATIETY,
@@ -27,6 +28,8 @@ import {
   type GenCtx,
 } from './content.ts';
 import { DIRS, distanceMap, generateLayout, idx, passable, soloRoom, type LayoutOpts } from './dungeon.ts';
+import { lexiconFor, type Lexicon } from '../theme/lexicon.ts';
+import type { RuleHost } from '../rules/modules.ts';
 import { computeVisible, lineOfSight } from './fov.ts';
 import { hashSeed, Rng } from './rng.ts';
 import { T_FLOOR, T_UP, type FloorItem, type Grave, type Item, type Monster, type Player, type Pos, type RuleId, type RunState, type Tone, type World } from './types.ts';
@@ -93,7 +96,7 @@ export const article = (name: string) => (/^[aeiou]/i.test(name) ? 'an' : 'a');
 
 const cheb = (a: Pos, b: Pos) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 
-export class Game {
+export class Game implements RuleHost {
   world: World;
   run: RunState;
   rng: Rng;
@@ -101,6 +104,8 @@ export class Game {
   visible = new Set<number>();
   /** A player preference, not part of the run: set by the UI from its options. */
   autoPickup: AutoPickup = 'all';
+  /** The words this world speaks: every message the engine logs comes from here. */
+  readonly lex: Lexicon;
   /**
    * Running totals for the balance probe (damage, healing by source, food in
    * and out, what spawned…). Not saved; nothing in play reads them.
@@ -122,6 +127,7 @@ export class Game {
   constructor(world: World, run: RunState) {
     this.world = world;
     this.run = run;
+    this.lex = lexiconFor(world);
     this.rng = new Rng(run.rng);
     this.refreshVision();
   }
@@ -154,10 +160,10 @@ export class Game {
     p.hp = d.maxHp;
     p.mana = d.maxMana;
     if (world.rules.length === 0) {
-      game.log('You wake in a quiet room. A shrine hums in the corner; stairs lead down.', 'info');
-      game.log('Move with the arrow keys or by tapping the map; hold a spot to walk there. Step onto the shrine (Ω) to change the world.', 'dim');
+      game.log(game.lex.t('start.fresh'), 'info');
+      game.log(game.lex.t('start.hint'), 'dim');
     } else {
-      game.log(`${p.name} descends into ${world.name}, heir to ${world.rules.length} rules.`, 'info');
+      game.log(game.lex.t('start.heir', { heir: p.name, world: world.name, n: world.rules.length }), 'info');
     }
     return game;
   }
@@ -212,9 +218,9 @@ export class Game {
     for (const i of this.visible) floor.explored[i] = 1;
   }
 
-  private genCtx(tag: string | number): GenCtx {
+  genCtx(tag: string | number): GenCtx {
     const rng = new Rng(hashSeed(this.world.seed, this.run.gen, this.run.depth, tag));
-    return { rng, ctx: this.ctx, nextId: () => this.run.nextId++ };
+    return { rng, ctx: this.ctx, lex: this.lex, nextId: () => this.run.nextId++ };
   }
 
   /**
@@ -239,7 +245,7 @@ export class Game {
       arrive();
       const missed = RULE_ORDER.filter((r) => this.has(r) && !stored.rules.includes(r));
       for (const r of missed) this.reinterpretFloor(r);
-      if (missed.length) this.log('This floor has changed since you were last here.', 'dim');
+      if (missed.length) this.log(this.lex.t('floor.changed'), 'dim');
     } else {
       run.floor = generateLayout(this.world.seed, depth, layoutOpts(this.world));
       const { monsters, items } = populate(run.floor, this.genCtx('populate'));
@@ -254,7 +260,7 @@ export class Game {
     this.refreshVision();
     if (stored) return;
     const graves = this.floorGraves().filter((g) => !g.looted);
-    if (graves.length) this.log(`You sense ${graves.length === 1 ? 'a grave' : `${graves.length} graves`} on this floor.`, 'dim');
+    if (graves.length) this.log(graves.length === 1 ? this.lex.t('graves.one') : this.lex.t('graves.many', { n: graves.length }), 'dim');
   }
 
   /** Nothing may be standing where the player arrives: shoo it to the nearest open tile. */
@@ -282,7 +288,7 @@ export class Game {
     const sh = this.run.floor.shrine;
     if (!sh || sh.used) return false;
     if (sh.offers?.length) return true;
-    return frontier(new Set(this.world.rules), { depth: this.run.depth, emergence: this.world.emergence ?? {} }).length > 0;
+    return frontier(new Set(this.world.rules), { depth: this.run.depth, emergence: this.world.emergence ?? {}, pool: this.world.genome?.pool }).length > 0;
   }
 
   /** Taking any stairs: an unanswered shrine goes dark, and the floor is kept for your return. */
@@ -290,7 +296,7 @@ export class Game {
     const run = this.run;
     const sh = run.floor.shrine;
     if (sh && !sh.used) {
-      if (this.shrineWouldOffer()) this.log('Behind you, the unanswered shrine goes dark.', 'dim');
+      if (this.shrineWouldOffer()) this.log(this.lex.t('shrine.dark'), 'dim');
       sh.used = true;
       sh.dark = true;
     }
@@ -377,26 +383,23 @@ export class Game {
     for (const fi of this.itemsHere()) {
       const auto = this.autoPickup === 'all' || (this.autoPickup === 'gold' && fi.item.kind === 'gold');
       if (auto && this.take(fi, true)) continue;
-      const label = itemLabel(fi.item, this.ctx);
+      const label = itemLabel(fi.item, this.ctx, this.lex);
       left.push(fi.item.kind === 'gold' ? label : `${article(label)} ${label}`);
     }
-    if (left.length) {
-      const what = left.length === 1 ? left[0] : `${left.slice(0, -1).join(', ')} and ${left[left.length - 1]}`;
-      this.log(`You see ${what} here. Press g to pick up.`, 'info');
-    }
+    if (left.length) this.log(this.lex.t('pickup.see', { what: this.lex.list(left) }), 'info');
     const g = floor.glimmer[idx(floor, p.x, p.y)];
     if (g) {
       if (this.has('elements')) {
         if (g === 'frost') {
-          this.log('Frost grips your feet. You lose a turn.', 'bad');
+          this.log(this.lex.t('frost.you'), 'bad');
           extra += 1;
         }
       } else {
-        this.log(g === 'ember' ? 'The stone here is faintly warm.' : 'The stone here is faintly cold.', 'dim');
+        this.log(this.lex.t(g === 'ember' ? 'glimmer.ember' : 'glimmer.frost'), 'dim');
       }
     }
-    if (p.x === floor.stairs.x && p.y === floor.stairs.y) this.log('Stairs lead down. Press > to descend.', 'info');
-    if (floor.tiles[idx(floor, p.x, p.y)] === T_UP) this.log(`Stairs lead up to depth ${this.run.depth - 1}. Press < to climb.`, 'info');
+    if (p.x === floor.stairs.x && p.y === floor.stairs.y) this.log(this.lex.t('stairs.down.here'), 'info');
+    if (floor.tiles[idx(floor, p.x, p.y)] === T_UP) this.log(this.lex.t('stairs.up.here', { depth: this.run.depth - 1 }), 'info');
     const sh = floor.shrine;
     if (sh && !sh.used && sh.pos.x === p.x && sh.pos.y === p.y) this.openShrine();
     const grave = this.graveAt(p.x, p.y);
@@ -407,34 +410,33 @@ export class Game {
   private descend(): boolean {
     const { player: p, floor } = this.run;
     if (p.x !== floor.stairs.x || p.y !== floor.stairs.y) {
-      this.log('There are no stairs here.', 'dim');
+      this.log(this.lex.t('stairs.down.none'), 'dim');
       return false;
     }
     this.leaveFloor();
     const depth = this.run.depth + 1;
     // Imposed rules arrive by themselves once they've emerged and can stand.
     for (const id of RULE_ORDER) {
-      const def = RULES[id];
-      if (!def.imposed || this.has(id) || emergenceOf(this.world, id) > depth) continue;
-      if (def.prereqs.every((r) => this.has(r))) this.adopt(id, 'milestone');
+      if (!RULES[id].imposed || emergenceOf(this.world, id) > depth) continue;
+      if (eligible(id, new Set(this.world.rules), this.world.genome?.pool)) this.adopt(id, 'milestone');
     }
     this.enterFloor(depth, 'down');
     this.events.push({ type: 'floor', depth });
-    this.log(`You descend to depth ${depth}.`, 'info');
+    this.log(this.lex.t('stairs.descend', { depth }), 'info');
     return true;
   }
 
   private ascend(): boolean {
     const { player: p, floor } = this.run;
     if (this.run.depth <= 1 || floor.tiles[idx(floor, p.x, p.y)] !== T_UP) {
-      this.log('There are no stairs up here.', 'dim');
+      this.log(this.lex.t('stairs.up.none'), 'dim');
       return false;
     }
     this.leaveFloor();
     const depth = this.run.depth - 1;
     this.enterFloor(depth, 'up');
     this.events.push({ type: 'floor', depth });
-    this.log(`You climb back up to depth ${depth}.`, 'info');
+    this.log(this.lex.t('stairs.ascend', { depth }), 'info');
     return true;
   }
 
@@ -448,10 +450,10 @@ export class Game {
       p.hp = Math.min(this.stats.maxHp, p.hp + heal);
       this.count('healPotion', p.hp - before);
       this.count('potionsDrunk');
-      this.log(`You drink the potion and recover ${p.hp - before} HP.`, 'good');
+      this.log(this.lex.t('drink', { n: p.hp - before }), 'good');
     } else if (item.kind === 'food') {
       if (!this.has('hunger')) {
-        this.log('You are not hungry. You are never hungry.', 'dim');
+        this.log(this.lex.t('eat.never'), 'dim');
         return 0;
       }
       const before = p.satiety;
@@ -459,7 +461,7 @@ export class Game {
       this.count('satietyEaten', p.satiety - before);
       this.count('satietyWasted', (item.nourish ?? 0) - (p.satiety - before));
       this.count('foodEaten');
-      this.log(`You eat the ${item.name}.`, 'good');
+      this.log(this.lex.t('eat', { item: item.name }), 'good');
     } else {
       return this.equip(id);
     }
@@ -476,10 +478,10 @@ export class Game {
     p[slot] = item;
     p.inventory = p.inventory.filter((i) => i !== item);
     if (old) p.inventory.push(old);
-    const label = itemLabel(item, this.ctx);
-    this.log(`You ${slot === 'weapon' ? 'wield' : 'don'} the ${label}.`, 'good');
+    const label = itemLabel(item, this.ctx, this.lex);
+    this.log(this.lex.t(slot === 'weapon' ? 'equip.weapon' : 'equip.armor', { item: label }), 'good');
     if (this.has('weight') && weightOf(item, this.ctx) > p.str) {
-      this.log(`The ${label} is heavier than your strength. ${slot === 'weapon' ? 'Attacks' : 'Moving'} will take 2 turns.`, 'bad');
+      this.log(this.lex.t(slot === 'weapon' ? 'heavy.weapon' : 'heavy.armor', { item: label }), 'bad');
     }
     return 1;
   }
@@ -489,12 +491,12 @@ export class Game {
     const item = p[slot];
     if (!item) return 0;
     if (p.inventory.length >= INVENTORY_CAP) {
-      this.log('Your pack is full.', 'dim');
+      this.log(this.lex.t('pack.full'), 'dim');
       return 0;
     }
     p[slot] = null;
     p.inventory.push(item);
-    this.log(`You put away the ${itemLabel(item, this.ctx)}.`, 'info');
+    this.log(this.lex.t('unequip', { item: itemLabel(item, this.ctx, this.lex) }), 'info');
     return 1;
   }
 
@@ -509,13 +511,13 @@ export class Game {
     const p = this.run.player;
     if (fi.item.kind === 'gold') {
       p.gold += fi.item.amount ?? 0;
-      this.log(`You pick up ${fi.item.amount} gold.`, 'good');
+      this.log(this.lex.t('pickup.currency', { n: fi.item.amount ?? 0 }), 'good');
     } else if (p.inventory.length >= INVENTORY_CAP) {
-      if (!quietWhenFull) this.log(`Your pack is full; you leave the ${itemLabel(fi.item, this.ctx)}.`, 'dim');
+      if (!quietWhenFull) this.log(this.lex.t('pickup.full', { item: itemLabel(fi.item, this.ctx, this.lex) }), 'dim');
       return false;
     } else {
       p.inventory.push(fi.item);
-      this.log(`You pick up the ${itemLabel(fi.item, this.ctx)}.`, 'good');
+      this.log(this.lex.t('pickup.item', { item: itemLabel(fi.item, this.ctx, this.lex) }), 'good');
     }
     this.run.items = this.run.items.filter((o) => o !== fi);
     return true;
@@ -525,7 +527,7 @@ export class Game {
   private pickup(id?: number): number {
     const here = this.itemsHere().filter((fi) => id === undefined || fi.item.id === id);
     if (!here.length) {
-      this.log('There is nothing here to pick up.', 'dim');
+      this.log(this.lex.t('pickup.nothing'), 'dim');
       return 0;
     }
     let took = 0;
@@ -539,7 +541,7 @@ export class Game {
     if (!item) return 0;
     p.inventory = p.inventory.filter((i) => i !== item);
     this.run.items.push({ item, x: p.x, y: p.y });
-    this.log(`You drop the ${itemLabel(item, this.ctx)}.`, 'info');
+    this.log(this.lex.t('drop', { item: itemLabel(item, this.ctx, this.lex) }), 'info');
     return 1;
   }
 
@@ -548,17 +550,17 @@ export class Game {
     if (!this.has('arcana')) return 0;
     const costMana = which === 'cleave' ? CLEAVE_COST : MEND_COST;
     if (p.mana < costMana) {
-      this.log(`Not enough mana (${which === 'cleave' ? 'Cleave' : 'Mend'} needs ${costMana}).`, 'dim');
+      this.log(this.lex.t('ability.nomana', { ability: this.lex.t(which === 'cleave' ? 'ability.cleave' : 'ability.mend'), n: costMana }), 'dim');
       return 0;
     }
     if (which === 'cleave') {
       const targets = this.run.monsters.filter((m) => cheb(m, p) === 1);
       if (!targets.length) {
-        this.log('Nothing to cleave.', 'dim');
+        this.log(this.lex.t('cleave.none'), 'dim');
         return 0;
       }
       p.mana -= costMana;
-      this.log('You cleave in a wide arc!', 'good');
+      this.log(this.lex.t('cleave'), 'good');
       for (const m of targets) if (this.run.monsters.includes(m)) this.playerAttack(m);
       return this.stats.attackCost;
     }
@@ -566,7 +568,7 @@ export class Game {
     const before = p.hp;
     p.hp = Math.min(this.stats.maxHp, p.hp + Math.ceil(this.stats.maxHp * B.arcana.mendFraction));
     this.count('healMend', p.hp - before);
-    this.log(`Warmth knits your wounds: +${p.hp - before} HP.`, 'good');
+    this.log(this.lex.t('mend', { n: p.hp - before }), 'good');
     return 1;
   }
 
@@ -576,18 +578,18 @@ export class Game {
 
   private openShrine() {
     const sh = this.run.floor.shrine!;
-    const front = frontier(new Set(this.world.rules), { depth: this.run.depth, emergence: this.world.emergence ?? {} });
+    const front = frontier(new Set(this.world.rules), { depth: this.run.depth, emergence: this.world.emergence ?? {}, pool: this.world.genome?.pool });
     if (sh.offers) sh.offers = sh.offers.filter((r) => front.includes(r));
     if (!sh.offers || sh.offers.length === 0) {
       const rng = new Rng(hashSeed(this.world.seed, this.run.gen, this.run.depth, 'shrine', this.world.rules.length));
       sh.offers = rng.shuffle([...front]).slice(0, 3);
     }
     if (sh.offers.length === 0) {
-      this.log('The shrine is silent. There is nothing left for it to teach.', 'dim');
+      this.log(this.lex.t('shrine.silent'), 'dim');
       sh.used = true;
       return;
     }
-    this.log('A Rule Shrine hums. It offers to change the world.', 'rule');
+    this.log(this.lex.t('shrine.open'), 'rule');
     this.run.pending = { kind: 'shrine' };
   }
 
@@ -596,14 +598,14 @@ export class Game {
     this.run.pending = null;
     if (!sh) return true;
     if (rule === null) {
-      this.log('You step back from the shrine. It will wait — for this floor.', 'dim');
+      this.log(this.lex.t('shrine.stepback'), 'dim');
     } else if (sh.offers?.includes(rule)) {
       sh.used = true;
       this.adopt(rule, 'shrine');
       const p = this.run.player;
       this.count('healShrine', this.stats.maxHp - p.hp);
       p.hp = this.stats.maxHp;
-      this.log('The shrine’s light washes over you. You are fully healed.', 'good');
+      this.log(this.lex.t('shrine.heal'), 'good');
     }
     this.settlePending();
     return true;
@@ -614,34 +616,11 @@ export class Game {
     if (this.has(rule)) return;
     this.world.rules.push(rule);
     this.events.push({ type: 'rule', rule, how });
-    const def = RULES[rule];
-    this.log(`NEW RULE — ${def.name}: ${def.tagline}`, 'rule');
+    const text = this.lex.rule(rule);
+    this.log(this.lex.t('rule.new', { rule: text.name, tagline: text.tagline }), 'rule');
     const p = this.run.player;
     this.reinterpretFloor(rule);
-    switch (rule) {
-      case 'peril':
-        this.log('Rats skitter out of the walls.', 'bad');
-        break;
-      case 'things':
-        this.log('Objects shimmer into existence around you.', 'dim');
-        break;
-      case 'hunger':
-        p.satiety = MAX_SATIETY;
-        break;
-      case 'darkness':
-        this.run.floor.explored.fill(0);
-        break;
-      case 'arcana':
-        p.mana = this.stats.maxMana;
-        break;
-      case 'elements': {
-        const n = Object.keys(this.run.floor.glimmer).length;
-        if (n) this.log(`${n} glimmering stones flare into ember and frost.`, 'dim');
-        break;
-      }
-      default:
-        break;
-    }
+    RULES[rule].onAdopt?.(this);
     p.hp = Math.min(p.hp, this.stats.maxHp);
     this.refreshVision();
   }
@@ -651,41 +630,32 @@ export class Game {
    * arrives while you stand here or while you're on another floor.
    */
   private reinterpretFloor(rule: RuleId) {
+    RULES[rule].reinterpretFloor?.(this);
+  }
+
+  // RuleHost: what rule modules may do to the current floor.
+
+  spawnLoot(rule: RuleId) {
     const run = this.run;
     const p = run.player;
     const taken = (x: number, y: number) =>
       (x === p.x && y === p.y) || run.items.some((fi) => fi.x === x && fi.y === y);
-    const spawn = (r: RuleId) => {
-      const items = itemsForRule(r, run.floor, this.genCtx(`adopt-${r}`));
-      run.items.push(...scatter(items, run.floor, this.genCtx(`scatter-${r}`), taken));
-      this.countSpawned(items);
-    };
-    switch (rule) {
-      case 'halls':
-        this.expandFloor();
-        break;
-      case 'peril': {
-        const f = run.floor;
-        const count = Math.max(2, Math.ceil(monsterCount(f, this.ctx) * 0.6));
-        const sh = f.shrine?.pos;
-        run.monsters.push(
-          ...spawnMonsters(f, this.genCtx('adopt-peril'), count, (x, y) =>
-            cheb({ x, y }, p) < 3 || (!!sh && sh.x === x && sh.y === y),
-          ),
-        );
-        break;
-      }
-      case 'things':
-      case 'arms':
-      case 'hunger':
-        spawn(rule);
-        break;
-      case 'darkness':
-        for (const m of run.monsters) m.aware = false;
-        break;
-      default:
-        break;
-    }
+    const items = itemsForRule(rule, run.floor, this.genCtx(`adopt-${rule}`));
+    run.items.push(...scatter(items, run.floor, this.genCtx(`scatter-${rule}`), taken));
+    this.countSpawned(items);
+  }
+
+  spawnFoes(fraction: number, minDistance: number) {
+    const run = this.run;
+    const p = run.player;
+    const f = run.floor;
+    const count = Math.max(2, Math.ceil(monsterCount(f, this.ctx) * fraction));
+    const sh = f.shrine?.pos;
+    run.monsters.push(
+      ...spawnMonsters(f, this.genCtx('adopt-peril'), count, (x, y) =>
+        cheb({ x, y }, p) < minDistance || (!!sh && sh.x === x && sh.y === y),
+      ),
+    );
   }
 
   /**
@@ -693,7 +663,7 @@ export class Game {
    * full floor. What you've seen and the shrine you used stay; the stairs move,
    * and the new rooms fill with whatever the active rules put there.
    */
-  private expandFloor() {
+  expandFloor() {
     const run = this.run;
     const old = run.floor;
     if (!old.solo) return;
@@ -722,7 +692,7 @@ export class Game {
     run.items.push(...scatter(loot, full, g, taken));
     this.countSpawned(loot);
     if (p.x === full.stairs.x && p.y === full.stairs.y) return;
-    this.log('The walls fall away. The stairs are somewhere else now.', 'dim');
+    this.log(this.lex.t('adopt.halls'), 'dim');
   }
 
   private resolveLevelUp(stat: 'str' | 'agi' | 'vit'): boolean {
@@ -732,29 +702,29 @@ export class Game {
     p.hp = Math.min(p.hp, this.stats.maxHp);
     this.run.pendingLevelUps -= 1;
     this.run.pending = null;
-    this.log(`${stat.toUpperCase()} rises to ${p[stat]}.`, 'good');
+    this.log(this.lex.t('levelup.stat', { stat: this.lex.t(`stat.${stat}`), n: p[stat] }), 'good');
     this.settlePending();
     return true;
   }
 
   private visitGrave(g: Grave) {
-    this.log(`Here lies ${g.name}, heir ${g.gen}: ${g.epitaph}.`, 'dim');
+    this.log(this.lex.t('grave.epitaph', { name: g.name, gen: g.gen, epitaph: g.epitaph }), 'dim');
     if (g.looted || !g.item) return;
     const usable =
       (g.item.kind === 'weapon' || g.item.kind === 'armor') ? this.has('arms')
       : g.item.kind === 'food' ? this.has('hunger')
       : this.has('things');
     if (!usable) {
-      this.log('Something is buried with them, but this world no longer has a rule for it.', 'dim');
+      this.log(this.lex.t('grave.unusable'), 'dim');
       return;
     }
     if (this.run.player.inventory.length >= INVENTORY_CAP) {
-      this.log('Your pack is too full to take what they left.', 'dim');
+      this.log(this.lex.t('grave.full'), 'dim');
       return;
     }
     g.looted = true;
     this.run.player.inventory.push(g.item);
-    this.log(`You recover their ${itemLabel(g.item, this.ctx)}.`, 'good');
+    this.log(this.lex.t('grave.recover', { item: itemLabel(g.item, this.ctx, this.lex) }), 'good');
   }
 
   // -------------------------------------------------------------------------
@@ -772,7 +742,7 @@ export class Game {
     const sneak = !m.aware && s.sneak > 1;
     m.aware = true;
     if (s.hit < 1 && !this.rng.chance(s.hit)) {
-      this.log(`You miss the ${name}.`, 'dim');
+      this.log(this.lex.t('attack.miss', { foe: name }), 'dim');
       return;
     }
     let dmg = s.attack;
@@ -781,15 +751,15 @@ export class Game {
     if (w?.element && m.element && this.has('elements') && this.has('arms')) {
       if (w.element === m.element) {
         dmg = Math.ceil(dmg / 2);
-        notes.push('it resists');
+        notes.push(this.lex.t('attack.note.resist'));
       } else {
         dmg *= 2;
-        notes.push('it’s weak to that!');
+        notes.push(this.lex.t('attack.note.weak'));
       }
     }
     if (sneak) {
       dmg *= s.sneak;
-      notes.push('sneak attack!');
+      notes.push(this.lex.t('attack.note.sneak'));
     }
     dmg = Math.max(1, dmg - m.def);
     if (w && this.has('durability') && this.has('arms')) {
@@ -797,18 +767,19 @@ export class Game {
       if (w.dur <= 0) {
         dmg *= 3;
         p.weapon = null;
-        notes.push(`your ${w.name} shatters in a final blow`);
+        notes.push(this.lex.t('attack.note.shatter', { item: w.name }));
       }
     }
     m.hp -= dmg;
-    this.log(`You hit the ${name} for ${dmg}${notes.length ? ` — ${notes.join(', ')}` : ''}.`, 'info');
+    const noteText = notes.length ? this.lex.t('attack.notes', { list: notes.join(this.lex.t('list.sep')) }) : '';
+    this.log(this.lex.t('attack.hit', { foe: name, n: dmg, notes: noteText }), 'info');
     if (m.hp <= 0) {
       this.kill(m);
       return;
     }
     if (s.stagger > 0 && this.rng.chance(s.stagger)) {
       m.stun = Math.max(m.stun, 1);
-      this.log(`The ${name} staggers.`, 'good');
+      this.log(this.lex.t('attack.stagger', { foe: name }), 'good');
     }
   }
 
@@ -817,7 +788,7 @@ export class Game {
     const p = this.run.player;
     const name = this.monsterName(m);
     if (s.enemyHit < 1 && !this.rng.chance(s.enemyHit)) {
-      this.log(`The ${name} misses you.`, 'dim');
+      this.log(this.lex.t('foe.miss', { foe: name }), 'dim');
       return;
     }
     const dmg = Math.max(1, m.atk - s.defense);
@@ -826,18 +797,18 @@ export class Game {
       a.dur -= this.wear();
       if (a.dur <= 0) {
         p.armor = null;
-        this.log(`Your ${a.name} falls apart.`, 'bad');
+        this.log(this.lex.t('armor.breaks', { item: a.name }), 'bad');
       }
     }
     p.hp -= dmg;
     this.count('damageTaken', dmg);
-    this.log(`The ${name} hits you for ${dmg}.`, 'bad');
-    if (p.hp <= 0) this.die(`slain by ${article(name)} ${name} on depth ${this.run.depth}`);
+    this.log(this.lex.t('foe.hit', { foe: name, n: dmg }), 'bad');
+    if (p.hp <= 0) this.die(this.lex.t('cause.slain', { a: article(name), foe: name, depth: this.run.depth }));
   }
 
   monsterName(m: Monster): string {
-    const base = MONSTERS[m.kind].name;
-    if (m.element && this.has('elements')) return `${m.element} ${base}`;
+    const base = this.lex.foe(m.kind).name;
+    if (m.element && this.has('elements')) return this.lex.t('foe.elemental', { element: this.lex.element(m.element).adj, foe: base });
     return base;
   }
 
@@ -846,7 +817,7 @@ export class Game {
     const p = run.player;
     run.monsters = run.monsters.filter((o) => o !== m);
     p.kills += 1;
-    this.log(`The ${this.monsterName(m)} dies.`, 'good');
+    this.log(this.lex.t('foe.dies', { foe: this.monsterName(m) }), 'good');
     if (this.has('growth')) {
       p.xp += m.xp;
       while (p.xp >= xpNeeded(p.level, this.ctx)) {
@@ -854,11 +825,11 @@ export class Game {
         p.level += 1;
         p.hp += 2;
         run.pendingLevelUps += 1;
-        this.log(`You reach level ${p.level}!`, 'rule');
+        this.log(this.lex.t('levelup.reached', { n: p.level }), 'rule');
       }
     }
     const drops: Item[] = [];
-    const g: GenCtx = { rng: this.rng, ctx: this.ctx, nextId: () => run.nextId++ };
+    const g: GenCtx = { rng: this.rng, ctx: this.ctx, lex: this.lex, nextId: () => run.nextId++ };
     const D = B.drops;
     const bonus = this.has('bestiary') ? D.bestiaryMult : 1;
     if (this.has('things') && this.rng.chance(D.gold * bonus)) drops.push(makeItem('gold', run.depth, g));
@@ -878,7 +849,7 @@ export class Game {
     run.over = true;
     run.cause = cause;
     p.hp = 0;
-    this.log(`You die — ${cause}.`, 'bad');
+    this.log(this.lex.t('death', { cause }), 'bad');
     this.world.history.push({
       gen: run.gen,
       name: p.name,
@@ -938,8 +909,8 @@ export class Game {
         if (p.starveClock % H.starveEvery === 0) {
           p.hp -= 1;
           this.count('damageStarving');
-          this.log('You are starving.', 'bad');
-          if (p.hp <= 0) return this.die(`starved on depth ${run.depth}`);
+          this.log(this.lex.t('starving'), 'bad');
+          if (p.hp <= 0) return this.die(this.lex.t('cause.starved', { depth: run.depth }));
         }
       } else if (p.satiety >= MAX_SATIETY * H.regenAbove) {
         p.regenClock += 1;
@@ -971,13 +942,13 @@ export class Game {
     if (f.glimmer[idx(f, p.x, p.y)] === 'ember') {
       p.hp -= burn;
       this.count('damageTaken', burn);
-      this.log(`The ember stone burns you for ${burn}.`, 'bad');
-      if (p.hp <= 0) return this.die(`burned on depth ${run.depth}`);
+      this.log(this.lex.t('ember.you', { n: burn }), 'bad');
+      if (p.hp <= 0) return this.die(this.lex.t('cause.burned', { depth: run.depth }));
     }
     for (const m of [...run.monsters]) {
       if (f.glimmer[idx(f, m.x, m.y)] !== 'ember' || m.element === 'ember') continue;
       m.hp -= burn;
-      if (this.isVisible(m.x, m.y)) this.log(`The ${this.monsterName(m)} burns.`, 'good');
+      if (this.isVisible(m.x, m.y)) this.log(this.lex.t('ember.foe', { foe: this.monsterName(m) }), 'good');
       if (m.hp <= 0) this.kill(m);
     }
   }
@@ -1033,7 +1004,7 @@ export class Game {
     m.y += step.y;
     if (this.has('elements') && f.glimmer[idx(f, m.x, m.y)] === 'frost' && m.element !== 'frost') {
       m.stun = Math.max(m.stun, 1);
-      if (this.isVisible(m.x, m.y)) this.log(`The ${this.monsterName(m)} is caught in frost.`, 'good');
+      if (this.isVisible(m.x, m.y)) this.log(this.lex.t('frost.foe', { foe: this.monsterName(m) }), 'good');
     }
     return false;
   }

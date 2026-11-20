@@ -1,3 +1,5 @@
+import type { PremiseId } from '../theme/premise.ts';
+
 export type RuleId =
   | 'halls'
   | 'peril'
@@ -148,8 +150,22 @@ export interface Chronicle {
   rules: RuleId[];
 }
 
+/** The questions axioms answer; each world settles one option per family (ROADMAP.md §1.4). */
+export type AxiomFamily = 'harm' | 'space' | 'time' | 'self' | 'knowledge';
+
+/** A world's identity, rolled once from its seed (ROADMAP.md §1.5). */
+export interface Genome {
+  premise: PremiseId;
+  /** Roles bound from another premise. None yet. */
+  intrusions: string[];
+  /** Axiom options settled so far. Every world today is strike / rooms / turns / single / plain. */
+  axioms: Partial<Record<AxiomFamily, string>>;
+  /** The rules this world can ever discover; null means every rule. */
+  pool: RuleId[] | null;
+}
+
 export interface World {
-  /** Save format. 1 = before Halls/Peril existed (both were implicitly always on). */
+  /** Save format. 1 = before Halls/Peril existed; 2 = before genomes. */
   version?: number;
   id: string;
   name: string;
@@ -165,6 +181,7 @@ export interface World {
    * Missing entries mean depth 1.
    */
   emergence: Partial<Record<RuleId, number>>;
+  genome: Genome;
   generation: number;
   history: Chronicle[];
   graves: Grave[];
