@@ -189,6 +189,7 @@ export class App {
       <main class="board"><canvas aria-label="Dungeon map"></canvas>
         <button class="recenter" data-cmd="recenter" hidden>⌖ Center on ${esc(game.run.player.name)}</button>
         <div class="toasts" aria-hidden="true"></div>
+        <button data-cmd="fire" class="fire-fab" hidden></button>
         <div class="lookslot"></div></main>
       <section class="log" aria-live="polite"></section>
       <nav class="pad" aria-label="Controls">
@@ -202,7 +203,6 @@ export class App {
           <button data-cmd="wait">Wait</button>
           <button data-cmd="pickup" class="pad-pickup" disabled>Pick up</button>
           <button data-cmd="look" class="pad-look" aria-pressed="false">Look</button>
-          <button data-cmd="fire" class="pad-fire" hidden>Aim</button>
         </div>
       </nav>
       <aside class="side"></aside>
@@ -438,12 +438,17 @@ export class App {
     if (stairsBtn) stairsBtn.textContent = this.stairsHere() === 'up' ? 'Climb up' : 'Descend';
     const pickup = q('.pad-pickup') as HTMLButtonElement | null;
     if (pickup) pickup.disabled = game.itemsHere().length === 0;
-    const fireBtn = q('.pad-fire');
+    // The means' own verb (Fire, Cast, Speak), on the map where a thumb can reach it,
+    // naming who it will hit. Look mode has its own button, aimed at the cursor.
+    const target = this.canAim() ? (game.targets()[0] ?? null) : null;
+    const fireBtn = q('.fire-fab') as HTMLButtonElement | null;
     if (fireBtn) {
-      fireBtn.hidden = !this.canAim();
-      fireBtn.textContent = game.lex.t('hud.fire');
+      fireBtn.hidden = !this.canAim() || !!this.look;
+      fireBtn.disabled = !target;
+      const html = `${esc(game.lex.t('hud.fire'))}${target ? `<small>${esc(game.monsterName(target))}</small>` : ''}`;
+      if (fireBtn.innerHTML !== html) fireBtn.innerHTML = html;
     }
-    if (this.renderer) this.renderer.target = this.canAim() ? (game.targets()[0] ?? null) : null;
+    if (this.renderer) this.renderer.target = target;
     const lookBtn = q('.pad-look');
     if (lookBtn) {
       lookBtn.classList.toggle('on', !!this.look);

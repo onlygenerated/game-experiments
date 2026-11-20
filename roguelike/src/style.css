@@ -1221,13 +1221,49 @@ button.linkish:hover:not(:disabled) {
   border-color: #7fe0cf;
   color: #0d2420;
 }
-.pad-fire {
-  grid-column: span 2;
+/* Fire / Cast / Speak: on the map, bottom right, where a thumb rests. */
+.fire-fab {
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right, 0px));
+  bottom: 12px;
+  z-index: 3;
+  min-width: 96px;
+  min-height: 56px;
+  padding: 8px 18px;
+  border-radius: 14px;
+  background: #7fe0cf;
+  border: 1px solid #7fe0cf;
+  color: #0d2420;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 22px #000b;
+}
+.fire-fab small {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.8;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fire-fab:disabled {
+  background: rgba(19, 23, 34, 0.92);
   color: #7fe0cf;
   border-color: #2f5a54;
+  opacity: 0.8;
 }
-.pad-fire[hidden] {
+.fire-fab[hidden] {
   display: none;
+}
+/* Make room for it when both are showing. */
+.board:has(.fire-fab:not([hidden])) .recenter {
+  bottom: 80px;
 }
 .modal.shop {
   max-width: 560px;

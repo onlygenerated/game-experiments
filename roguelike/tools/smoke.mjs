@@ -517,11 +517,13 @@ try {
       g.run.player.ammo = 5;
       g.refreshVision();
       a.refresh();
-      return { foes: g.run.monsters.length, button: !document.querySelector('.pad-fire').hidden };
+      return { foes: g.run.monsters.length, button: !document.querySelector('.fire-fab').hidden };
     });
-    ok(`${vp.name}: under Volley there is something to aim at, and an Aim button`, aimed.foes === 1 && aimed.button);
     await page.evaluate(() => window.scrollTo(0, 0));
-    if (vp.isMobile) await page.click('.pad-fire');
+    await shot(page, `${vp.name}-7a0-fire-button`);
+    ok(`${vp.name}: under Volley there is something to aim at, and a Fire button on the map`, aimed.foes === 1 && aimed.button);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    if (vp.isMobile) await page.click('.fire-fab');
     else await page.keyboard.press('f');
     const fired = await page.evaluate(() => { const g = window.unfolding.game; return { hp: g.run.monsters[0]?.hp, ammo: g.run.player.ammo, means: document.querySelector('.side .means')?.textContent ?? '' }; });
     ok(`${vp.name}: aiming harms the foe at range and spends a shot (${fired.hp}/30, ${fired.ammo} left)`, fired.hp < 30 && fired.ammo === 4);
@@ -529,7 +531,7 @@ try {
     await shot(page, `${vp.name}-7a-volley`);
     // Finishing it off flashes the kill over the map.
     await page.evaluate(() => { window.unfolding.game.run.monsters[0].hp = 1; });
-    if (vp.isMobile) await page.click('.pad-fire');
+    if (vp.isMobile) await page.click('.fire-fab');
     else await page.keyboard.press('f');
     ok(`${vp.name}: a kill flashes over the map`, await page.isVisible('.toasts .toast'));
     await shot(page, `${vp.name}-7a2-kill`);

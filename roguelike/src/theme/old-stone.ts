@@ -273,7 +273,7 @@ const TEXT: Record<MessageKey, string> = {
   'hud.ammo': '{Ammos}',
   'hud.harm': 'How harm works',
   'hud.harm.open': 'Unsettled: a {schism} will decide. Until then you strike.',
-  'hud.fire': 'Aim',
+  'hud.fire': 'Fire',
   'help.fire': 'Harm the nearest {foe} in reach (or aim with Look)',
   'look.merchant': '{Merchant}',
   'look.merchant.line': 'Step onto it to trade. {n} things for sale.',

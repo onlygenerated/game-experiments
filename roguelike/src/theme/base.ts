@@ -273,7 +273,7 @@ export const BASE_TEXT = {
   'hud.ammo': '{Ammos}',
   'hud.harm': 'How harm works',
   'hud.harm.open': 'Unsettled: a {schism} will decide. Until then you strike.',
-  'hud.fire': 'Aim',
+  'hud.fire': 'Fire',
   'fact.heals': 'Heals {n}',
   'fact.nourish': '{Satiety} +{n}',
   'fact.attack': 'Attack +{n}',
@@ -528,6 +528,7 @@ export const BASE_MEANS_TEXT: Record<HarmId, Partial<Record<MessageKey, string>>
     'attack.stagger': 'The {foe} reels from the impact.',
     'attack.note.shatter': 'your {item} gives out on a final shot',
     'fire.none': 'No clear shot at anything.',
+    'hud.fire': 'Fire',
     'cleave': 'You loose a spray at point-blank range!',
     'cleave.none': 'Nothing is close enough for a spray.',
     'look.foeHits': 'hits you for {n}',
@@ -538,6 +539,7 @@ export const BASE_MEANS_TEXT: Record<HarmId, Partial<Record<MessageKey, string>>
     'attack.stagger': 'The {foe} is thrown off balance.',
     'attack.note.shatter': 'your {item} burns out on a final bolt',
     'fire.none': 'Nothing on a line within reach.',
+    'hud.fire': 'Cast',
     'cleave': 'Power bursts out of you in every direction!',
   },
   discourse: {
@@ -548,6 +550,7 @@ export const BASE_MEANS_TEXT: Record<HarmId, Partial<Record<MessageKey, string>>
     'attack.note.sneak': 'caught off guard!',
     'foe.dies': 'The {foe} has heard enough, and leaves.',
     'fire.none': 'No one within earshot.',
+    'hud.fire': 'Speak',
     'cleave': 'You address the whole room at once!',
   },
 };

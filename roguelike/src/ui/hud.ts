@@ -452,7 +452,7 @@ export function axiomBannerHTML(id: HarmId, how: 'rolled' | 'schism', L: Lexicon
     <h1>${esc(m.name)}</h1>
     <p class="tagline">${esc(m.tagline)}</p>
     ${meansBody(id, L)}
-    ${aims(id) ? '<p class="muted small">Press <kbd>F</kbd> (or Aim on the pad) to harm the nearest foe in reach; aim anywhere with Look.</p>' : ''}
+    ${aims(id) ? `<p class="muted small">Press <kbd>F</kbd>, tap the <b>${esc(L.t('hud.fire'))}</b> button on the map, or tap a foe in reach. Aim anywhere with Look.</p>` : ''}
     <button class="primary" data-cmd="dismiss"><kbd>Enter</kbd> Continue</button>
   </div>`;
 }
