@@ -144,7 +144,7 @@ const TEXT = {
   'note.weight.item': '{item} weighs {w} vs your STR {str} — {verdict}.',
   'note.weight.ok': 'within your strength',
   'note.weight.heavy.weapon': 'too heavy: attacks take 2 turns if equipped',
-  'note.weight.heavy.armor': 'too heavy: moving take 2 turns if equipped',
+  'note.weight.heavy.armor': 'too heavy: moving takes 2 turns if equipped',
   'note.durability.item': '{item}: {n} uses before it shatters.',
   'note.elements.item': '{item} is {el}-touched: ×2 against {opp} foes, ½ against {el} foes.',
   'note.elements.none': 'None of your arms carry an element.',
