@@ -1,0 +1,91 @@
+# Unfolding
+
+A roguelike that starts almost too simple — one quiet room, a shrine, stairs down; no
+foes, not even HP — and grows
+its own rulebook as you play. You draft which rules each world adopts at Rule Shrines, and
+every rule cuts both ways, so the right pick depends on your build and your loot.
+
+Design: [DESIGN.md](DESIGN.md). Roadmap: [ROADMAP.md](ROADMAP.md). Playable build: https://claude.ai/artifact/NyhdTzivmYsKK66g5xS9N3
+(republish with `npm run single`, then publish `dist/artifact.html` to that URL).
+
+```bash
+npm install
+npm run dev      # http://localhost:5173
+npm test         # engine tests, including bot-driven fuzz runs under every rule
+npm run smoke    # build, serve, and play it in headless Chromium (desktop + phone)
+npm run single   # dist/unfolding.html — the whole game in one file (+ dist/artifact.html)
+npx vite-node tools/probe.ts 60   # balance probe: per-floor economy + rule-by-rule comparison
+PROBE_DEPTH=25 npx vite-node tools/probe.ts 60 full   # how deep the late game goes
+```
+
+No framework: TypeScript, a canvas for the map and plain DOM for panels. Worlds and the
+run in progress are saved in `localStorage`.
+
+## Controls and options
+
+Arrows / vi keys / numpad move; tap the map to step, hold a spot to walk there, drag to
+look around. `;` or `v` (or **Look**) inspects any tile without moving; `g` picks up
+what's underfoot. In worlds where harm reaches (Volley, Arcanum, Discourse), `f` (or
+**Aim**, or tapping a foe) harms the nearest foe in reach, and `f` in Look mode aims at
+the cursor. **Options** (`o`) is saved per browser:
+
+| Option | Choices |
+|---|---|
+| Auto pickup | Everything · Currency only · Off |
+| Warn before leaving a shrine behind | On · Off |
+| Walk speed (hold-to-walk) | Slow · Normal · Fast |
+| Hold to walk after | 0.25 s · 0.4 s · 0.6 s |
+| Describe tiles on hover (mouse) | On · Off |
+| On-screen controls | Auto · Always · Never |
+| Vibrate when a walk starts | On · Off |
+| Map tile size | Small · Normal · Large |
+| Reduce motion | On · Off |
+| Plain labels (call things what they do: HP, common foe, healing item) | On · Off |
+
+## Layout
+
+| Path | What |
+|---|---|
+| `src/rules/modules.ts` | Each rule's behaviour: prerequisites and hooks |
+| `src/rules/rules.ts` | The rule graph (frontier, groups, pool), derived stats, shrine previews |
+| `src/rules/harm.ts` | Means of Harm: Strike, Volley, Arcanum, Discourse |
+| `src/engine/aim.ts` | Aiming geometry: lines and rays |
+| `src/theme/` | The lexicon, base vocabulary and bundles; *The Old Stone* and *The Plain* |
+| `src/theme/premises/` | The six themed premises: every word a world of that kind shows |
+| `src/engine/game.ts` | Turn loop, combat, shrines, rule adoption, death and graves |
+| `src/engine/dungeon.ts` | Floor layout — a pure function of world seed and depth |
+| `src/engine/content.ts` | Item and monster catalogues, floor population |
+| `src/engine/world.ts` | World creation, heir names, persistence |
+| `src/ui/` | Canvas renderer, sidebar/modals, app controller and input |
+| `src/ui/describe.ts` | What Look mode / hover says about a tile |
+| `src/ui/options.ts` | Play options: definitions, defaults, storage |
+
+## How rules hook in
+
+Every item and the player carry their full property set from the start (weight,
+durability, element, STR/AGI/VIT…). Rules decide what gets read:
+
+- `derive(player, ctx)` turns character + active rules into the numbers combat uses.
+  The shrine preview is `derive` with the candidate rule minus `derive` without it.
+- `Game.adopt(rule)` brings a rule in mid-run and reinterprets the current floor
+  (objects appear, the lights go out, glimmering stones awaken).
+- Content generation reads the active rules; floor geography never does, so heirs walk
+  the same halls and find graves where their predecessors fell.
+
+## Status
+
+MVP: twelve rules (Halls, Peril, Things, Growth, Arms, Weight, Durability, Elements,
+Darkness, Hunger, Arcana, Bestiary), shrines with personal previews on every floor,
+per-world emergence depths (basic rules usually arrive early, occasionally very late),
+mastery and imposed arrivals, rolled world variants, new world / new heir with one repeal, graves and a chronicle, keyboard
+and touch controls. Every world rolls one of seven premises — an office mid-merger, a
+singing garden, a society season, a tide pool, a bureaucracy, a dream — so no two worlds
+share a noun; Plain labels turns the costume off. Each premise also has its own
+tileset (palette, floor pattern, a scatter of cosmetic decorations), and the story is
+put up front: a run opens with a card to read, and kills, level-ups, finds and new
+floors flash over the map as headlines (they're in the log too). And worlds fight differently: each
+rolls (or settles at a schism shrine) a Means of Harm — strike up close, shoot along a
+line with shots you have to collect, pierce lines with mana, or say things that carry
+around corners — with its own words in every premise. Commerce puts a merchant on
+every floor. `npx vite-node tools/probe.ts 160 harm` measures parity between the means. Every tuning number is in `src/engine/balance.ts`; see DESIGN.md §8
+for what the probe measures and the targets.
