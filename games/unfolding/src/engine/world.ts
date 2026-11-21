@@ -5,9 +5,9 @@ import { HARMS, type HarmId } from '../rules/harm.ts';
 import { BUNDLES, type BundleId } from '../theme/base.ts';
 import { DEFAULT_PREMISE, fill, PREMISES, ROLLABLE, type Intrusion } from '../theme/lexicon.ts';
 import type { PremiseId } from '../theme/premise.ts';
-import type { Genome, RuleId, RunState, World } from './types.ts';
+import type { Genome, RuleId, RunState, SpaceId, TimeId, World } from './types.ts';
 
-export const WORLD_VERSION = 3;
+export const WORLD_VERSION = 4;
 
 /**
  * When a basic rule first shows itself: usually depth 1–2, sometimes 3–4, and
@@ -75,8 +75,26 @@ export function rollHarm(seed: number): HarmId | null {
   return rng.weighted(HARMS.map((h) => [h, B.harm.rollWeights[h]] as [HarmId, number]));
 }
 
+/** Shape of Space: rooms and corridors, or (sometimes) caves. Its own stream. */
+export function rollSpace(seed: number): SpaceId {
+  return new Rng(hashSeed(seed, 'space')).chance(B.space.cavernsChance) ? 'caverns' : 'rooms';
+}
+
+/** Flow of Time: plain turns, or (sometimes) a Tide Clock on every floor. Its own stream. */
+export function rollTime(seed: number): TimeId {
+  return new Rng(hashSeed(seed, 'time')).chance(B.time.tideChance) ? 'tide' : 'turns';
+}
+
+/** How deep this Age's Heart lies. Each Age rolls its own, on its own stream. */
+export function rollHeart(seed: number, age: number): number {
+  return new Rng(hashSeed(seed, 'heart', age)).int(...B.heart.depth);
+}
+
 /** Create a world. Its look is rolled unless `look` pins it (tests, migrations). */
-export function newWorld(seed: number, look?: { premise?: PremiseId; intrusions?: Intrusion[]; harm?: HarmId | null }): World {
+export function newWorld(
+  seed: number,
+  look?: { premise?: PremiseId; intrusions?: Intrusion[]; harm?: HarmId | null; space?: SpaceId; time?: TimeId },
+): World {
   const rng = new Rng(hashSeed(seed, 'world'));
   const variants: World['variants'] = {};
   // The first twelve rules roll on the world's own stream (as they always have);
@@ -92,6 +110,9 @@ export function newWorld(seed: number, look?: { premise?: PremiseId; intrusions?
   const harm = look ? (look.harm === undefined ? 'strike' : look.harm) : rollHarm(seed);
   genome.axioms = { ...genome.axioms, harm: harm ?? undefined };
   if (!harm) delete genome.axioms.harm;
+  // Space and time: rolled, unless a pinned look says otherwise (it keeps rooms and turns).
+  genome.axioms.space = look ? (look.space ?? 'rooms') : rollSpace(seed);
+  genome.axioms.time = look ? (look.time ?? 'turns') : rollTime(seed);
   const naming = PREMISES[genome.premise].naming;
   return {
     version: WORLD_VERSION,
@@ -107,6 +128,9 @@ export function newWorld(seed: number, look?: { premise?: PremiseId; intrusions?
     history: [],
     graves: [],
     deepest: 0,
+    age: 1,
+    heart: rollHeart(seed, 1),
+    ages: [],
   };
 }
 
@@ -224,6 +248,10 @@ export function migrateWorld(w: World): World {
   if (v < 3) {
     // v2: no genome. Everything made before premises looks like The Old Stone.
     out = { ...out, genome: out.genome ?? defaultGenome() };
+  }
+  if (v < 4) {
+    // v3: no Heart. Old worlds keep rooms and turns, and get a Heart for their first Age.
+    out = { ...out, age: out.age ?? 1, heart: out.heart ?? rollHeart(out.seed, 1), ages: out.ages ?? [] };
   }
   return out.version === WORLD_VERSION ? out : { ...out, version: WORLD_VERSION };
 }

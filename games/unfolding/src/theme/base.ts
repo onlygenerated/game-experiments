@@ -59,6 +59,8 @@ export const ROLE_KEYS = [
   'schism',
   /** Commerce: who sells. */
   'merchant',
+  /** The Heart (M-55): what lies at the bottom of an Age, with its article ("the Corner Office"). */
+  'heart',
 ] as const;
 
 export type RoleKey = (typeof ROLE_KEYS)[number];
@@ -198,6 +200,27 @@ export const BASE_TEXT = {
   'armor.breaks': 'Your {item} falls apart.',
   'starving': 'You are {starving}.',
   'death': 'It ends — {cause}.',
+  // --- The Heart (M-55) ----------------------------------------------------
+  'heart.near': 'This is the deepest {floor} of the Age. {Heart} (♥) waits at its far end.',
+  'heart.here': '{Heart} is here. Press > to reach it, and end this Age.',
+  'heart.win': '{name} reaches {heart}. This Age is over.',
+  'cause.won': 'reached {heart} on {depth} {n}',
+  'age.begin': 'Age {age} begins. {name} reached {heart} in the last one.',
+  'age.reset.rules': 'The world lets go of its rules, but keeps its {graves}.',
+  'age.reset.all': 'The world lets go of its rules and how it works, but keeps its {graves}.',
+  'look.heart': '{Heart}',
+  'look.heart.line': 'The end of this Age. Step on it and press > to win.',
+  'hud.heart.depth': '{Heart} lies on {depth} {n}.',
+  // --- Flow of Time: Tide Clock (M-24) -----------------------------------
+  'axiom.tide': 'HOW TIME WORKS — {name}: {tagline}',
+  'tide.1': 'The clock reaches its first mark. More {foes} arrive.',
+  'tide.2': 'The clock reaches its second mark. Every {foe} on this {floor} knows where you are.',
+  'tide.3': 'The clock has run out. This {floor} will hurt you until you leave it.',
+  'tide.hurt': 'Time is up here. −1 {hp}.',
+  'cause.tide': 'out of time on {depth} {n}',
+  'hud.tide': '{n} turns to the next mark',
+  'hud.tide.struck': 'Time is up: leave this {floor}',
+  'hud.tide.waits': 'Starts when {foes} arrive',
   'cause.slain': 'undone by {a} {foe} on {depth} {n}',
   'cause.starved': '{starving} on {depth} {n}',
   'cause.burned': 'caught by {a} {ember} {stone} on {depth} {n}',
@@ -297,6 +320,7 @@ export const BASE_TEXT = {
   'screen.graves.many': '{n} {graves}',
   'screen.resume': 'Resume {name} · {depth} {n}',
   'screen.fell': '{name} fell — {cause}. Their {grave} remains where they fell.',
+  'screen.won': '{name} reached {heart} — the last Age is over.',
   'screen.graveNow': 'Their {grave} now lies on {depth} {n}. The world keeps every rule it has learned.',
 
   // --- Look ----------------------------------------------------------------
@@ -419,6 +443,12 @@ export const THEMED_KEYS = [
   'schism.appears',
   'schism.open',
   'adopt.commerce',
+  'heart.win',
+  'tide.1',
+  'tide.2',
+  'tide.3',
+  'tide.hurt',
+  'cause.tide',
 ] as const satisfies readonly MessageKey[];
 
 export type ThemedKey = (typeof THEMED_KEYS)[number];

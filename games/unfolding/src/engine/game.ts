@@ -35,7 +35,8 @@ import type { RuleHost } from '../rules/modules.ts';
 import { computeVisible, lineOfSight } from './fov.ts';
 import { hashSeed, Rng } from './rng.ts';
 import { T_FLOOR, T_UP, type FloorItem, type Grave, type Item, type Monster, type Player, type Pos, type RuleId, type RunState, type Tone, type World } from './types.ts';
-import { heirName } from './world.ts';
+import { heirName, rollHeart } from './world.ts';
+import { TIME } from '../rules/axioms.ts';
 
 export type Action =
   | { type: 'move'; dx: number; dy: number }
@@ -73,6 +74,8 @@ export type GameEvent =
   /** Aimed harm flew over these tiles (for the renderer to draw). */
   | { type: 'shot'; path: Pos[] }
   | { type: 'death' }
+  /** The player reached the Heart: the world's Age is over. */
+  | { type: 'victory' }
   /** The player moved to another floor (either direction). */
   | { type: 'floor'; depth: number };
 
@@ -161,7 +164,7 @@ export class Game implements RuleHost {
       gen,
       turn: 0,
       depth: 1,
-      floor: generateLayout(world.seed, 1, layoutOpts(world)),
+      floor: generateLayout(world.seed, 1, layoutOpts(world, 1)),
       monsters: [],
       items: [],
       player: newPlayer(heirName(world, gen)),
@@ -182,6 +185,18 @@ export class Game implements RuleHost {
     if (game.ctx.harm === 'volley') p.ammo = B.harm.startAmmo;
     const L = game.lex;
     const story: string[] = [];
+    const lastAge = world.ages?.[world.ages.length - 1];
+    if (lastAge && lastAge.gen === gen - 1) {
+      const line = L.t('age.begin', { age: world.age ?? 1, name: lastAge.name });
+      story.push(line);
+      game.log(line, 'rule');
+      const reset = B.heart.newAge;
+      if (reset !== 'none') {
+        const more = L.t(reset === 'all' ? 'age.reset.all' : 'age.reset.rules');
+        story.push(more);
+        game.log(more, 'dim');
+      }
+    }
     if (world.rules.length === 0) {
       story.push(L.premise.pitch, L.t('start.fresh'));
       game.log(L.t('start.fresh'), 'info');
@@ -298,7 +313,7 @@ export class Game implements RuleHost {
       for (const r of missed) this.reinterpretFloor(r);
       if (missed.length) this.log(this.lex.t('floor.changed'), 'dim');
     } else {
-      run.floor = generateLayout(this.world.seed, depth, layoutOpts(this.world));
+      run.floor = generateLayout(this.world.seed, depth, layoutOpts(this.world, depth));
       const { monsters, items } = populate(run.floor, this.genCtx('populate'));
       run.monsters = monsters;
       run.items = items;
@@ -311,6 +326,7 @@ export class Game implements RuleHost {
     this.clearArrival();
     this.world.deepest = Math.max(this.world.deepest, depth);
     this.refreshVision();
+    if (run.floor.heart && !stored) this.log(this.lex.t('heart.near'), 'rule', true);
     if (stored) return;
     const graves = this.floorGraves().filter((g) => !g.looted);
     if (graves.length) this.log(graves.length === 1 ? this.lex.t('graves.one') : this.lex.t('graves.many', { n: graves.length }), 'dim', true);
@@ -468,7 +484,7 @@ export class Game implements RuleHost {
         this.log(this.lex.t(g === 'ember' ? 'glimmer.ember' : 'glimmer.frost'), 'dim');
       }
     }
-    if (p.x === floor.stairs.x && p.y === floor.stairs.y) this.log(this.lex.t('stairs.down.here'), 'info');
+    if (p.x === floor.stairs.x && p.y === floor.stairs.y) this.log(this.lex.t(floor.heart ? 'heart.here' : 'stairs.down.here'), floor.heart ? 'rule' : 'info');
     if (floor.tiles[idx(floor, p.x, p.y)] === T_UP) this.log(this.lex.t('stairs.up.here', { n: this.run.depth - 1 }), 'info');
     const sh = floor.shrine;
     if (sh && !sh.used && sh.pos.x === p.x && sh.pos.y === p.y) this.openShrine();
@@ -492,6 +508,10 @@ export class Game implements RuleHost {
     if (p.x !== floor.stairs.x || p.y !== floor.stairs.y) {
       this.log(this.lex.t('stairs.down.none'), 'dim');
       return false;
+    }
+    if (floor.heart) {
+      this.reachHeart();
+      return true;
     }
     this.leaveFloor();
     const depth = this.run.depth + 1;
@@ -704,7 +724,10 @@ export class Game implements RuleHost {
     const p = this.run.player;
     this.reinterpretFloor(rule);
     RULES[rule].onAdopt?.(this);
-    if (rule === 'peril') this.revealHarm();
+    if (rule === 'peril') {
+      this.revealHarm();
+      if (this.ctx.time === 'tide') this.log(this.lex.t('axiom.tide', { name: this.lex.time('tide').name, tagline: this.lex.time('tide').tagline }), 'rule', true);
+    }
     p.hp = Math.min(p.hp, this.stats.maxHp);
     this.refreshVision();
   }
@@ -1040,7 +1063,7 @@ export class Game implements RuleHost {
     const run = this.run;
     const old = run.floor;
     if (!old.solo) return;
-    const full = generateLayout(this.world.seed, run.depth, layoutOpts(this.world));
+    const full = generateLayout(this.world.seed, run.depth, layoutOpts(this.world, run.depth));
     full.shrine = old.shrine;
     if (old.shrine) delete full.glimmer[idx(full, old.shrine.pos.x, old.shrine.pos.y)];
     // The stairs up stay where you came in; the down stairs move to the full floor's.
@@ -1054,7 +1077,8 @@ export class Game implements RuleHost {
     full.start = old.start;
     for (let i = 0; i < old.explored.length; i++) if (old.explored[i]) full.explored[i] = 1;
     run.floor = full;
-    const room = soloRoom(full);
+    // The room you were in (under Caverns, the pocket of cave): nothing new spawns in it.
+    const room = old.rooms[0] ?? soloRoom(full);
     const p = run.player;
     const inRoom = (x: number, y: number) => x >= room.x && x < room.x + room.w && y >= room.y && y < room.y + room.h;
     const taken = (x: number, y: number) =>
@@ -1066,6 +1090,49 @@ export class Game implements RuleHost {
     this.countSpawned(loot);
     if (p.x === full.stairs.x && p.y === full.stairs.y) return;
     this.log(this.lex.t('adopt.halls'), 'dim');
+  }
+
+  alertAll() {
+    for (const m of this.run.monsters) m.aware = true;
+  }
+
+  hurt(n: number, line: string, cause: string) {
+    const p = this.run.player;
+    p.hp -= n;
+    this.count('damageTaken', n);
+    this.log(line, 'bad');
+    if (p.hp <= 0) this.die(cause);
+  }
+
+  // -------------------------------------------------------------------------
+  // The Heart (M-55): the end of an Age
+  // -------------------------------------------------------------------------
+
+  /**
+   * The heir reached the Heart. The run ends in victory, the Age is recorded
+   * with its winner, and the world turns to a new Age with a new Heart.
+   */
+  private reachHeart() {
+    const run = this.run;
+    const p = run.player;
+    const w = this.world;
+    const age = w.age ?? 1;
+    const cause = this.lex.t('cause.won', { n: run.depth });
+    run.over = true;
+    run.won = true;
+    run.cause = cause;
+    this.log(this.lex.t('heart.win', { name: p.name }), 'good', true);
+    w.history.push({ gen: run.gen, name: p.name, depth: run.depth, level: p.level, turns: run.turn, cause, rules: [...w.rules], won: true, age });
+    w.ages = [...(w.ages ?? []), { age, gen: run.gen, name: p.name, depth: run.depth, turns: run.turn, level: p.level, rules: [...w.rules] }];
+    w.age = age + 1;
+    w.heart = rollHeart(w.seed, w.age);
+    // What a new Age keeps (BALANCE.heart.newAge). Graves, chronicle and look always stay.
+    const reset = B.heart.newAge;
+    if (reset === 'rules' || reset === 'all') w.rules = [];
+    if (reset === 'all') {
+      delete w.genome.axioms.harm;
+    }
+    this.events.push({ type: 'victory' });
   }
 
   private resolveLevelUp(stat: 'str' | 'agi' | 'vit'): boolean {
@@ -1333,6 +1400,9 @@ export class Game implements RuleHost {
         p.mana = Math.min(this.stats.maxMana, p.mana + 1);
       }
     }
+    // Rule and axiom hooks that run every turn.
+    for (const id of RULE_ORDER) if (this.has(id) && !run.over) RULES[id].onTurn?.(this);
+    if (!run.over) TIME[this.ctx.time ?? 'turns'].onTurn?.(this);
   }
 
   /** Discourse: a foe left alone gathers itself again. */
@@ -1444,6 +1514,11 @@ export class Game implements RuleHost {
   }
 }
 
-function layoutOpts(world: World): LayoutOpts {
-  return { halls: world.rules.includes('halls'), sprawl: world.rules.includes('halls') && world.variants.halls === 'alt' };
+function layoutOpts(world: World, depth: number): LayoutOpts {
+  return {
+    halls: world.rules.includes('halls'),
+    sprawl: world.rules.includes('halls') && world.variants.halls === 'alt',
+    caverns: world.genome?.axioms.space === 'caverns',
+    heart: !!world.heart && depth === world.heart,
+  };
 }

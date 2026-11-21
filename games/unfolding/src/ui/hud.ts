@@ -6,6 +6,7 @@ import { BALANCE } from '../engine/balance.ts';
 import { DEFAULT_PREMISE, lexiconFor, lexiconOf, PREMISES, type Lexicon } from '../theme/lexicon.ts';
 import type { Item, RuleId, World } from '../engine/types.ts';
 import { aims, MEANS, type HarmId } from '../rules/harm.ts';
+import { tideLeft } from '../rules/axioms.ts';
 import {
   alt,
   derive,
@@ -323,6 +324,7 @@ export function codexHTML(world: World, L: Lexicon): string {
       <p class="muted premise-name">${esc(premiseLine(world))}</p>
       ${borrowed.length ? `<ul class="borrowed">${borrowed.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}</header>
     ${world.rules.includes('peril') ? codexMeansHTML(world, L) : ''}
+    ${codexShapeHTML(world, L)}
     <div class="codex-list">${active
       .map((r) => `<article class="codex-entry"><h2>${esc(L.rule(r).name)}${glossHTML(L.ruleGloss(r))} <span class="tier">Tier ${RULES[r].tier}</span></h2>
         <p class="tagline">${esc(L.rule(r).tagline)}</p>${ruleBody(r, world.variants, L)}</article>`)
@@ -330,7 +332,7 @@ export function codexHTML(world: World, L: Lexicon): string {
     ${front.length ? `<p class="muted">Shrines may offer next: ${esc(front.map((r) => L.rule(r).name).join(', '))}.</p>` : ''}
     ${unknown > 0 ? `<p class="muted">${unknown} more ${unknown === 1 ? 'rule lies' : 'rules lie'} beyond those.</p>` : ''}
     ${world.history.length ? `<h3>Chronicle</h3><ol class="chronicle">${world.history
-      .map((h) => `<li><b>${esc(h.name)}</b>, ${esc(L.role('heir'))} ${h.gen} — ${esc(L.role('level'))} ${h.level}, ${esc(h.cause)} after ${h.turns} turns.</li>`)
+      .map((h) => `<li${h.won ? ' class="won"' : ''}>${h.won ? '♥ ' : ''}<b>${esc(h.name)}</b>, ${esc(L.role('heir'))} ${h.gen} — ${esc(L.role('level'))} ${h.level}, ${esc(h.cause)} after ${h.turns} turns.</li>`)
       .join('')}</ol>` : ''}
     <footer><button data-cmd="dismiss" class="primary"><kbd>Esc</kbd> Close</button></footer>
   </div>`;
@@ -433,7 +435,18 @@ function meansHTML(game: Game): string {
   const bits = [`<b>${esc(m.name)}</b>${glossHTML(L.ruleGlossOf(m.name, lexiconOf('plain').means(id).name))}`];
   if (aims(id)) bits.push(`${esc(L.t('preview.range'))} ${game.stats.range}`);
   if (MEANS[id].cost === 'ammo') bits.push(`<span class="ammo${(p.ammo ?? 0) === 0 ? ' out' : ''}">${esc(L.t('hud.ammo'))} ${p.ammo ?? 0}</span>`);
-  return `<p class="means small" title="${esc(m.summary)}">${bits.join(' · ')}</p>`;
+  return `<p class="means small" title="${esc(m.summary)}">${bits.join(' · ')}</p>${tideHTML(game)}`;
+}
+
+/** Tide Clock: how long until this floor's next mark. */
+function tideHTML(game: Game): string {
+  if (game.ctx.time !== 'tide') return '';
+  const L = game.lex;
+  const t = L.time('tide');
+  const left = tideLeft(game.run.floor.clock ?? 0);
+  const urgent = left === null || left <= 20;
+  const line = left === null ? L.t('hud.tide.struck') : L.t('hud.tide', { n: left });
+  return `<p class="means tide small${urgent ? ' warn' : ''}" title="${esc(t.summary)}"><b>${esc(t.name)}</b>${glossHTML(L.ruleGlossOf(t.name, lexiconOf('plain').time('tide').name))} · ${esc(line)}</p>`;
 }
 
 function codexMeansHTML(world: World, L: Lexicon): string {
@@ -442,6 +455,21 @@ function codexMeansHTML(world: World, L: Lexicon): string {
   const m = L.means(id);
   return `<section class="codex-axiom"><span class="eyebrow">${esc(L.t('hud.harm'))}</span>
     <h2>${esc(m.name)}${glossHTML(L.ruleGlossOf(m.name, lexiconOf('plain').means(id).name))}</h2><p class="tagline">${esc(m.tagline)}</p>${meansBody(id, L)}</section>`;
+}
+
+/** Codex: the world's space and time, and where this Age's Heart lies. */
+function codexShapeHTML(world: World, L: Lexicon): string {
+  const ax = world.genome?.axioms;
+  const space = L.space(ax?.space ?? 'rooms');
+  const time = L.time(ax?.time ?? 'turns');
+  const plain = lexiconOf('plain');
+  const ages = world.ages ?? [];
+  return `<section class="codex-axiom codex-shape">
+    <p><span class="eyebrow">Space</span> <b>${esc(space.name)}</b>${glossHTML(L.ruleGlossOf(space.name, plain.space(ax?.space ?? 'rooms').name))} — ${esc(space.summary)}</p>
+    <p><span class="eyebrow">Time</span> <b>${esc(time.name)}</b>${glossHTML(L.ruleGlossOf(time.name, plain.time(ax?.time ?? 'turns').name))} — ${esc(time.summary)}</p>
+    ${world.heart ? `<p><span class="eyebrow">Age ${world.age ?? 1}</span> ${esc(L.t('hud.heart.depth', { n: world.heart }))}</p>` : ''}
+    ${ages.length ? `<ol class="ages">${ages.map((a) => `<li>Age ${a.age}: <b>${esc(a.name)}</b>, ${esc(L.role('heir'))} ${a.gen}, after ${a.turns} turns with ${a.rules.length} rules.</li>`).join('')}</ol>` : ''}
+  </section>`;
 }
 
 /** The banner shown when a world's means becomes known. */

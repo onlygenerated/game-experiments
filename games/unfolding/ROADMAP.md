@@ -248,6 +248,30 @@ Flattery…) still ride on Elements' two kinds rather than five of their own.
 completed. **Exit:** at least one world in five plays under a non-default space or time
 axiom; worlds record their Age and their winner.
 
+*First version shipped as:* `src/rules/axioms.ts` (Shape of Space and Flow of Time, and
+the new `onTurn` hook that rule modules and time axioms share), caves in
+`src/engine/dungeon.ts`, the Heart in `src/engine/game.ts`, and words for all three in
+every premise (`space`, `time`, the `heart` role and six themed lines each). A new world
+rolls Caverns 25% and a Tide Clock 20% of the time, on streams of their own (about 40% of
+worlds are non-default; a test holds it above 20%). **Caverns**: cellular-automaton caves,
+one connected space, no doors; before Halls you stand in a pocket of the cave, and Halls
+opens the whole cave around it. Caves hold 25% fewer foes, because in the open every foe
+reaches you at once. **Tide Clock**: once foes exist, every floor keeps a clock. At 150
+turns more foes arrive, at 250 every foe hunts you, and from 350 the floor costs 1 vitality
+every 4 turns until you leave. The sidebar counts down. **The Heart**: each Age rolls a
+depth 10–20; that floor's way down is the Heart (♥). Reaching it ends the run in victory,
+records the winner in the chronicle and the Codex, and begins the next Age with a new Heart.
+*Parity* (`npx vite-node tools/axiom-probe.ts 40 14`, explorer bot, Strike): mean depth
+rooms/turns 9.7, caverns 9.1, tide 9.5, caverns+tide 8.3. A test holds caverns and tide
+within 1.5 floors of rooms and turns.
+
+*Shortcuts and guesses in the first version:* space and time are always rolled, never left
+open, so the schism shrine still settles Means of Harm only. **Drift** is not built. What a
+new Age resets is a guess (`BALANCE.heart.newAge`: the rulebook starts over, axioms, graves
+and chronicle stay), waiting on a decision. The Heart's depth is shown in the Codex, also a
+guess. Tide Clock and Caverns get no banner of their own; the tide is announced in the log
+when foes arrive, and both are in the Codex.
+
 ### Phase 4 — Tactics and world systems
 
 **Afflictions, Momentum, Morale, Noise, Light, Thresholds, Traps, Chemistry**

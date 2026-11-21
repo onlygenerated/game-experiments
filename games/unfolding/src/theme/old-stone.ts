@@ -110,6 +110,25 @@ const TEXT: Record<MessageKey, string> = {
   'starving': 'You are starving.',
   'death': 'You die — {cause}.',
   'cause.slain': 'slain by {a} {foe} on depth {n}',
+  'heart.near': 'This is the deepest depth of the Age. The Heart of the Deep (♥) waits at its far end.',
+  'heart.here': 'The Heart of the Deep beats here. Press > to reach it, and end this Age.',
+  'cause.won': 'reached the Heart of the Deep on depth {n}',
+  'age.begin': 'Age {age} begins. {name} reached the Heart of the Deep in the last one.',
+  'age.reset.rules': 'The world lets go of its rules, but keeps its graves.',
+  'age.reset.all': 'The world lets go of its rules and how it works, but keeps its graves.',
+  'look.heart': 'The Heart of the Deep',
+  'look.heart.line': 'The end of this Age. Step on it and press > to win.',
+  'hud.heart.depth': 'The Heart of the Deep lies on depth {n}.',
+  'axiom.tide': 'HOW TIME WORKS — {name}: {tagline}',
+  'hud.tide': '{n} turns to the next mark',
+  'hud.tide.struck': 'Time is up: leave this depth',
+  'hud.tide.waits': 'Starts when foes arrive',
+  'heart.win': '{name} reaches the Heart of the Deep. The stone falls silent; this Age is over.',
+  'tide.1': 'Water seeps across the floor. You hear more {foes} coming.',
+  'tide.2': 'The water is ankle-deep. Every {foe} on this {floor} knows where you are.',
+  'tide.3': 'The water is rising fast. Get off this {floor}!',
+  'tide.hurt': 'The cold water drags at you. −1 {hp}.',
+  'cause.tide': 'drowned on depth {n}',
   'cause.starved': 'starved on depth {n}',
   'cause.burned': 'burned on depth {n}',
 
@@ -202,6 +221,7 @@ const TEXT: Record<MessageKey, string> = {
   'screen.graves.many': '{n} graves',
   'screen.resume': 'Resume {name} · depth {n}',
   'screen.fell': '{name} fell — {cause}. Their grave remains where they fell.',
+  'screen.won': '{name} reached the Heart of the Deep — the last Age is over.',
   'screen.graveNow': 'Their grave now lies on depth {n}. The world keeps every rule it has learned.',
 
   // --- Look ----------------------------------------------------------------
@@ -334,6 +354,7 @@ export const OLD_STONE: Premise = {
     ammos: 'arrows',
     schism: 'Schism Stone',
     merchant: 'pedlar',
+    heart: 'the Heart of the Deep',
   },
   foes: {
     rat: { name: 'rat', plural: 'rats', glyph: 'r', color: '#c49a6c' },
@@ -535,6 +556,14 @@ export const OLD_STONE: Premise = {
         'fire.none': 'No one within earshot.',
       },
     },
+  },
+  space: {
+    rooms: { name: 'Rooms and Corridors', tagline: 'Cut stone, doors and passages.', summary: 'Each {floor} is rooms joined by corridors.' },
+    caverns: { name: 'Caverns', tagline: 'The rock was never cut into rooms.', summary: 'Each {floor} is one wide cave: no doors, no corridors, nowhere to hide.' },
+  },
+  time: {
+    turns: { name: 'Turns', tagline: 'Time waits for you.', summary: 'Nothing happens until you act, however long you take.' },
+    tide: { name: 'The Rising Water', tagline: 'The deep floods, slowly.', summary: 'Every {floor} keeps a clock once {foes} exist. At {tide1} turns more {foes} arrive; at {tide2} every {foe} hunts you; from {tide3}, the water drags at you: −1 {hp} every {tideHurtEvery} turns until you leave.' },
   },
   tiles: {
     void: '#07080c',

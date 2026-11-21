@@ -48,6 +48,7 @@ export const MERGER: Premise = {
     ammos: 'paper airplanes',
     schism: 'Town Hall',
     merchant: 'vending machine',
+    heart: 'the Corner Office',
   },
   foes: {
     rat: { name: 'intern', plural: 'interns', glyph: 'i', color: '#d8c79a' },
@@ -212,6 +213,14 @@ export const MERGER: Premise = {
       },
     },
   },
+  space: {
+    rooms: { name: 'Floor Plan', tagline: 'Offices, corridors, doors that badge-lock.', summary: 'Each {floor} is offices joined by corridors.' },
+    caverns: { name: 'Gutted Floors', tagline: 'The renovation took out every wall.', summary: 'Each {floor} is one wide, half-demolished space: no doors, no corridors, nowhere to hide.' },
+  },
+  time: {
+    turns: { name: 'Flexitime', tagline: 'No deadlines. Yet.', summary: 'Nothing happens until you act, however long you take.' },
+    tide: { name: 'End of Quarter', tagline: 'The numbers are due.', summary: 'Every {floor} keeps a clock once {foes} exist. At {tide1} turns more {foes} arrive; at {tide2} every {foe} hunts you; from {tide3}, Compliance sweeps the {floor}: −1 {hp} every {tideHurtEvery} turns until you leave.' },
+  },
   tiles: {
     void: '#090b0f',
     floor: '#141922',
@@ -283,6 +292,12 @@ export const MERGER: Premise = {
     'starving': 'You are burnt out.',
     'death': 'You are let go — {cause}.',
     'cause.slain': 'terminated by {a} {foe} on sublevel {n}',
+    'heart.win': '{name} badges into the Corner Office. The blinds come down; this Age is over.',
+    'tide.1': 'Quarter-end is in sight. More {foes} have been looped in.',
+    'tide.2': 'Crunch time. Every {foe} on this {floor} has your calendar.',
+    'tide.3': 'The quarter has closed. Compliance is sweeping this {floor}: get out!',
+    'tide.hurt': 'Compliance flags you. −1 {hp}.',
+    'cause.tide': 'swept up by Compliance on sublevel {n}',
     'cause.starved': '{starving} on sublevel {n}',
     'cause.burned': 'scalded by the HVAC on sublevel {n}',
     'note.halls': 'This sublevel opens up right away — and its freight elevator moves somewhere you haven’t been.',

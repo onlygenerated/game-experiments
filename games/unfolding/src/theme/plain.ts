@@ -52,6 +52,7 @@ export const PLAIN: Premise = {
     ammos: 'shots',
     schism: 'schism shrine',
     merchant: 'merchant',
+    heart: 'the Heart',
   },
   foes: {
     rat: { name: 'common foe', plural: 'common foes', glyph: 'r', color: '#c49a6c' },
@@ -126,6 +127,14 @@ export const PLAIN: Premise = {
       },
       weapons: ['Barb (tier 1)', 'Barb (tier 2)', 'Barb (tier 3)', 'Barb (tier 4)', 'Barb (tier 5)', 'Barb (tier 6)'],
     },
+  },
+  space: {
+    rooms: { name: 'Rooms', tagline: 'Rooms and corridors.', summary: 'Each {floor} is rooms joined by corridors.' },
+    caverns: { name: 'Caverns', tagline: 'Open caves.', summary: 'Each {floor} is one wide cave: no doors, no corridors, nowhere to hide.' },
+  },
+  time: {
+    turns: { name: 'Turns', tagline: 'No clock.', summary: 'Nothing happens until you act.' },
+    tide: { name: 'Tide Clock', tagline: 'A clock on every floor.', summary: 'Every {floor} keeps a clock once {foes} exist. At {tide1} turns more {foes} arrive; at {tide2} every {foe} hunts you; from {tide3}, the floor hurts you: −1 {hp} every {tideHurtEvery} turns until you leave.' },
   },
   tiles: {
     void: '#07080c',
@@ -205,5 +214,11 @@ export const PLAIN: Premise = {
     'schism.appears': 'A schism shrine appears on this floor. It settles how harm works in this world, permanently.',
     'schism.open': 'Schism shrine: choose how harm works here. Permanent, and every heir inherits it.',
     'adopt.commerce': 'A merchant appears on this floor.',
+    'heart.win': '{name} reaches the Heart. This Age is over.',
+    'tide.1': 'Tide Clock, first mark: more foes arrive.',
+    'tide.2': 'Tide Clock, second mark: every foe on this floor knows where you are.',
+    'tide.3': 'Tide Clock has run out: this floor hurts you until you leave.',
+    'tide.hurt': 'Out of time. −1 HP.',
+    'cause.tide': 'out of time on depth {n}',
   },
 };

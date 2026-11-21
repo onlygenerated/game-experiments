@@ -48,6 +48,7 @@ export const TIDEPOOL: Premise = {
     ammos: 'pebbles',
     schism: 'Tide Line',
     merchant: 'hermit trader',
+    heart: 'the Open Sea',
   },
   foes: {
     rat: { name: 'sand flea', plural: 'sand fleas', glyph: 'f', color: '#e3cf9c' },
@@ -212,6 +213,14 @@ export const TIDEPOOL: Premise = {
       },
     },
   },
+  space: {
+    rooms: { name: 'Channels', tagline: 'Basins joined by narrow channels.', summary: 'Each {floor} is basins joined by channels.' },
+    caverns: { name: 'Rock Pools', tagline: 'One wide pool, and the rocks in it.', summary: 'Each {floor} is one wide, open pool: no channels, nowhere to hide.' },
+  },
+  time: {
+    turns: { name: 'Slack Water', tagline: 'The tide holds still.', summary: 'Nothing happens until you act, however long you take.' },
+    tide: { name: 'The Tide', tagline: 'The sea keeps its own time.', summary: 'Every {floor} keeps a clock once {foes} exist. At {tide1} turns more {foes} arrive; at {tide2} every {foe} hunts you; from {tide3}, the surf pounds you: −1 {hp} every {tideHurtEvery} turns until you leave.' },
+  },
   tiles: {
     void: '#03080b',
     floor: '#0c1a20',
@@ -281,6 +290,12 @@ export const TIDEPOOL: Premise = {
     'starving': 'You are parched.',
     'death': 'You are washed out — {cause}.',
     'cause.slain': 'eaten by {a} {foe} in pool {n}',
+    'heart.win': '{name} rides the last wave out to the Open Sea. The shore is behind you; this Age is over.',
+    'tide.1': 'The tide turns. More {foes} ride in on it.',
+    'tide.2': 'The water is rising. Every {foe} in this {floor} can taste you in it.',
+    'tide.3': 'The tide is in, and this {floor} is churning. Get out!',
+    'tide.hurt': 'The surf slams you against the rocks. −1 {hp}.',
+    'cause.tide': 'smashed by the surf in pool {n}',
     'cause.starved': 'dried out in pool {n}',
     'cause.burned': 'cooked on hot rock in pool {n}',
     'note.halls': 'This pool joins its neighbours right away — and its drop-off moves somewhere you haven’t been.',

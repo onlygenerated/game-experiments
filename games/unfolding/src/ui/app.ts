@@ -3,6 +3,7 @@ import { canTravelTo, nearbyThreats, travelStep } from '../engine/travel.ts';
 import { T_UP, type Pos } from '../engine/types.ts';
 import type { RuleId, World } from '../engine/types.ts';
 import { defaultKV, heirName, newWorld, randomSeed, Store } from '../engine/world.ts';
+import { BALANCE } from '../engine/balance.ts';
 import { repealable, RULE_ORDER } from '../rules/rules.ts';
 import { lexiconFor } from '../theme/lexicon.ts';
 import { describeTile } from './describe.ts';
@@ -102,7 +103,7 @@ export class App {
         const rules = RULE_ORDER.filter((r) => w.rules.includes(r));
         const L = lexiconFor(w, this.options.plainLabels);
         return `<li class="world-card">
-          <div class="wc-head"><h3>${esc(w.name)}</h3><span class="premise-name">${esc(premiseLine(w))}</span><span class="muted small">Age ${w.generation} · deepest ${w.deepest || '—'} · ${esc(L.t(w.graves.length === 1 ? 'screen.graves.one' : 'screen.graves.many', { n: w.graves.length }))}</span></div>
+          <div class="wc-head"><h3>${esc(w.name)}</h3><span class="premise-name">${esc(premiseLine(w))}</span><span class="muted small">Age ${w.age ?? 1} · ${esc(L.role('heir'))} ${w.generation} · deepest ${w.deepest || '—'}${(w.ages?.length ?? 0) ? ` · ♥ ${w.ages!.length}` : ''} · ${esc(L.t(w.graves.length === 1 ? 'screen.graves.one' : 'screen.graves.many', { n: w.graves.length }))}</span></div>
           <div class="chips">${rules.length ? rules.map((r) => `<span class="chip">${esc(L.rule(r).name)}</span>`).join('') : '<span class="muted small">No rules yet</span>'}</div>
           <div class="wc-btns">
             ${run && !run.over ? `<button class="primary" data-cmd="resume" data-world="${w.id}">${esc(L.t('screen.resume', { name: run.player.name, n: run.depth }))}</button>` : `<button class="primary" data-cmd="heir" data-world="${w.id}">New heir</button>`}
@@ -146,9 +147,9 @@ export class App {
     }
     const last = world.history[world.history.length - 1];
     this.root.innerHTML = `<div class="screen heir-screen">
-      <span class="eyebrow">${esc(world.name)} · ${esc(premiseLine(world))} · age ${world.generation}</span>
+      <span class="eyebrow">${esc(world.name)} · ${esc(premiseLine(world))} · Age ${world.age ?? 1}</span>
       <h1>${esc(name)}, ${esc(L.role('heir'))} ${gen}</h1>
-      ${last ? `<p class="lede">${esc(L.t('screen.fell', { name: last.name, cause: last.cause }))}</p>` : ''}
+      ${last ? `<p class="lede">${esc(L.t(last.won ? 'screen.won' : 'screen.fell', { name: last.name, cause: last.cause }))}</p>` : ''}
       ${rules.length ? `<h2>The rules you inherit</h2>
       <p class="muted">You may repeal one — only a rule nothing else depends on. A repealed rule leaves the world and can be offered again at shrines.</p>
       <form class="repeal" id="repeal-form">
@@ -239,6 +240,7 @@ export class App {
 
   death() {
     const game = this.game!;
+    if (game.run.won) return this.victory();
     this.save();
     const run = game.run;
     const p = run.player;
@@ -258,6 +260,36 @@ export class App {
       <p class="muted">${esc(game.lex.t('screen.graveNow', { n: run.depth }))}</p>
       <div class="heir-btns">
         <button class="primary big" data-cmd="heir" data-world="${w.id}">Send the next heir</button>
+        <button class="ghost" data-cmd="new-world">New world</button>
+        <button class="ghost" data-cmd="title">Title</button>
+      </div></div>`;
+    this.game = null;
+  }
+
+  /** The heir reached the Heart: the Age is over. */
+  victory() {
+    const game = this.game!;
+    this.save();
+    const run = game.run;
+    const p = run.player;
+    const w = game.world;
+    const L = game.lex;
+    const age = (w.age ?? 2) - 1;
+    this.teardownPlay();
+    this.root.innerHTML = `<div class="screen death-screen victory-screen">
+      <span class="eyebrow">${esc(w.name)} · Age ${age} · ${esc(L.role('heir'))} ${run.gen}</span>
+      <h1>♥ ${esc(p.name)} reached ${esc(L.role('heart'))}</h1>
+      <p class="lede">${esc(L.t('heart.win', { name: p.name }))}</p>
+      <dl class="stats wide">
+        <div><dt>Depth</dt><dd>${run.depth}</dd></div>
+        <div><dt>Turns</dt><dd>${run.turn}</dd></div>
+        <div><dt>Kills</dt><dd>${p.kills}</dd></div>
+        ${run.player.level > 1 ? `<div><dt>Level</dt><dd>${p.level}</dd></div>` : ''}
+        <div><dt>Heirs this world</dt><dd>${run.gen}</dd></div>
+      </dl>
+      <p class="muted">The chronicle records ${esc(p.name)} as the winner of Age ${age}. The next ${esc(L.role('heir'))} begins Age ${age + 1}, and ${esc(L.role('heart'))} moves: it now lies somewhere between depth ${BALANCE.heart.depth[0]} and ${BALANCE.heart.depth[1]}.${w.rules.length ? '' : ' ' + esc(L.t('age.reset.rules'))}</p>
+      <div class="heir-btns">
+        <button class="primary big" data-cmd="heir" data-world="${w.id}">Begin Age ${age + 1}</button>
         <button class="ghost" data-cmd="new-world">New world</button>
         <button class="ghost" data-cmd="title">Title</button>
       </div></div>`;

@@ -577,6 +577,46 @@ try {
     await page.click('.modal.shop [data-cmd="leave-shop"]');
     ok(`${vp.name}: leaving the shop closes it`, !(await page.isVisible('.modal.shop')));
 
+    // ---- Phase 3: the Tide Clock shows, and the Heart ends an Age -----------
+    await page.evaluate(() => {
+      const a = window.unfolding;
+      a.game.world.genome.axioms.time = 'tide';
+      a.refresh();
+    });
+    ok(`${vp.name}: a tide world shows its clock`, (await page.$('.means.tide')) !== null);
+    await page.evaluate(() => {
+      const a = window.unfolding, g = a.game;
+      g.world.genome.axioms.time = 'turns';
+      g.world.heart = g.run.depth + 1;
+      for (const m of g.run.monsters) m.stun = 9999;
+      g.run.pending = null;
+      a.overlays = [];
+      g.run.player.x = g.run.floor.stairs.x;
+      g.run.player.y = g.run.floor.stairs.y;
+      a.act({ type: 'descend' });
+      a.overlays = [];
+      a.refresh();
+    });
+    const heartFloor = await page.evaluate(() => !!window.unfolding.game.run.floor.heart);
+    ok(`${vp.name}: the Heart's floor is the deepest`, heartFloor);
+    await shot(page, `${vp.name}-7d-heart-floor`);
+    await page.evaluate(() => {
+      const a = window.unfolding, g = a.game;
+      for (const m of g.run.monsters) m.stun = 9999;
+      g.run.pending = null;
+      a.overlays = [];
+      g.run.player.x = g.run.floor.stairs.x;
+      g.run.player.y = g.run.floor.stairs.y;
+      a.act({ type: 'descend' });
+    });
+    await page.waitForSelector('.victory-screen', { timeout: 3000 }).catch(() => {});
+    ok(`${vp.name}: reaching the Heart shows the end of the Age`, await page.isVisible('.victory-screen'));
+    await shot(page, `${vp.name}-7e-victory`);
+    await page.click('.victory-screen [data-cmd="heir"]');
+    if (await page.isVisible('.heir-screen')) await page.click('.heir-screen [data-cmd="begin"]');
+    await page.evaluate(() => { const a = window.unfolding; a.overlays = []; a.refresh(); });
+    ok(`${vp.name}: a new Age begins`, await page.evaluate(() => window.unfolding.game?.world.age === 2));
+
     // ---- Every premise speaks its own words -----------------------------
     // New worlds roll their premise; keep making them until each one has shown up.
     const seen = new Set();

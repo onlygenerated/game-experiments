@@ -1431,3 +1431,26 @@ button.linkish:hover:not(:disabled) {
 .modal.story .hint {
   margin-top: 1.2em;
 }
+
+/* Phase 3: the Tide Clock line, the Heart, and the end of an Age. */
+.means.tide {
+  margin-top: 0.3em;
+  padding-top: 0;
+  border-top: 0;
+}
+.means.tide.warn {
+  color: var(--bad);
+}
+.victory-screen h1 {
+  color: #ff8fa3;
+}
+.chronicle li.won {
+  color: #ff8fa3;
+}
+.codex-shape p {
+  margin: 0.25em 0;
+}
+.codex-shape .ages {
+  margin: 0.4em 0 0;
+  padding-left: 1.2em;
+}

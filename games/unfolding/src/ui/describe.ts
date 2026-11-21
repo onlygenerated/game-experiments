@@ -1,7 +1,7 @@
 import { itemLabel, MONSTERS } from '../engine/content.ts';
 import { idx, inBounds } from '../engine/dungeon.ts';
 import type { Game } from '../engine/game.ts';
-import { T_STAIRS, T_UP, T_WALL } from '../engine/types.ts';
+import { T_HEART, T_STAIRS, T_UP, T_WALL } from '../engine/types.ts';
 import { alt, hiddenProps } from '../rules/rules.ts';
 import { BALANCE } from '../engine/balance.ts';
 import { itemFacts } from './hud.ts';
@@ -82,6 +82,10 @@ export function describeTile(game: Game, x: number, y: number): TileInfo {
   if (t === T_STAIRS) {
     terrain = L.t('look.stairsDown');
     lines.push(L.t('look.stairsDownLine', { n: run.depth + 1 }));
+  }
+  if (t === T_HEART) {
+    terrain = L.t('look.heart');
+    lines.push(L.t('look.heart.line'));
   }
   if (t === T_UP) {
     terrain = L.t('look.stairsUp');

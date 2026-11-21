@@ -35,6 +35,8 @@ export const T_FLOOR = 1;
 export const T_STAIRS = 2;
 /** Stairs up: where you arrive on every floor below the first. */
 export const T_UP = 3;
+/** The Heart (M-55): on the deepest floor of an Age, in place of the stairs down. */
+export const T_HEART = 4;
 
 export interface Shrine {
   pos: Pos;
@@ -75,6 +77,11 @@ export interface Floor {
   schism?: Schism | null;
   /** Commerce: who sells on this floor, and what is left. */
   merchant?: Merchant | null;
+  /** The deepest floor of this Age: its way down is the Heart. */
+  heart?: boolean;
+  /** Tide Clock: turns spent on this floor since the clock started, and the stage it has reached. */
+  clock?: number;
+  tide?: number;
 }
 
 export interface Merchant {
@@ -177,7 +184,27 @@ export interface Chronicle {
   turns: number;
   cause: string;
   rules: RuleId[];
+  /** Reached the Heart: this heir ended an Age. */
+  won?: boolean;
+  /** The Age this heir lived in (absent: the first). */
+  age?: number;
 }
+
+/** An Age that ended: someone reached the Heart. */
+export interface AgeRecord {
+  age: number;
+  gen: number;
+  name: string;
+  depth: number;
+  turns: number;
+  level: number;
+  rules: RuleId[];
+}
+
+/** Shape of Space (M-20): rooms and corridors, or open caves. */
+export type SpaceId = 'rooms' | 'caverns';
+/** Flow of Time (M-24): plain turns, or a clock on every floor. */
+export type TimeId = 'turns' | 'tide';
 
 /** The questions axioms answer; each world settles one option per family (ROADMAP.md §1.4). */
 export type AxiomFamily = 'harm' | 'space' | 'time' | 'self' | 'knowledge';
@@ -191,7 +218,7 @@ export interface Genome {
    * Axiom options settled so far. A family left out is open: a schism shrine
    * will settle it. Means of Harm is rolled or open; the rest are fixed for now.
    */
-  axioms: Partial<Record<AxiomFamily, string>> & { harm?: HarmId };
+  axioms: Partial<Record<AxiomFamily, string>> & { harm?: HarmId; space?: SpaceId; time?: TimeId };
   /** The rules this world can ever discover; null means every rule. */
   pool: RuleId[] | null;
 }
@@ -218,6 +245,12 @@ export interface World {
   history: Chronicle[];
   graves: Grave[];
   deepest: number;
+  /** The Age this world is in: 1 until someone reaches the Heart. */
+  age?: number;
+  /** The depth of this Age's Heart (M-55). */
+  heart?: number;
+  /** Ages that have ended, oldest first. */
+  ages?: AgeRecord[];
 }
 
 export type Tone = 'info' | 'good' | 'bad' | 'rule' | 'dim';
@@ -260,6 +293,8 @@ export interface RunState {
   pendingLevelUps: number;
   over: boolean;
   cause: string | null;
+  /** The run ended at the Heart, not in a grave. */
+  won?: boolean;
   /** Floors you've left this run, by depth. Absent in runs saved before stairs up existed. */
   visited?: Record<number, StoredFloor>;
 }

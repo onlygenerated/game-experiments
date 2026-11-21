@@ -147,4 +147,39 @@ export const BALANCE = {
     openChance: 0.4,
     rollWeights: { strike: 30, volley: 25, arcanum: 25, discourse: 20 },
   },
+  /** The Heart (M-55): the deepest floor of an Age. */
+  heart: {
+    /** Rolled per world and per Age, inclusive. */
+    depth: [10, 20] as [number, number],
+    /**
+     * What a new Age keeps once someone reaches the Heart (GUESS, waiting on Phil):
+     * 'rules' = the rulebook starts over, axioms stay; 'none' = nothing resets;
+     * 'all' = the rulebook starts over and the axioms reopen.
+     */
+    newAge: 'rules' as 'rules' | 'none' | 'all',
+  },
+  /** Shape of Space (Phase 3). */
+  space: {
+    /** New worlds: chance of Caverns instead of rooms and corridors. */
+    cavernsChance: 0.25,
+    /** Cellular-automaton caves: starting wall fraction and smoothing passes. */
+    caveFill: 0.45,
+    caveSteps: 5,
+    /** Fewest open tiles a cave floor must have, else it is rolled again. */
+    caveMinOpen: 420,
+    /** Caves are open ground where every foe reaches you at once, so they hold fewer (×, rounded up). */
+    caveFoes: 0.75,
+  },
+  /** Flow of Time (Phase 3). */
+  time: {
+    /** New worlds: chance of a Tide Clock. */
+    tideChance: 0.2,
+    /** Turns on a floor (once foes exist) at which the clock reaches each stage. */
+    tideStages: [150, 250, 350] as [number, number, number],
+    /** Stage 1 and 2: this fraction of a floor's foes arrives, at least this far from you. */
+    tideFoes: 0.35,
+    tideFoesDistance: 6,
+    /** Stage 3: lose 1 vitality every this many turns until you leave the floor. */
+    tideHurtEvery: 4,
+  },
 } as const;

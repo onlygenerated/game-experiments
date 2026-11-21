@@ -1,4 +1,4 @@
-import { DIRS, distanceMap, idx } from '../engine/dungeon.ts';
+import { DIRS, distanceMap, idx, passable } from '../engine/dungeon.ts';
 import type { Action, Game } from '../engine/game.ts';
 import type { Rng } from '../engine/rng.ts';
 import { T_UP, type Item } from '../engine/types.ts';
@@ -104,7 +104,23 @@ export function explorerAction(g: Game, rng: Rng, opts: { shrines?: boolean } = 
   f.rooms.forEach((r, i) => {
     if (p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h) mem!.rooms.add(i);
   });
-  const centre = (i: number) => ({ x: f.rooms[i].x + (f.rooms[i].w >> 1), y: f.rooms[i].y + (f.rooms[i].h >> 1) });
+  // A room's centre, or (in a cave, where the centre may be rock) the open tile nearest it.
+  const centre = (i: number) => {
+    const r = f.rooms[i];
+    const c = { x: r.x + (r.w >> 1), y: r.y + (r.h >> 1) };
+    if (passable(f, c.x, c.y)) return c;
+    let best = c;
+    let bd = Infinity;
+    for (let y = r.y; y < r.y + r.h; y++)
+      for (let x = r.x; x < r.x + r.w; x++) {
+        const d = Math.abs(x - c.x) + Math.abs(y - c.y);
+        if (d < bd && passable(f, x, y)) {
+          bd = d;
+          best = { x, y };
+        }
+      }
+    return best;
+  };
   const unseen = f.rooms.map((_, i) => i).filter((i) => !mem!.rooms.has(i));
   const near = (ts: { x: number; y: number }[]) => {
     const dist = distanceMap(f, p);
