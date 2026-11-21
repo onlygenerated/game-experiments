@@ -727,6 +727,18 @@ p.gloss {
   padding: 0 10px;
   white-space: nowrap;
 }
+/* Stairs: dim until you stand on them, then lit in the stairs' own gold. */
+/* Wide enough for its longest label, so lighting up never shifts the pad. */
+.pad-actions button.pad-stairs {
+  min-width: 96px;
+}
+.pad-actions button.pad-stairs.here {
+  background: #f2c46d;
+  border-color: #f2c46d;
+  color: #2a1e08;
+  font-weight: 700;
+  box-shadow: 0 0 0 3px rgba(242, 196, 109, 0.25);
+}
 .pad-actions button.on,
 .topbar button.on {
   border-color: var(--accent);

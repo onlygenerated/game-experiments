@@ -199,7 +199,7 @@ export class App {
             .join('')}
         </div>
         <div class="pad-actions">
-          <button data-cmd="stairs" class="pad-stairs">Descend</button>
+          <button data-cmd="stairs" class="pad-stairs" disabled>Stairs</button>
           <button data-cmd="wait">Wait</button>
           <button data-cmd="pickup" class="pad-pickup" disabled>Pick up</button>
           <button data-cmd="look" class="pad-look" aria-pressed="false">Look</button>
@@ -372,7 +372,6 @@ export class App {
     this.act(at ? { type: 'fire', x: at.x, y: at.y } : { type: 'fire' });
   }
 
-  /** Descend, unless that would leave an unanswered shrine behind and the player wants a warning. */
   /** Which stairs the player is standing on, if any. */
   private stairsHere(): 'up' | 'down' | null {
     const g = this.game;
@@ -436,7 +435,14 @@ export class App {
     const q = (s: string) => this.root.querySelector<HTMLElement>(s);
     q('.topbar')!.innerHTML = topbarHTML(game, !!this.look);
     const stairsBtn = q('.pad-stairs');
-    if (stairsBtn) stairsBtn.textContent = this.stairsHere() === 'up' ? 'Climb up' : 'Descend';
+    if (stairsBtn) {
+      // Dim until you stand on stairs, then lit and named for the way they go.
+      const here = this.stairsHere();
+      const label = here === 'up' ? 'Ascend' : here === 'down' ? 'Descend' : 'Stairs';
+      if (stairsBtn.textContent !== label) stairsBtn.textContent = label;
+      (stairsBtn as HTMLButtonElement).disabled = !here;
+      stairsBtn.classList.toggle('here', !!here);
+    }
     const pickup = q('.pad-pickup') as HTMLButtonElement | null;
     if (pickup) pickup.disabled = game.itemsHere().length === 0;
     // The means' own verb (Fire, Cast, Speak), on the map where a thumb can reach it,
