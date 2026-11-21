@@ -152,7 +152,7 @@ export const BALANCE = {
     /** Rolled per world and per Age, inclusive. */
     depth: [10, 20] as [number, number],
     /**
-     * What a new Age keeps once someone reaches the Heart (GUESS, waiting on Phil):
+     * What a new Age keeps once someone reaches the Heart (Phil chose 'rules', 2026-11-21):
      * 'rules' = the rulebook starts over, axioms stay; 'none' = nothing resets;
      * 'all' = the rulebook starts over and the axioms reopen.
      */

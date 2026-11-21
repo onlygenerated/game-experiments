@@ -266,9 +266,9 @@ rooms/turns 9.7, caverns 9.1, tide 9.5, caverns+tide 8.3. A test holds caverns a
 within 1.5 floors of rooms and turns.
 
 *Shortcuts and guesses in the first version:* space and time are always rolled, never left
-open, so the schism shrine still settles Means of Harm only. **Drift** is not built. What a
-new Age resets is a guess (`BALANCE.heart.newAge`: the rulebook starts over, axioms, graves
-and chronicle stay), waiting on a decision. The Heart's depth is shown in the Codex, also a
+open, so the schism shrine still settles Means of Harm only. **Drift** is not built. A new
+Age starts the rulebook over while axioms, graves and chronicle stay (decided;
+`BALANCE.heart.newAge` holds the other options). The Heart's depth is shown in the Codex, also a
 guess. Tide Clock and Caverns get no banner of their own; the tide is announced in the log
 when foes arrive, and both are in the Codex.
 
