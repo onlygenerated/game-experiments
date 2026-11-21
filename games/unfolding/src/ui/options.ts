@@ -16,6 +16,8 @@ export interface Options {
   reduceMotion: boolean;
   /** Call everything by its mechanical name (HP, common foe, healing item) instead of the world's own words. */
   plainLabels: boolean;
+  /** Testing mode: every new floor puts the shrine, the stairs, sample items and one of every foe and hazard close by. */
+  testing: boolean;
 }
 
 export const DEFAULT_OPTIONS: Options = {
@@ -29,6 +31,7 @@ export const DEFAULT_OPTIONS: Options = {
   vibrate: true,
   reduceMotion: false,
   plainLabels: false,
+  testing: false,
 };
 
 export const TRAVEL_STEP_MS = { slow: 140, normal: 70, fast: 25 } as const;
@@ -39,7 +42,7 @@ export const TILE_PX = { small: [12, 24], normal: [16, 32], large: [22, 44] } as
 type Choice = { value: string; label: string };
 export interface OptionDef {
   key: keyof Options;
-  group: 'Gameplay' | 'Controls' | 'Display';
+  group: 'Gameplay' | 'Controls' | 'Display' | 'Testing';
   label: string;
   help: string;
   choices: Choice[];
@@ -139,6 +142,13 @@ export const OPTION_DEFS: OptionDef[] = [
     group: 'Display',
     label: 'Plain labels',
     help: 'Every world speaks its own language. This calls things what they do instead: HP, common foe, healing item.',
+    choices: onOff,
+  },
+  {
+    key: 'testing',
+    group: 'Testing',
+    label: 'Testing mode',
+    help: 'For trying combinations of rules quickly. Every new floor starts you within 3 tiles of its shrine and its stairs down, with sample items within 10 tiles and one of every foe and hazard within 30. Applies from the next new floor.',
     choices: onOff,
   },
 ];

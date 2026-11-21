@@ -1454,3 +1454,13 @@ button.linkish:hover:not(:disabled) {
   margin: 0.4em 0 0;
   padding-left: 1.2em;
 }
+.topbar .tb-testing {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #0b0d12;
+  background: var(--warn);
+  padding: 1px 6px;
+  border-radius: 5px;
+}

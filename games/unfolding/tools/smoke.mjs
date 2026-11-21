@@ -292,6 +292,13 @@ try {
     const plainHp = await hpWord();
     await page.click('label[for="opt-plainLabels-false"]');
     ok(`${vp.name}: Plain labels swaps the words ("${themedHp}" → "${plainHp}" → "${await hpWord()}")`, plain && plainHp === 'HP' && (await hpWord()) === themedHp);
+    // Testing mode: a badge in the top bar, and the game knows; then off again.
+    await page.click('label[for="opt-testing-true"]');
+    const testingOn = await page.evaluate(() => window.unfolding.game.testing && !!document.querySelector('.tb-testing'));
+    await shot(page, `${vp.name}-2f-testing`);
+    await page.click('label[for="opt-testing-false"]');
+    const testingOff = await page.evaluate(() => !window.unfolding.game.testing && !document.querySelector('.tb-testing'));
+    ok(`${vp.name}: Testing mode switches on and off`, testingOn && testingOff);
     await page.click('.modal.options [data-cmd="dismiss"]');
 
     // With auto pickup off, walking onto a potion leaves it; the Here panel picks it up.

@@ -158,6 +158,14 @@ export const BALANCE = {
      */
     newAge: 'rules' as 'rules' | 'none' | 'all',
   },
+  /** Testing mode: how close things are put (path steps from where you arrive). */
+  testing: {
+    near: 3,
+    items: 10,
+    /** Foes go no nearer than this, so the floor doesn't open in a brawl. */
+    foesFrom: 5,
+    far: 30,
+  },
   /** Shape of Space (Phase 3). */
   space: {
     /** New worlds: chance space is left open for a schism shrine (once Halls arrives)… */

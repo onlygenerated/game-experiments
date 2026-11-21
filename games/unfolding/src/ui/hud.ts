@@ -208,7 +208,7 @@ export function topbarHTML(game: Game, look: boolean): string {
   return `<span class="brand">Unfolding</span>
     <span class="tb-world">${esc(game.world.name)}</span>
     <span class="tb-heir">${esc(run.player.name)} · ${esc(L.t('hud.heir', { n: run.gen }))}</span>
-    <span class="tb-depth">${esc(L.t('hud.depth', { n: run.depth }))}${floorNameHTML(game)}</span>
+    <span class="tb-depth">${esc(L.t('hud.depth', { n: run.depth }))}${floorNameHTML(game)}</span>${game.testing ? '<span class="tb-testing" title="Testing mode is on (Options)">Testing</span>' : ''}
     ${game.has('peril') ? `<span class="tb-hp${run.player.hp <= game.stats.maxHp / 3 ? ' low' : ''}">${esc(L.t('hud.hpOf', { n: Math.max(0, run.player.hp), max: game.stats.maxHp }))}</span>` : ''}
     <span class="spacer"></span>
     <button data-cmd="look" class="ghost tb-look${look ? ' on' : ''}" aria-pressed="${look}">Look <kbd>;</kbd></button>
@@ -377,7 +377,7 @@ export function lookCardHTML(info: TileInfo, mode: 'look' | 'hover', aim: string
 }
 
 export function optionsHTML(o: Options): string {
-  const groups = ['Gameplay', 'Controls', 'Display'] as const;
+  const groups = ['Gameplay', 'Controls', 'Display', 'Testing'] as const;
   const field = (d: OptionDef) => `<fieldset class="opt">
       <legend>${esc(d.label)}</legend>
       <div class="seg" role="radiogroup" aria-label="${esc(d.label)}">${d.choices

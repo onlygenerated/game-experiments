@@ -20,6 +20,7 @@ import {
   itemsForRule,
   lootFor,
   makeItem,
+  makeMonster,
   monsterCount,
   MONSTERS,
   populate,
@@ -34,7 +35,7 @@ import { article, lexiconFor, PREMISES, type Lexicon } from '../theme/lexicon.ts
 import type { RuleHost } from '../rules/modules.ts';
 import { computeVisible, lineOfSight } from './fov.ts';
 import { hashSeed, Rng } from './rng.ts';
-import { T_FLOOR, T_UP, type FloorItem, type Rect, type Schism, type SpaceId, type TimeId, type Grave, type Item, type Monster, type Player, type Pos, type RuleId, type RunState, type Tone, type World } from './types.ts';
+import { T_FLOOR, T_UP, type FloorItem, type MonsterKind, type Rect, type Schism, type SpaceId, type TimeId, type Grave, type Item, type Monster, type Player, type Pos, type RuleId, type RunState, type Tone, type World } from './types.ts';
 import { heirName, rollHeart } from './world.ts';
 import { SPACE, SPACES, TIME, TIMES } from '../rules/axioms.ts';
 
@@ -129,6 +130,11 @@ export class Game implements RuleHost {
   visible = new Set<number>();
   /** A player preference, not part of the run: set by the UI from its options. */
   autoPickup: AutoPickup = 'all';
+  /**
+   * Testing mode (a player preference, set by the UI): every new floor is laid
+   * out for trying rules quickly. See arrangeForTesting.
+   */
+  testing = false;
   /** The words this world speaks: every message the engine logs comes from here. The UI swaps in Plain labels. */
   lex: Lexicon;
   /**
@@ -159,7 +165,7 @@ export class Game implements RuleHost {
   }
 
   /** Start a new character in `world`. The world's rulebook carries over untouched. */
-  static start(world: World, plain = false): Game {
+  static start(world: World, plain = false, testing = false): Game {
     world.generation += 1;
     const gen = world.generation;
     const run: RunState = {
@@ -180,6 +186,7 @@ export class Game implements RuleHost {
       cause: null,
     };
     const game = new Game(world, run, plain);
+    game.testing = testing;
     game.enterFloor(1);
     const p = run.player;
     const d = game.stats;
@@ -330,6 +337,7 @@ export class Game implements RuleHost {
       this.count('floorsEntered');
       this.placeSchism();
       if (this.has('commerce')) this.placeMerchant();
+      if (this.testing) this.arrangeForTesting(true);
     }
     arrive();
     this.clearArrival();
@@ -1136,6 +1144,7 @@ export class Game implements RuleHost {
     const loot = lootFor(full, g);
     run.items.push(...scatter(loot, full, g, taken));
     this.countSpawned(loot);
+    if (this.testing) this.arrangeForTesting(false);
     if (p.x === full.stairs.x && p.y === full.stairs.y) return;
     this.log(this.lex.t('adopt.halls'), 'dim');
   }
@@ -1190,6 +1199,108 @@ export class Game implements RuleHost {
     this.count('shifts');
     this.log(this.lex.t('drift.shift'), 'rule', true);
     this.refreshVision();
+  }
+
+  /**
+   * Testing mode: lay this floor out for trying rules quickly. The shrine and
+   * the way down move to within 3 tiles of where you arrived; `stock` also
+   * puts a sample of every item the world's rules can make within 10 tiles,
+   * and (once foes exist) one of every foe, plus both kinds of hazard stone,
+   * within 30. Arranged on the floor's own seeded stream, so it replays.
+   */
+  arrangeForTesting(stock: boolean) {
+    const T = B.testing;
+    const run = this.run;
+    const f = run.floor;
+    // A new floor: around where you arrive. Halls opening the floor mid-visit: around you.
+    const home = stock ? { x: f.start.x, y: f.start.y } : { x: run.player.x, y: run.player.y };
+    const g = this.genCtx(stock ? 'testing' : 'testing-expand');
+    const dist = distanceMap(f, home);
+    const ring = (lo: number, hi: number) => {
+      const out: Pos[] = [];
+      for (let i = 0; i < dist.length; i++) {
+        if (dist[i] < lo || dist[i] > hi || f.tiles[i] !== T_FLOOR) continue;
+        const x = i % f.w;
+        out.push({ x, y: (i - x) / f.w });
+      }
+      return out;
+    };
+    const used = new Set<number>([idx(f, home.x, home.y)]);
+    for (const m of run.monsters) used.add(idx(f, m.x, m.y));
+    for (const fi of run.items) used.add(idx(f, fi.x, fi.y));
+    const pick = (lo: number, hi: number): Pos | null => {
+      const spots = ring(lo, hi).filter((p) => !used.has(idx(f, p.x, p.y)) && !(p.x === f.stairs.x && p.y === f.stairs.y));
+      if (!spots.length) return null;
+      const p = g.rng.pick(spots);
+      used.add(idx(f, p.x, p.y));
+      return p;
+    };
+    // The way down (or the Heart), close by.
+    if ((dist[idx(f, f.stairs.x, f.stairs.y)] ?? -1) > T.near || dist[idx(f, f.stairs.x, f.stairs.y)] < 0) {
+      const to = pick(2, T.near);
+      if (to) {
+        const tile = f.tiles[idx(f, f.stairs.x, f.stairs.y)];
+        f.tiles[idx(f, f.stairs.x, f.stairs.y)] = T_FLOOR;
+        f.tiles[idx(f, to.x, to.y)] = tile;
+        delete f.glimmer[idx(f, to.x, to.y)];
+        f.stairs = to;
+      }
+    }
+    used.add(idx(f, f.stairs.x, f.stairs.y));
+    // The shrine, unanswered, close by.
+    if (f.shrine && !f.shrine.used && dist[idx(f, f.shrine.pos.x, f.shrine.pos.y)] > T.near) {
+      const to = pick(1, T.near);
+      if (to) {
+        delete f.glimmer[idx(f, to.x, to.y)];
+        f.shrine.pos = to;
+      }
+    }
+    if (f.shrine) used.add(idx(f, f.shrine.pos.x, f.shrine.pos.y));
+    // A schism shrine and a merchant, if the floor has them, not far off either.
+    for (const [spot, hi] of [[f.schism?.pos, T.near + 2], [f.merchant?.pos, T.items]] as const) {
+      if (!spot || (dist[idx(f, spot.x, spot.y)] >= 0 && dist[idx(f, spot.x, spot.y)] <= hi)) continue;
+      const to = pick(2, hi);
+      if (!to) continue;
+      delete f.glimmer[idx(f, to.x, to.y)];
+      spot.x = to.x;
+      spot.y = to.y;
+    }
+    if (!stock) return;
+    // A sample of every item this world's rules can make.
+    const kinds: Item['kind'][] = [];
+    if (this.has('things')) kinds.push('potion', 'gold');
+    if (this.has('arms')) kinds.push('weapon', 'armor');
+    if (this.has('hunger')) kinds.push('food');
+    if (this.ctx.harm === 'volley') kinds.push('ammo');
+    const items: Item[] = kinds.map((k) => makeItem(k, run.depth, g));
+    if (this.has('arms')) {
+      // An elemental implement of each kind, so Elements has something to show.
+      for (const el of ['ember', 'frost'] as const) items.push({ ...makeItem('weapon', run.depth, g), element: el });
+    }
+    for (const item of items) {
+      const at = pick(1, T.items);
+      if (at) run.items.push({ item, x: at.x, y: at.y });
+    }
+    this.countSpawned(items);
+    // One of every foe (and, under Elements, one of each kind), awake to nothing yet.
+    if (this.has('peril')) {
+      const roster: { kind: MonsterKind; element: Monster['element'] }[] = (['rat', 'bat', 'goblin', 'slime'] as MonsterKind[]).map((kind) => ({ kind, element: null }));
+      if (this.has('elements')) roster.push({ kind: 'rat', element: 'ember' }, { kind: 'rat', element: 'frost' });
+      for (const r of roster) {
+        const at = pick(T.foesFrom, T.far);
+        if (!at) continue;
+        const m = makeMonster(r.kind, run.depth, g, at.x, at.y);
+        m.element = r.element;
+        run.monsters.push(m);
+      }
+    }
+    // Both kinds of hazard stone (dormant until Elements).
+    for (const el of ['ember', 'frost'] as const) {
+      const have = Object.entries(f.glimmer).some(([k, v]) => v === el && (dist[Number(k)] ?? -1) >= 0 && dist[Number(k)] <= T.far);
+      if (have) continue;
+      const at = pick(2, T.far);
+      if (at) f.glimmer[idx(f, at.x, at.y)] = el;
+    }
   }
 
   alertAll() {

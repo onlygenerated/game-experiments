@@ -172,7 +172,7 @@ export class App {
     if (repeal && repealable(new Set(world.rules)).includes(repeal)) {
       world.rules = world.rules.filter((r) => r !== repeal);
     }
-    const game = Game.start(world, this.options.plainLabels);
+    const game = Game.start(world, this.options.plainLabels, this.options.testing);
     if (repeal) game.log(game.lex.t('rule.repealed', { rule: game.lex.rule(repeal).name }), 'rule');
     this.play(game);
     this.save();
@@ -185,6 +185,7 @@ export class App {
     this.look = null;
     this.hover = null;
     game.autoPickup = this.options.autoPickup;
+    game.testing = this.options.testing;
     this.root.innerHTML = `<div class="screen play-screen">
       <header class="topbar"></header>
       <main class="board"><canvas aria-label="Dungeon map"></canvas>
@@ -319,6 +320,7 @@ export class App {
     play?.classList.toggle('pad-never', o.dpad === 'never');
     if (this.game) {
       this.game.autoPickup = o.autoPickup;
+      this.game.testing = o.testing;
       this.game.lex = lexiconFor(this.game.world, o.plainLabels);
     }
     if (this.renderer) {
