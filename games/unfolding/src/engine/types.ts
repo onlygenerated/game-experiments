@@ -55,7 +55,10 @@ export interface Shrine {
  */
 export interface Schism {
   pos: Pos;
-  offers: HarmId[];
+  /** Which open question it settles. Absent: Means of Harm (saves from before Phase 3). */
+  family?: 'harm' | 'space' | 'time';
+  /** The options it offers: HarmIds, SpaceIds or TimeIds, by family. */
+  offers: string[];
   used: boolean;
 }
 
@@ -79,6 +82,11 @@ export interface Floor {
   merchant?: Merchant | null;
   /** The deepest floor of this Age: its way down is the Heart. */
   heart?: boolean;
+  /** Generated as a cave (Caverns), whatever the world has settled since. */
+  caverns?: boolean;
+  /** Drift: turns since this floor last rearranged itself, and how many times it has. */
+  driftClock?: number;
+  shifts?: number;
   /** Tide Clock: turns spent on this floor since the clock started, and the stage it has reached. */
   clock?: number;
   tide?: number;
@@ -202,7 +210,7 @@ export interface AgeRecord {
 }
 
 /** Shape of Space (M-20): rooms and corridors, or open caves. */
-export type SpaceId = 'rooms' | 'caverns';
+export type SpaceId = 'rooms' | 'caverns' | 'drift';
 /** Flow of Time (M-24): plain turns, or a clock on every floor. */
 export type TimeId = 'turns' | 'tide';
 

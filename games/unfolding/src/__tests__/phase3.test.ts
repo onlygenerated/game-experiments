@@ -292,7 +292,157 @@ describe('premise words for space, time and the Heart', () => {
     }
     const hearts = ROLLABLE.map((id) => PREMISES[id].roles.heart.toLowerCase());
     expect(new Set(hearts).size).toBe(hearts.length);
-    const names = ROLLABLE.flatMap((id) => [PREMISES[id].space.caverns.name, PREMISES[id].time.tide.name].map((n) => n.toLowerCase()));
+    const names = ROLLABLE.flatMap((id) => [PREMISES[id].space.caverns.name, PREMISES[id].space.drift.name, PREMISES[id].time.tide.name].map((n) => n.toLowerCase()));
     expect(new Set(names).size).toBe(names.length);
+  });
+});
+
+describe('schism shrines for space and time', () => {
+  /** Step onto this floor's schism shrine. */
+  function visitSchism(g: Game) {
+    const sc = g.run.floor.schism!;
+    g.run.monsters = [];
+    g.run.player.x = sc.pos.x;
+    g.run.player.y = sc.pos.y;
+    (g as unknown as { enterTile(): number }).enterTile();
+    expect(g.run.pending).toEqual({ kind: 'schism' });
+  }
+
+  it('some new worlds leave space or time open', () => {
+    let space = 0;
+    let time = 0;
+    for (let s = 1; s <= 1000; s++) {
+      const ax = newWorld(s).genome.axioms;
+      if (!ax.space) space++;
+      if (!ax.time) time++;
+    }
+    expect(space / 1000).toBeGreaterThan(0.2);
+    expect(time / 1000).toBeGreaterThan(0.15);
+  });
+
+  it('an open world raises a space schism when Halls opens the floors; Caverns digs every new floor', () => {
+    const w = newWorld(31, { harm: 'strike', space: null });
+    w.rules = ['peril'];
+    const g = Game.start(w);
+    expect(g.run.floor.schism ?? null).toBeNull();
+    g.adopt('halls', 'shrine');
+    const sc = g.run.floor.schism!;
+    expect(sc.family).toBe('space');
+    expect(sc.offers).toEqual(SPACES);
+    visitSchism(g);
+    const here = g.run.floor.tiles.slice();
+    g.act({ type: 'schism', harm: 'caverns' });
+    expect(w.genome.axioms.space).toBe('caverns');
+    expect(g.run.floor.tiles).toEqual(here);
+    expect(descend(g)).toBe(true);
+    expect(g.run.floor.caverns).toBe(true);
+    expect(g.run.floor.schism ?? null).toBeNull();
+  });
+
+  it('stepping away leaves the question open, and it asks again', () => {
+    const w = newWorld(32, { harm: 'strike', space: null });
+    w.rules = ['peril'];
+    const g = Game.start(w);
+    g.adopt('halls', 'shrine');
+    visitSchism(g);
+    g.act({ type: 'schism', harm: null });
+    expect(w.genome.axioms.space).toBeUndefined();
+    expect(g.run.pending).toBeNull();
+    descend(g);
+    expect(g.run.floor.schism?.family).toBe('space');
+  });
+
+  it('an open world raises a time schism once foes exist, and the clock starts when chosen', () => {
+    const w = newWorld(33, { harm: 'strike', time: null });
+    w.rules = ['halls'];
+    const g = Game.start(w);
+    g.adopt('peril', 'shrine');
+    expect(g.run.floor.schism?.family).toBe('time');
+    visitSchism(g);
+    g.act({ type: 'schism', harm: 'tide' });
+    expect(g.ctx.time).toBe('tide');
+    g.run.monsters = [];
+    g.act({ type: 'wait' });
+    expect(g.run.floor.clock).toBe(1);
+  });
+
+  it('asks one question per floor: harm first, then the rest on later floors', () => {
+    const w = newWorld(34, { harm: null, space: null, time: null });
+    w.rules = ['halls'];
+    const g = Game.start(w);
+    g.adopt('peril', 'shrine');
+    expect(g.run.floor.schism?.family ?? 'harm').toBe('harm');
+    visitSchism(g);
+    g.act({ type: 'schism', harm: g.run.floor.schism!.offers[0] });
+    expect(g.run.floor.schism!.used).toBe(true);
+    descend(g);
+    expect(g.run.floor.schism?.family).toBe('space');
+    visitSchism(g);
+    g.act({ type: 'schism', harm: 'rooms' });
+    descend(g);
+    expect(g.run.floor.schism?.family).toBe('time');
+  });
+});
+
+describe('Drift', () => {
+  function drifting(seed = 41) {
+    const g = start(['peril', 'halls', 'things'], { seed, space: 'drift' });
+    g.run.player.hp = 999;
+    for (const m of g.run.monsters) m.stun = 99999;
+    return g;
+  }
+  const wait = (g: Game, n: number) => {
+    for (let i = 0; i < n; i++) {
+      g.run.pending = null;
+      g.act({ type: 'wait' });
+    }
+  };
+
+  it('rearranges the floor every so often, warning first; the stairs, shrine and your room stay put', () => {
+    for (const seed of [41, 42, 43, 44, 45]) {
+      const g = drifting(seed);
+      const before = g.run.floor;
+      const p = { x: g.run.player.x, y: g.run.player.y };
+      wait(g, B.space.driftEvery - B.space.driftWarn);
+      expect(g.run.log.some((l) => l.text === g.lex.t('drift.soon'))).toBe(true);
+      wait(g, B.space.driftWarn);
+      const f = g.run.floor;
+      expect(f.shifts).toBe(1);
+      expect(f.tiles).not.toEqual(before.tiles);
+      expect(f.stairs).toEqual(before.stairs);
+      expect(f.tiles[idx(f, f.stairs.x, f.stairs.y)]).toBe(T_STAIRS);
+      expect(f.shrine!.pos).toEqual(before.shrine!.pos);
+      expect([g.run.player.x, g.run.player.y]).toEqual([p.x, p.y]);
+      // Everything can still be reached from where you stand.
+      const dist = distanceMap(f, g.run.player);
+      for (const at of [f.stairs, f.shrine!.pos]) expect(dist[idx(f, at.x, at.y)], `seed ${seed}`).toBeGreaterThanOrEqual(0);
+      for (let i = 0; i < f.tiles.length; i++) if (f.tiles[i] !== T_WALL) expect(dist[i], `seed ${seed} tile ${i}`).toBeGreaterThanOrEqual(0);
+      for (const m of g.run.monsters) expect(passable(f, m.x, m.y)).toBe(true);
+      for (const fi of g.run.items) expect(passable(f, fi.x, fi.y)).toBe(true);
+    }
+  });
+
+  it('does nothing to a single room, or to rooms-and-turns worlds', () => {
+    const g = start(['peril'], { space: 'drift' });
+    g.run.monsters = [];
+    wait(g, B.space.driftEvery + 2);
+    expect(g.run.floor.shifts).toBeUndefined();
+    const r = start(['peril', 'halls']);
+    r.run.monsters = [];
+    wait(r, B.space.driftEvery + 2);
+    expect(r.run.floor.shifts).toBeUndefined();
+  });
+
+  it('keeps the way up where it was below the first floor', () => {
+    const g = drifting(46);
+    descend(g);
+    for (const m of g.run.monsters) m.stun = 99999;
+    const up = { ...g.run.floor.start };
+    g.run.player.x = g.run.floor.stairs.x;
+    g.run.player.y = g.run.floor.stairs.y;
+    wait(g, B.space.driftEvery);
+    expect(g.run.floor.tiles[idx(g.run.floor, up.x, up.y)]).toBe(T_UP);
+    const dist = distanceMap(g.run.floor, g.run.player);
+    expect(dist[idx(g.run.floor, up.x, up.y)]).toBeGreaterThan(0);
   });
 });

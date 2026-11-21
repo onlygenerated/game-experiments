@@ -211,6 +211,19 @@ export const BASE_TEXT = {
   'look.heart': '{Heart}',
   'look.heart.line': 'The end of this Age. Step on it and press > to win.',
   'hud.heart.depth': '{Heart} lies on {depth} {n}.',
+  // --- Shape of Space and Flow of Time: schisms and Drift ---------------
+  'axiom.space': 'HOW SPACE WORKS — {name}: {tagline}',
+  'axiom.time': 'HOW TIME WORKS — {name}: {tagline}',
+  'axiom.space.next': 'Every new {floor} from here on takes this shape; those already walked stay as they were.',
+  'schism.appears.space': 'A {schism} rises on this {floor}. It will settle the shape of every {floor} in this world, for good.',
+  'schism.appears.time': 'A {schism} rises on this {floor}. It will settle how time passes in this world, for good.',
+  'schism.open.space': 'The {schism} asks what shape this world should take. Every {heir} after you inherits the answer.',
+  'schism.open.time': 'The {schism} asks how time should pass here. Every {heir} after you inherits the answer.',
+  'look.schism.line.space': 'Step onto it to settle the shape of this world. Offers: {list}.',
+  'look.schism.line.time': 'Step onto it to settle how time passes in this world. Offers: {list}.',
+  'drift.soon': 'The walls creak. This {floor} is about to rearrange itself.',
+  'drift.shift': 'The {floor} rearranges itself. The way you came is gone; the {stairsDown} stayed put.',
+  'hud.drift': 'shifts in {n} turns',
   // --- Flow of Time: Tide Clock (M-24) -----------------------------------
   'axiom.tide': 'HOW TIME WORKS — {name}: {tagline}',
   'tide.1': 'The clock reaches its first mark. More {foes} arrive.',
@@ -449,6 +462,7 @@ export const THEMED_KEYS = [
   'tide.3',
   'tide.hurt',
   'cause.tide',
+  'drift.shift',
 ] as const satisfies readonly MessageKey[];
 
 export type ThemedKey = (typeof THEMED_KEYS)[number];

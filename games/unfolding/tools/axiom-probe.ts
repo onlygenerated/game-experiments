@@ -30,5 +30,5 @@ function play(space: SpaceId, time: TimeId) {
   console.log(`${space.padEnd(8)} ${time.padEnd(6)} mean ${mean.toFixed(2)} median ${depths[depths.length >> 1]} tide-deaths ${tideDeaths} wins ${wins}`);
 }
 
-const combos = (process.argv[4] ?? 'rooms:turns,caverns:turns,rooms:tide,caverns:tide').split(',').map((c) => c.split(':'));
+const combos = (process.argv[4] ?? 'rooms:turns,caverns:turns,drift:turns,rooms:tide,caverns:tide,drift:tide').split(',').map((c) => c.split(':'));
 for (const [s, t] of combos as [SpaceId, TimeId][]) play(s, t);

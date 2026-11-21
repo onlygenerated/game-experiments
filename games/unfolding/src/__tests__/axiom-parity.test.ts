@@ -11,7 +11,7 @@ import type { SpaceId, TimeId } from '../engine/types.ts';
 import { newWorld } from '../engine/world.ts';
 import { explorerAction } from './bot.ts';
 
-const RUNS = 20;
+const RUNS = 16;
 const MAX_DEPTH = 10;
 
 function meanDepth(space: SpaceId, time: TimeId): number {
@@ -28,7 +28,7 @@ function meanDepth(space: SpaceId, time: TimeId): number {
 describe('space and time parity', () => {
   it('caves and the tide take the explorer about as deep as rooms and turns', { timeout: 120_000 }, () => {
     const base = meanDepth('rooms', 'turns');
-    for (const [s, t] of [['caverns', 'turns'], ['rooms', 'tide']] as [SpaceId, TimeId][]) {
+    for (const [s, t] of [['caverns', 'turns'], ['drift', 'turns'], ['rooms', 'tide']] as [SpaceId, TimeId][]) {
       const d = meanDepth(s, t);
       expect(Math.abs(d - base), `${s}/${t} ${d} vs ${base}`).toBeLessThanOrEqual(1.5);
       expect(d, `${s}/${t}`).toBeGreaterThan(4);

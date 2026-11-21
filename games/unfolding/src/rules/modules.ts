@@ -42,6 +42,8 @@ export interface RuleHost {
   expandFloor(): void;
   /** Commerce: put a merchant on the current floor. */
   placeMerchant(): void;
+  /** Drift: rearrange the floor around you. */
+  shiftFloor(): void;
   /** Every foe on the floor knows where you are. */
   alertAll(): void;
   /** Lose vitality to something other than a foe; `cause` is the epitaph if it kills. */

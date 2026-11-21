@@ -5,6 +5,9 @@
  *  - rooms:   rooms and corridors (everything before Phase 3).
  *  - caverns: open caves, no doors. Under Halls the pocket you start in
  *             opens into the whole cave. Layout lives in dungeon.ts.
+ *  - drift:   rooms and corridors, but every so often the rooms you aren't
+ *             in change places and the corridors reroute. The stairs, the
+ *             shrine and the room you stand in stay put.
  *  - turns:   time is only turns.
  *  - tide:    every floor keeps a clock once foes exist. At each stage the
  *             floor escalates: more foes, then every foe hunts you, then the
@@ -14,8 +17,39 @@ import { BALANCE as B } from '../engine/balance.ts';
 import type { SpaceId, TimeId } from '../engine/types.ts';
 import type { RuleHost } from './modules.ts';
 
-export const SPACES: SpaceId[] = ['rooms', 'caverns'];
+export const SPACES: SpaceId[] = ['rooms', 'caverns', 'drift'];
 export const TIMES: TimeId[] = ['turns', 'tide'];
+
+export interface SpaceModule {
+  id: SpaceId;
+  /** Called once at the end of every turn. */
+  onTurn?(host: RuleHost): void;
+}
+
+export const SPACE: Record<SpaceId, SpaceModule> = {
+  rooms: { id: 'rooms' },
+  caverns: { id: 'caverns' },
+  drift: {
+    id: 'drift',
+    onTurn: (h) => {
+      // A single room has nothing to rearrange; caves dug before Drift was settled stay caves.
+      const f = h.run.floor;
+      if (!h.ctx.rules.has('halls') || f.solo || f.caverns) return;
+      const S = B.space;
+      f.driftClock = (f.driftClock ?? 0) + 1;
+      if (f.driftClock === S.driftEvery - S.driftWarn) h.log(h.lex.t('drift.soon'), 'dim', true);
+      if (f.driftClock >= S.driftEvery) {
+        f.driftClock = 0;
+        h.shiftFloor();
+      }
+    },
+  },
+};
+
+/** How many turns until this floor next rearranges itself. */
+export function driftLeft(clock: number): number {
+  return B.space.driftEvery - clock;
+}
 
 export interface TimeModule {
   id: TimeId;

@@ -216,6 +216,7 @@ export const MERGER: Premise = {
   space: {
     rooms: { name: 'Floor Plan', tagline: 'Offices, corridors, doors that badge-lock.', summary: 'Each {floor} is offices joined by corridors.' },
     caverns: { name: 'Gutted Floors', tagline: 'The renovation took out every wall.', summary: 'Each {floor} is one wide, half-demolished space: no doors, no corridors, nowhere to hide.' },
+    drift: { name: 'Hot-Desking', tagline: 'Nobody owns a desk.', summary: 'Every {driftEvery} turns, the rooms you aren\'t in change places and the corridors reroute. The {stairsDown}, the {shrine} and the room you\'re in stay put.' },
   },
   time: {
     turns: { name: 'Flexitime', tagline: 'No deadlines. Yet.', summary: 'Nothing happens until you act, however long you take.' },
@@ -292,6 +293,7 @@ export const MERGER: Premise = {
     'starving': 'You are burnt out.',
     'death': 'You are let go — {cause}.',
     'cause.slain': 'terminated by {a} {foe} on sublevel {n}',
+    'drift.shift': 'Facilities has reassigned every room on this {floor}. The {stairsDown} stayed where they were.',
     'heart.win': '{name} badges into the Corner Office. The blinds come down; this Age is over.',
     'tide.1': 'Quarter-end is in sight. More {foes} have been looped in.',
     'tide.2': 'Crunch time. Every {foe} on this {floor} has your calendar.',

@@ -216,6 +216,7 @@ export const MINISTRY: Premise = {
   space: {
     rooms: { name: 'Bureaus', tagline: 'Counters, corridors and numbered doors.', summary: 'Each {floor} is bureaus joined by corridors.' },
     caverns: { name: 'The Paper Drifts', tagline: 'Decades of filing, heaped into hills.', summary: 'Each {floor} is one wide hall of paper drifts: no doors, no corridors, nowhere to hide.' },
+    drift: { name: 'Reorganisation', tagline: 'Departments merge and split without notice.', summary: 'Every {driftEvery} turns, the rooms you aren\'t in change places and the corridors reroute. The {stairsDown}, the {shrine} and the room you\'re in stay put.' },
   },
   time: {
     turns: { name: 'The Queue', tagline: 'Please wait. Your turn will come.', summary: 'Nothing happens until you act, however long you take.' },
@@ -292,6 +293,7 @@ export const MINISTRY: Premise = {
     'starving': 'You feel faint.',
     'death': 'You are filed under Pending — {cause}.',
     'cause.slain': 'rejected by {a} {foe} in office {n}',
+    'drift.shift': 'A memo: this {floor} has been reorganised. Please update your records.',
     'heart.win': '{name} receives the Final Stamp. APPROVED. This Age is over.',
     'tide.1': 'Someone turns the sign to CLOSING SOON. More {foes} join the queue.',
     'tide.2': 'Every {foe} in this {floor} has your number now.',

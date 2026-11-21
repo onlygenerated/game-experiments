@@ -75,14 +75,19 @@ export function rollHarm(seed: number): HarmId | null {
   return rng.weighted(HARMS.map((h) => [h, B.harm.rollWeights[h]] as [HarmId, number]));
 }
 
-/** Shape of Space: rooms and corridors, or (sometimes) caves. Its own stream. */
-export function rollSpace(seed: number): SpaceId {
-  return new Rng(hashSeed(seed, 'space')).chance(B.space.cavernsChance) ? 'caverns' : 'rooms';
+/** Shape of Space: rolled on its own stream, or (null) left open for a schism shrine. */
+export function rollSpace(seed: number): SpaceId | null {
+  const rng = new Rng(hashSeed(seed, 'space'));
+  if (rng.chance(B.space.openChance)) return null;
+  const w = B.space.rollWeights;
+  return rng.weighted<SpaceId>([['rooms', w.rooms], ['caverns', w.caverns], ['drift', w.drift]]);
 }
 
-/** Flow of Time: plain turns, or (sometimes) a Tide Clock on every floor. Its own stream. */
-export function rollTime(seed: number): TimeId {
-  return new Rng(hashSeed(seed, 'time')).chance(B.time.tideChance) ? 'tide' : 'turns';
+/** Flow of Time: rolled on its own stream, or (null) left open for a schism shrine. */
+export function rollTime(seed: number): TimeId | null {
+  const rng = new Rng(hashSeed(seed, 'time'));
+  if (rng.chance(B.time.openChance)) return null;
+  return rng.chance(B.time.tideChance) ? 'tide' : 'turns';
 }
 
 /** How deep this Age's Heart lies. Each Age rolls its own, on its own stream. */
@@ -93,7 +98,7 @@ export function rollHeart(seed: number, age: number): number {
 /** Create a world. Its look is rolled unless `look` pins it (tests, migrations). */
 export function newWorld(
   seed: number,
-  look?: { premise?: PremiseId; intrusions?: Intrusion[]; harm?: HarmId | null; space?: SpaceId; time?: TimeId },
+  look?: { premise?: PremiseId; intrusions?: Intrusion[]; harm?: HarmId | null; space?: SpaceId | null; time?: TimeId | null },
 ): World {
   const rng = new Rng(hashSeed(seed, 'world'));
   const variants: World['variants'] = {};
@@ -111,8 +116,13 @@ export function newWorld(
   genome.axioms = { ...genome.axioms, harm: harm ?? undefined };
   if (!harm) delete genome.axioms.harm;
   // Space and time: rolled, unless a pinned look says otherwise (it keeps rooms and turns).
-  genome.axioms.space = look ? (look.space ?? 'rooms') : rollSpace(seed);
-  genome.axioms.time = look ? (look.time ?? 'turns') : rollTime(seed);
+  // Space and time: rolled or left open, unless a pinned look says otherwise (it keeps rooms and turns; null leaves open).
+  const space = look ? (look.space === undefined ? 'rooms' : look.space) : rollSpace(seed);
+  const time = look ? (look.time === undefined ? 'turns' : look.time) : rollTime(seed);
+  if (space) genome.axioms.space = space;
+  else delete genome.axioms.space;
+  if (time) genome.axioms.time = time;
+  else delete genome.axioms.time;
   const naming = PREMISES[genome.premise].naming;
   return {
     version: WORLD_VERSION,

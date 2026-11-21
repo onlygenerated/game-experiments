@@ -245,7 +245,7 @@ Flattery…) still ride on Elements' two kinds rather than five of their own.
 ### Phase 3 — Space, time, and an ending
 
 **Caverns**, **Drift**, **Tide Clock**, and **The Heart** (M-55) so worlds can be
-completed. **Exit:** at least one world in five plays under a non-default space or time
+completed. **Done** (first versions of all four). **Exit:** at least one world in five plays under a non-default space or time
 axiom; worlds record their Age and their winner.
 
 *First version shipped as:* `src/rules/axioms.ts` (Shape of Space and Flow of Time, and
@@ -262,11 +262,24 @@ every 4 turns until you leave. The sidebar counts down. **The Heart**: each Age 
 depth 10–20; that floor's way down is the Heart (♥). Reaching it ends the run in victory,
 records the winner in the chronicle and the Codex, and begins the next Age with a new Heart.
 *Parity* (`npx vite-node tools/axiom-probe.ts 40 14`, explorer bot, Strike): mean depth
-rooms/turns 9.7, caverns 9.1, tide 9.5, caverns+tide 8.3. A test holds caverns and tide
+rooms/turns 9.7, caverns 9.1, drift 9.3, tide 9.5, caverns+tide 8.3. A test holds caverns and tide
 within 1.5 floors of rooms and turns.
 
-*Shortcuts and guesses in the first version:* space and time are always rolled, never left
-open, so the schism shrine still settles Means of Harm only. **Drift** is not built. A new
+*Second pass (same day):* **Drift** and **open questions for space and time**. A new world
+now leaves space open 30% of the time (else rooms 60 / Caverns 25 / Drift 15) and time open
+25% (else a Tide Clock one time in five). A schism shrine asks one open question per floor,
+the most pressing first: how harm works once foes exist, the shape of space once Halls has
+opened the floors, how time passes once foes exist. Caverns chosen at a shrine digs every
+new floor from then on; floors already walked stay as they were (each floor remembers how
+it was made). **Drift**: once Halls is in, every 40 turns (warned 5 before) the floor's
+rooms and corridors are rolled again around you. The room you stand in, the stairs both
+ways, the shrine, the merchant and the schism shrine stay put and are joined to the new
+rooms; foes and things caught in new rock move to the nearest open ground; the map outside
+your room is forgotten. The sidebar counts down to the next shift.
+
+*Shortcuts and guesses:* a schism shrine for space or time shows each option's name and
+summary but gets no banner when settled (a log line and a toast). Drift and Caverns never
+combine. A
 Age starts the rulebook over while axioms, graves and chronicle stay (decided;
 `BALANCE.heart.newAge` holds the other options). The Heart's depth is shown in the Codex, also a
 guess. Tide Clock and Caverns get no banner of their own; the tide is announced in the log

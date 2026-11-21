@@ -275,7 +275,7 @@ export class Renderer {
       glyph('Ω', s.pos.x, s.pos.y, s.used ? COLORS.shrineUsed : COLORS.shrine, true, 0.8);
     }
     const sc = f.schism;
-    if (sc && !sc.used && !game.harmSettled && remembered(sc.pos.x, sc.pos.y)) glyph('◈', sc.pos.x, sc.pos.y, COLORS.schism, true, 0.85);
+    if (sc && game.schismOpen(sc) && remembered(sc.pos.x, sc.pos.y)) glyph('◈', sc.pos.x, sc.pos.y, COLORS.schism, true, 0.85);
     const mc = f.merchant;
     if (mc && game.has('commerce') && remembered(mc.pos.x, mc.pos.y)) glyph('&', mc.pos.x, mc.pos.y, COLORS.merchant, true, 0.8);
     for (const g of game.floorGraves()) {

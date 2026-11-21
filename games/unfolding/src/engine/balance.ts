@@ -160,8 +160,13 @@ export const BALANCE = {
   },
   /** Shape of Space (Phase 3). */
   space: {
-    /** New worlds: chance of Caverns instead of rooms and corridors. */
-    cavernsChance: 0.25,
+    /** New worlds: chance space is left open for a schism shrine (once Halls arrives)… */
+    openChance: 0.3,
+    /** …otherwise rolled by weight. */
+    rollWeights: { rooms: 60, caverns: 25, drift: 15 },
+    /** Drift: a floor rearranges itself every this many turns (once Halls is in), with a warning this many turns before. */
+    driftEvery: 40,
+    driftWarn: 5,
     /** Cellular-automaton caves: starting wall fraction and smoothing passes. */
     caveFill: 0.45,
     caveSteps: 5,
@@ -172,7 +177,9 @@ export const BALANCE = {
   },
   /** Flow of Time (Phase 3). */
   time: {
-    /** New worlds: chance of a Tide Clock. */
+    /** New worlds: chance time is left open for a schism shrine (once foes exist)… */
+    openChance: 0.25,
+    /** …otherwise the chance of a Tide Clock. */
     tideChance: 0.2,
     /** Turns on a floor (once foes exist) at which the clock reaches each stage. */
     tideStages: [150, 250, 350] as [number, number, number],

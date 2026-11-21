@@ -131,6 +131,7 @@ export const PLAIN: Premise = {
   space: {
     rooms: { name: 'Rooms', tagline: 'Rooms and corridors.', summary: 'Each {floor} is rooms joined by corridors.' },
     caverns: { name: 'Caverns', tagline: 'Open caves.', summary: 'Each {floor} is one wide cave: no doors, no corridors, nowhere to hide.' },
+    drift: { name: 'Drift', tagline: 'Floors rearrange.', summary: 'Every {driftEvery} turns, the rooms you aren\'t in change places and the corridors reroute. The {stairsDown}, the {shrine} and the room you\'re in stay put.' },
   },
   time: {
     turns: { name: 'Turns', tagline: 'No clock.', summary: 'Nothing happens until you act.' },
@@ -214,6 +215,7 @@ export const PLAIN: Premise = {
     'schism.appears': 'A schism shrine appears on this floor. It settles how harm works in this world, permanently.',
     'schism.open': 'Schism shrine: choose how harm works here. Permanent, and every heir inherits it.',
     'adopt.commerce': 'A merchant appears on this floor.',
+    'drift.shift': 'The floor rearranges. The stairs, the shrine and your room stay.',
     'heart.win': '{name} reaches the Heart. This Age is over.',
     'tide.1': 'Tide Clock, first mark: more foes arrive.',
     'tide.2': 'Tide Clock, second mark: every foe on this floor knows where you are.',

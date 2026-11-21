@@ -27,16 +27,16 @@ import {
   spawnMonsters,
   type GenCtx,
 } from './content.ts';
-import { DIRS, distanceMap, generateLayout, idx, passable, randomFloorTile, soloRoom, type LayoutOpts } from './dungeon.ts';
+import { DIRS, distanceMap, driftLayout, generateLayout, idx, passable, randomFloorTile, soloRoom, type LayoutOpts } from './dungeon.ts';
 import { ray } from './aim.ts';
 import { HARMS, MEANS, type HarmId, type MeansModule } from '../rules/harm.ts';
 import { article, lexiconFor, PREMISES, type Lexicon } from '../theme/lexicon.ts';
 import type { RuleHost } from '../rules/modules.ts';
 import { computeVisible, lineOfSight } from './fov.ts';
 import { hashSeed, Rng } from './rng.ts';
-import { T_FLOOR, T_UP, type FloorItem, type Grave, type Item, type Monster, type Player, type Pos, type RuleId, type RunState, type Tone, type World } from './types.ts';
+import { T_FLOOR, T_UP, type FloorItem, type Rect, type Schism, type SpaceId, type TimeId, type Grave, type Item, type Monster, type Player, type Pos, type RuleId, type RunState, type Tone, type World } from './types.ts';
 import { heirName, rollHeart } from './world.ts';
-import { TIME } from '../rules/axioms.ts';
+import { SPACE, SPACES, TIME, TIMES } from '../rules/axioms.ts';
 
 export type Action =
   | { type: 'move'; dx: number; dy: number }
@@ -60,8 +60,11 @@ export type Action =
   | { type: 'leaveShop' }
   /** Commerce: pay the shrine you're answering to show other offers. */
   | { type: 'reroll' }
-  /** Answer a schism shrine: settle how harm works, or step away (null). */
-  | { type: 'schism'; harm: HarmId | null };
+  /**
+   * Answer a schism shrine: settle the question it asks, or step away (null).
+   * `harm` is the option for any family (named for the first one it asked).
+   */
+  | { type: 'schism'; harm: string | null };
 
 export type GameEvent =
   | { type: 'rule'; rule: RuleId; how: 'shrine' | 'mastery' | 'milestone' }
@@ -239,6 +242,12 @@ export class Game implements RuleHost {
     return MEANS[this.ctx.harm];
   }
 
+  /** The question a schism shrine asks, if its question is still open. */
+  schismOpen(sc: Schism | null | undefined): boolean {
+    if (!sc || sc.used) return false;
+    return !this.world.genome?.axioms[sc.family ?? 'harm'];
+  }
+
   /** Has this world settled its Means of Harm? Open worlds wait for a schism shrine. */
   get harmSettled(): boolean {
     return !!this.world.genome?.axioms.harm;
@@ -319,7 +328,7 @@ export class Game implements RuleHost {
       run.items = items;
       this.countSpawned(items.map((fi) => fi.item));
       this.count('floorsEntered');
-      if (this.has('peril') && !this.harmSettled) this.placeSchism();
+      this.placeSchism();
       if (this.has('commerce')) this.placeMerchant();
     }
     arrive();
@@ -494,8 +503,9 @@ export class Game implements RuleHost {
       this.run.pending = { kind: 'shop' };
     }
     const sc = floor.schism;
-    if (sc && !sc.used && !this.harmSettled && sc.pos.x === p.x && sc.pos.y === p.y) {
-      this.log(this.lex.t('schism.open'), 'rule');
+    if (this.schismOpen(sc) && sc!.pos.x === p.x && sc!.pos.y === p.y) {
+      const fam = sc!.family ?? 'harm';
+      this.log(this.lex.t(fam === 'harm' ? 'schism.open' : `schism.open.${fam}`), 'rule');
       this.run.pending = { kind: 'schism' };
     }
     const grave = this.graveAt(p.x, p.y);
@@ -724,9 +734,11 @@ export class Game implements RuleHost {
     const p = this.run.player;
     this.reinterpretFloor(rule);
     RULES[rule].onAdopt?.(this);
+    if (rule === 'halls' && !this.world.genome?.axioms.space && this.placeSchism()) this.log(this.lex.t('schism.appears.space'), 'rule', true);
     if (rule === 'peril') {
       this.revealHarm();
-      if (this.ctx.time === 'tide') this.log(this.lex.t('axiom.tide', { name: this.lex.time('tide').name, tagline: this.lex.time('tide').tagline }), 'rule', true);
+      if (this.harmSettled && !this.world.genome?.axioms.time && this.placeSchism()) this.log(this.lex.t('schism.appears.time'), 'rule', true);
+      if (this.world.genome?.axioms.time === 'tide') this.log(this.lex.t('axiom.tide', { name: this.lex.time('tide').name, tagline: this.lex.time('tide').tagline }), 'rule', true);
     }
     p.hp = Math.min(p.hp, this.stats.maxHp);
     this.refreshVision();
@@ -869,11 +881,29 @@ export class Game implements RuleHost {
     if (harm === 'arcanum') p.mana = this.stats.maxMana;
   }
 
-  /** One schism shrine per floor while the question is open, somewhere in the open. */
-  private placeSchism() {
+  /**
+   * The open question a schism shrine should ask on this floor, if any: how
+   * harm works once foes exist, the shape of space once Halls has opened the
+   * floors up, how time flows once foes exist. One at a time, in that order.
+   */
+  private openFamily(): 'harm' | 'space' | 'time' | null {
+    const ax = this.world.genome?.axioms ?? {};
+    if (this.has('peril') && !ax.harm) return 'harm';
+    if (this.has('halls') && !ax.space) return 'space';
+    if (this.has('peril') && !ax.time) return 'time';
+    return null;
+  }
+
+  /** One schism shrine per floor while a question is open, somewhere in the open. */
+  private placeSchism(): boolean {
     const f = this.run.floor;
-    if (f.schism || this.harmSettled) return;
-    const g = this.genCtx('schism');
+    const family = this.openFamily();
+    if (!family) return false;
+    // One per floor: a floor whose shrine settled one question raises the next only on a later floor.
+    // An unanswered one gives way to a more pressing question (harm, then space, then time).
+    const rank = { harm: 0, space: 1, time: 2 };
+    if (f.schism && (f.schism.used || (this.schismOpen(f.schism) && rank[f.schism.family ?? 'harm'] <= rank[family]))) return false;
+    const g = this.genCtx(family === 'harm' ? 'schism' : `schism-${family}`);
     const p = this.run.player;
     const pos = randomFloorTile(f, g.rng, (x, y) =>
       (x === p.x && y === p.y) ||
@@ -883,23 +913,41 @@ export class Game implements RuleHost {
       this.run.items.some((fi) => fi.x === x && fi.y === y) ||
       !!this.monsterAt(x, y),
     );
-    if (!pos) return;
+    if (!pos) return false;
     delete f.glimmer[idx(f, pos.x, pos.y)];
-    f.schism = { pos, offers: g.rng.shuffle([...HARMS]).slice(0, B.harm.schismOffers), used: false };
+    if (family === 'harm') f.schism = { pos, offers: g.rng.shuffle([...HARMS]).slice(0, B.harm.schismOffers), used: false };
+    else f.schism = { pos, family, offers: family === 'space' ? [...SPACES] : [...TIMES], used: false };
+    return true;
   }
 
-  private resolveSchism(harm: HarmId | null): boolean {
+  private resolveSchism(choice: string | null): boolean {
     const sc = this.run.floor.schism;
     this.run.pending = null;
     if (!sc) return true;
-    if (harm === null || !sc.offers.includes(harm)) {
+    const fam = sc.family ?? 'harm';
+    if (choice === null || !sc.offers.includes(choice)) {
       this.log(this.lex.t('schism.stepback'), 'dim');
-    } else {
+    } else if (fam === 'harm') {
       sc.used = true;
+      const harm = choice as HarmId;
       this.world.genome.axioms.harm = harm;
       // A new means brings its own words for implements, shots and blows.
       this.lex = lexiconFor(this.world, this.lex.plain);
       this.announceHarm(harm, 'schism');
+    } else if (fam === 'space') {
+      sc.used = true;
+      const space = choice as SpaceId;
+      this.world.genome.axioms.space = space;
+      const w = this.lex.space(space);
+      this.log(this.lex.t('axiom.space', { name: w.name, tagline: w.tagline }), 'rule', true);
+      // Caves are dug from the next new floor on; Drift starts here.
+      if (space === 'caverns') this.log(this.lex.t('axiom.space.next'), 'dim');
+    } else {
+      sc.used = true;
+      const time = choice as TimeId;
+      this.world.genome.axioms.time = time;
+      const w = this.lex.time(time);
+      this.log(this.lex.t(time === 'tide' ? 'axiom.tide' : 'axiom.time', { name: w.name, tagline: w.tagline }), 'rule', true);
     }
     this.settlePending();
     return true;
@@ -1063,7 +1111,7 @@ export class Game implements RuleHost {
     const run = this.run;
     const old = run.floor;
     if (!old.solo) return;
-    const full = generateLayout(this.world.seed, run.depth, layoutOpts(this.world, run.depth));
+    const full = generateLayout(this.world.seed, run.depth, { ...layoutOpts(this.world, run.depth), caverns: !!old.caverns });
     full.shrine = old.shrine;
     if (old.shrine) delete full.glimmer[idx(full, old.shrine.pos.x, old.shrine.pos.y)];
     // The stairs up stay where you came in; the down stairs move to the full floor's.
@@ -1090,6 +1138,58 @@ export class Game implements RuleHost {
     this.countSpawned(loot);
     if (p.x === full.stairs.x && p.y === full.stairs.y) return;
     this.log(this.lex.t('adopt.halls'), 'dim');
+  }
+
+  /**
+   * Drift: the floor rearranges itself. The room you stand in (or the few
+   * tiles around you, in a corridor), the stairs, the shrine, the merchant
+   * and the schism shrine stay put; whatever stood where rock now is moves
+   * to the nearest open ground.
+   */
+  shiftFloor() {
+    const run = this.run;
+    const old = run.floor;
+    const p = run.player;
+    const room = old.rooms.find((r) => p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h);
+    const keep: Rect = room ?? { x: Math.max(0, p.x - 1), y: Math.max(0, p.y - 1), w: 3, h: 3 };
+    const anchors = [old.shrine?.pos, old.merchant?.pos, old.schism?.pos, { x: p.x, y: p.y }].filter((a): a is Pos => !!a);
+    const n = (old.shifts ?? 0) + 1;
+    const sprawl = this.has('halls') && this.world.variants.halls === 'alt';
+    const f = driftLayout(old, hashSeed(this.world.seed, run.gen), n, sprawl, keep, anchors);
+    run.floor = f;
+    const taken = new Set<number>();
+    const settle = (at: Pos): Pos => {
+      if (passable(f, at.x, at.y) && !taken.has(idx(f, at.x, at.y))) return at;
+      // The nearest open tile, by plain distance.
+      let best: Pos | null = null;
+      let bd = Infinity;
+      for (let y = 0; y < f.h; y++)
+        for (let x = 0; x < f.w; x++) {
+          if (!passable(f, x, y) || taken.has(idx(f, x, y)) || (x === p.x && y === p.y)) continue;
+          const d = Math.max(Math.abs(x - at.x), Math.abs(y - at.y));
+          if (d < bd) {
+            bd = d;
+            best = { x, y };
+          }
+        }
+      return best ?? at;
+    };
+    for (const m of run.monsters) {
+      const at = settle(m);
+      m.x = at.x;
+      m.y = at.y;
+      taken.add(idx(f, m.x, m.y));
+    }
+    taken.clear();
+    for (const fi of run.items) {
+      if (passable(f, fi.x, fi.y)) continue;
+      const at = settle(fi);
+      fi.x = at.x;
+      fi.y = at.y;
+    }
+    this.count('shifts');
+    this.log(this.lex.t('drift.shift'), 'rule', true);
+    this.refreshVision();
   }
 
   alertAll() {
@@ -1402,6 +1502,7 @@ export class Game implements RuleHost {
     }
     // Rule and axiom hooks that run every turn.
     for (const id of RULE_ORDER) if (this.has(id) && !run.over) RULES[id].onTurn?.(this);
+    if (!run.over) SPACE[this.ctx.space ?? 'rooms'].onTurn?.(this);
     if (!run.over) TIME[this.ctx.time ?? 'turns'].onTurn?.(this);
   }
 

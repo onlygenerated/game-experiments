@@ -216,6 +216,7 @@ export const OVERGROWN_CHOIR: Premise = {
   space: {
     rooms: { name: 'Cloisters', tagline: 'Stone aisles, arches and doors.', summary: 'Each {floor} is chapels joined by cloisters.' },
     caverns: { name: 'Root Hollows', tagline: 'The roots ate the masonry long ago.', summary: 'Each {floor} is one wide hollow among the roots: no doors, no aisles, nowhere to hide.' },
+    drift: { name: 'Wandering Aisles', tagline: 'The garden moves its own paths.', summary: 'Every {driftEvery} turns, the rooms you aren\'t in change places and the corridors reroute. The {stairsDown}, the {shrine} and the room you\'re in stay put.' },
   },
   time: {
     turns: { name: 'Plainsong', tagline: 'The hours pass unmarked.', summary: 'Nothing happens until you act, however long you take.' },
@@ -290,6 +291,7 @@ export const OVERGROWN_CHOIR: Premise = {
     'starving': 'You are withering.',
     'death': 'You return to the soil — {cause}.',
     'cause.slain': 'taken by {a} {foe} in nave {n}',
+    'drift.shift': 'The hedges shuffle. The aisles of this {floor} lead somewhere new.',
     'heart.win': '{name} kneels before the First Seed. It splits, and green light fills the choir; this Age is over.',
     'tide.1': 'The first bell for vespers. More {foes} creep in from the weeds.',
     'tide.2': 'The second bell. Every {foe} in this {floor} turns toward you.',

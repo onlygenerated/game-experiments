@@ -94,6 +94,7 @@ export interface LayoutOpts {
 export function generateLayout(worldSeed: number, depth: number, opts: LayoutOpts = { halls: true, sprawl: false }): Floor {
   const full = opts.caverns ? caveLayout(worldSeed, depth, opts.sprawl) : fullLayout(worldSeed, depth, opts.sprawl);
   const floor = opts.halls ? full : opts.caverns ? soloCave(full) : soloLayout(full);
+  if (opts.caverns) floor.caverns = true;
   if (opts.heart) markHeart(floor);
   return floor;
 }
@@ -393,6 +394,51 @@ function soloCave(full: Floor): Floor {
     explored: new Array<number>(MAP_W * MAP_H).fill(0),
     solo: true,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Drift (M-21): the floor rearranges itself around you.
+// ---------------------------------------------------------------------------
+
+/**
+ * The floor after its `n`th shift: a fresh set of rooms and corridors, except
+ * that the room in `keep` (where you stand) is left as it was, and the stairs,
+ * shrine and every spot in `anchors` stay where they are, each joined to the
+ * new rooms by a corridor. What you had mapped outside `keep` is forgotten.
+ */
+export function driftLayout(old: Floor, worldSeed: number, n: number, sprawl: boolean, keep: Rect, anchors: Pos[]): Floor {
+  const fresh = fullLayout(hashSeed(worldSeed, 'drift', n), old.depth, sprawl);
+  const rng = new Rng(hashSeed(worldSeed, 'drift-link', old.depth, n));
+  const tiles: number[] = fresh.tiles.map((t) => (t === T_WALL ? T_WALL : T_FLOOR));
+  const inKeep = (x: number, y: number) => x >= keep.x && x < keep.x + keep.w && y >= keep.y && y < keep.y + keep.h;
+  for (let y = keep.y; y < keep.y + keep.h; y++)
+    for (let x = keep.x; x < keep.x + keep.w; x++) if (old.tiles[y * MAP_W + x] !== T_WALL) tiles[y * MAP_W + x] = T_FLOOR;
+  const hubs = fresh.rooms.map(center);
+  const nearestHub = (p: Pos) => hubs.reduce((a, b) => (Math.abs(b.x - p.x) + Math.abs(b.y - p.y) < Math.abs(a.x - p.x) + Math.abs(a.y - p.y) ? b : a), hubs[0]);
+  const keepCentre = nearCentre(tiles, keep);
+  const ways = old.depth >= 2 ? [old.stairs, old.start] : [old.stairs];
+  for (const a of [keepCentre, ...ways, ...anchors]) carveCorridor(tiles, a, nearestHub(a), rng);
+  // The way down (or the Heart) and the way up stay what they were.
+  tiles[idx(old, old.stairs.x, old.stairs.y)] = old.tiles[idx(old, old.stairs.x, old.stairs.y)];
+  if (old.depth >= 2) tiles[idx(old, old.start.x, old.start.y)] = T_UP;
+  const reserved = new Set([old.stairs, old.start, ...anchors].map((p) => idx(old, p.x, p.y)));
+  const glimmer: Floor['glimmer'] = {};
+  for (const [k, el] of Object.entries(fresh.glimmer)) {
+    const i = Number(k);
+    const x = i % MAP_W;
+    if (tiles[i] === T_FLOOR && !reserved.has(i) && !inKeep(x, (i - x) / MAP_W)) glimmer[i] = el;
+  }
+  for (const [k, el] of Object.entries(old.glimmer)) {
+    const i = Number(k);
+    const x = i % MAP_W;
+    if (inKeep(x, (i - x) / MAP_W) && tiles[i] === T_FLOOR) glimmer[i] = el;
+  }
+  const explored = new Array<number>(MAP_W * MAP_H).fill(0);
+  for (let i = 0; i < explored.length; i++) {
+    const x = i % MAP_W;
+    if (old.explored[i] && inKeep(x, (i - x) / MAP_W)) explored[i] = 1;
+  }
+  return { ...old, tiles, glimmer, explored, rooms: [keep, ...fresh.rooms], shifts: n };
 }
 
 export function randomFloorTile(f: Floor, rng: Rng, avoid: (x: number, y: number) => boolean): Pos | null {

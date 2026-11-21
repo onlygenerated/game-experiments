@@ -584,6 +584,37 @@ try {
       a.refresh();
     });
     ok(`${vp.name}: a tide world shows its clock`, (await page.$('.means.tide')) !== null);
+    // A space schism shrine, then Drift rearranging the floor.
+    await page.evaluate(() => {
+      const a = window.unfolding, g = a.game;
+      g.world.genome.axioms.time = 'turns';
+      delete g.world.genome.axioms.space;
+      for (const m of g.run.monsters) m.stun = 9999;
+      g.run.floor.schism = null;
+      g.placeSchism();
+      const sc = g.run.floor.schism;
+      g.events.splice(0);
+      a.overlays = [];
+      g.run.pending = null;
+      g.run.player.x = sc.pos.x;
+      g.run.player.y = sc.pos.y;
+      g.enterTile();
+      a.refresh();
+    });
+    ok(`${vp.name}: a schism shrine asks what shape the world should take`, await page.isVisible('.modal.schism >> text=What shape should'));
+    await shot(page, `${vp.name}-7c2-space-schism`);
+    await page.click('.modal.schism [data-harm="drift"]');
+    const shifted = await page.evaluate(() => {
+      const a = window.unfolding, g = a.game;
+      const before = g.run.floor.tiles.join('');
+      g.shiftFloor();
+      a.overlays = [];
+      a.refresh();
+      return { space: g.world.genome.axioms.space, changed: g.run.floor.tiles.join('') !== before };
+    });
+    ok(`${vp.name}: choosing Drift settles space, and the floor can rearrange itself`, shifted.space === 'drift' && shifted.changed);
+    ok(`${vp.name}: a drift world shows when the floor next shifts`, (await page.$('.means.tide')) !== null);
+    await page.evaluate(() => { window.unfolding.game.world.genome.axioms.space = 'rooms'; });
     await page.evaluate(() => {
       const a = window.unfolding, g = a.game;
       g.world.genome.axioms.time = 'turns';

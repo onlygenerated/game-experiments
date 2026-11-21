@@ -215,6 +215,7 @@ export const COURT_OF_BARBS: Premise = {
   space: {
     rooms: { name: 'Suites', tagline: 'Salons, antechambers, and doors with footmen.', summary: 'Each {floor} is salons joined by galleries.' },
     caverns: { name: 'The Ruined Wing', tagline: 'The walls came down in the last scandal.', summary: 'Each {floor} is one wide, roofless hall: no doors, no galleries, nowhere to hide.' },
+    drift: { name: 'Musical Chairs', tagline: 'The furniture is rearranged nightly.', summary: 'Every {driftEvery} turns, the rooms you aren\'t in change places and the corridors reroute. The {stairsDown}, the {shrine} and the room you\'re in stay put.' },
   },
   time: {
     turns: { name: 'Leisure', tagline: 'No one hurries at court.', summary: 'Nothing happens until you act, however long you take.' },
@@ -291,6 +292,7 @@ export const COURT_OF_BARBS: Premise = {
     'starving': 'Everyone has forgotten you.',
     'death': 'You are laughed out of court — {cause}.',
     'cause.slain': 'humiliated by {a} {foe} in salon {n}',
+    'drift.shift': 'Footmen rearrange the {floor} in a blur of gilt. The doors lead elsewhere now.',
     'heart.win': '{name} sits upon the Empty Throne. No one dares say a word; this Age is over.',
     'tide.1': 'The season is turning. More {foes} have been invited.',
     'tide.2': 'Word travels. Every {foe} in this {floor} has heard your name.',

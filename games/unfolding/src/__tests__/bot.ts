@@ -45,7 +45,7 @@ function pendingAction(g: Game, rng: Rng): Action | null {
  * drink when low, take the first shrine offer, otherwise head for the stairs.
  */
 /** Per-game memory for the explorer: which rooms of the current floor it has stood in. */
-const seenRooms = new WeakMap<Game, { floor: unknown; rooms: Set<number> }>();
+const seenRooms = new WeakMap<Game, { floor: unknown; layout: unknown; rooms: Set<number> }>();
 /** Floors whose merchant the explorer has already visited. */
 const visitedShop = new WeakSet<object>();
 
@@ -100,7 +100,8 @@ export function explorerAction(g: Game, rng: Rng, opts: { shrines?: boolean } = 
   if (junk && p.inventory.length >= 10 && !g.itemsHere().length) return { type: 'drop', id: junk.id };
 
   let mem = seenRooms.get(g);
-  if (!mem || mem.floor !== f) seenRooms.set(g, (mem = { floor: f, rooms: new Set() }));
+  // A floor that rearranged itself (Drift) is a new floor to explore.
+  if (!mem || mem.floor !== f || mem.layout !== f.rooms) seenRooms.set(g, (mem = { floor: f, layout: f.rooms, rooms: new Set() }));
   f.rooms.forEach((r, i) => {
     if (p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h) mem!.rooms.add(i);
   });
@@ -121,7 +122,8 @@ export function explorerAction(g: Game, rng: Rng, opts: { shrines?: boolean } = 
       }
     return best;
   };
-  const unseen = f.rooms.map((_, i) => i).filter((i) => !mem!.rooms.has(i));
+  // Once a floor has drifted, its rooms will only move again: head for the stairs, which stay put.
+  const unseen = f.shifts ? [] : f.rooms.map((_, i) => i).filter((i) => !mem!.rooms.has(i));
   const near = (ts: { x: number; y: number }[]) => {
     const dist = distanceMap(f, p);
     return ts.filter((t) => dist[idx(f, t.x, t.y)] > 0).sort((a, b) => dist[idx(f, a.x, a.y)] - dist[idx(f, b.x, b.y)])[0];
@@ -138,7 +140,7 @@ export function explorerAction(g: Game, rng: Rng, opts: { shrines?: boolean } = 
     })
     .map((i) => ({ x: i.x, y: i.y }));
   const shrine = f.shrine && !f.shrine.used ? [f.shrine.pos] : [];
-  if (f.schism && !f.schism.used && !g.harmSettled) shrine.push(f.schism.pos);
+  if (f.schism && g.schismOpen(f.schism)) shrine.push(f.schism.pos);
   // Visit a merchant once per floor, with something to spend.
   const shop = f.merchant && g.has('commerce') && p.gold >= 15 && !visitedShop.has(f) ? [f.merchant.pos] : [];
   if (f.merchant && p.x === f.merchant.pos.x && p.y === f.merchant.pos.y) visitedShop.add(f);

@@ -216,6 +216,7 @@ export const NIGHT_SHIFT: Premise = {
   space: {
     rooms: { name: 'The Hallways', tagline: 'Corridors you half remember, and doors.', summary: 'Each {floor} is rooms joined by hallways.' },
     caverns: { name: 'Under the Bed', tagline: 'No walls, only dark that goes on.', summary: 'Each {floor} is one wide dark: no doors, no hallways, nowhere to hide.' },
+    drift: { name: 'Dream Logic', tagline: 'Doors open onto rooms that weren’t there.', summary: 'Every {driftEvery} turns, the rooms you aren\'t in change places and the corridors reroute. The {stairsDown}, the {shrine} and the room you\'re in stay put.' },
   },
   time: {
     turns: { name: 'Deep Sleep', tagline: 'Time doesn’t pass here.', summary: 'Nothing happens until you act, however long you take.' },
@@ -292,6 +293,7 @@ export const NIGHT_SHIFT: Premise = {
     'starving': 'You are nodding off.',
     'death': 'You never wake — {cause}.',
     'cause.slain': 'caught by {a} {foe} on stage {n}',
+    'drift.shift': 'You turn around, and the hallways have rearranged themselves.',
     'heart.win': '{name} opens their eyes. It is the Morning; this Age is over.',
     'tide.1': 'Somewhere, an alarm starts to tick. More {foes} clock in.',
     'tide.2': 'The ticking gets louder. Every {foe} on this {floor} turns to you.',

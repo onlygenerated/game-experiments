@@ -58,6 +58,7 @@ export const RULE_TEXT_VARS: Vars = {
   tide2: BALANCE.time.tideStages[1],
   tide3: BALANCE.time.tideStages[2],
   tideHurtEvery: BALANCE.time.tideHurtEvery,
+  driftEvery: BALANCE.space.driftEvery,
   boltCost: BALANCE.harm.boltCost,
   startAmmo: BALANCE.harm.startAmmo,
   strikeGuard: BALANCE.harm.strikeGuard,
