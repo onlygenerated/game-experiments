@@ -1,0 +1,1018 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bury — prototype</title>
+<style>
+/* ---------------------------------------------------------------------------
+   Mobile first. One column at every width. No breakpoints, no media queries —
+   every size is a clamp() against the viewport, so the 7-slot row fits a 360px
+   phone and stops growing on a desktop.
+--------------------------------------------------------------------------- */
+:root {
+  --slot-w:    clamp(38px, 12.4vw, 76px);
+  --slot-h:    clamp(54px, 17vw,  100px);
+  --card-w:    clamp(50px, 16vw,   84px);
+  --card-h:    clamp(68px, 22vw,  114px);
+  --rank-size: clamp(15px, 4.6vw,  26px);
+  --suit-size: clamp(13px, 4vw,    22px);
+  --gap:       clamp(3px, 1.1vw,    8px);
+
+  --bg:      #14161a;
+  --panel:   #1e2127;
+  --panel-2: #262a32;
+  --line:    #343a45;
+  --ink:     #e8eaee;
+  --dim:     #9aa3b2;
+  --faint:   #6b7484;
+  --accent:  #6ea8fe;
+  --win:     #4ec98a;
+  --lose:    #e2685f;
+  --bury:    #c99b4e;
+  --red:     #e8776d;
+
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.45 ui-sans-serif, -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+}
+body {
+  /* Room for the sticky commit bar so the last row is never trapped under it. */
+  padding: 0 var(--gap) calc(96px + var(--safe-b));
+  max-width: 760px;
+  margin: 0 auto;
+  overscroll-behavior-y: contain;
+}
+button {
+  font: inherit;
+  color: inherit;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 9px 12px;
+  cursor: pointer;
+  min-height: 40px;           /* touch target floor */
+  touch-action: manipulation;
+}
+button:disabled { opacity: .38; cursor: default; }
+button.primary { background: var(--accent); color: #10131a; border-color: var(--accent); font-weight: 650; }
+button.small { min-height: 32px; padding: 5px 9px; font-size: 13px; }
+input, select {
+  font: inherit; color: inherit; background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; min-height: 38px;
+  /* A <select> sizes to its longest option by default, and the archive
+     options are long. Without this it alone pushes a 360px page sideways. */
+  max-width: 100%; min-width: 0;
+}
+input[type=range] { padding: 0; min-height: 28px; }
+h1, h2, h3 { margin: 0; font-weight: 650; }
+
+/* --- header ------------------------------------------------------------- */
+.topbar {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; padding: 12px 2px 8px;
+}
+.topbar h1 { font-size: 17px; letter-spacing: .02em; }
+.topbar .meta { font-size: 12.5px; color: var(--dim); font-variant-numeric: tabular-nums; }
+
+/* --- the note banner -----------------------------------------------------
+   Load-bearing on mobile: it must stay on screen for the entire build phase,
+   or the mechanic it exists to test never gets read while it can still change
+   a decision. Sticky, not just top-of-page.
+-------------------------------------------------------------------------- */
+/* The sticky lives on the host, not the banner. A sticky element can only
+   travel inside its own containing block, so sticking .note to a wrapper that
+   is exactly its own height means it unsticks the moment you scroll past it —
+   i.e. exactly when you reach the tray and need to read it. #note-host is a
+   direct child of body, so its containing block spans the whole page. */
+#note-host { position: sticky; top: 0; z-index: 30; }
+.note {
+  background: linear-gradient(180deg, #2a2418, #241f15);
+  border: 1px solid #6a5426; border-radius: 9px;
+  padding: 10px 12px; margin-bottom: var(--gap);
+  box-shadow: 0 6px 18px -8px #000c;
+}
+.note .kicker {
+  font-size: 11px; letter-spacing: .13em; text-transform: uppercase;
+  color: var(--bury); margin-bottom: 5px;
+}
+.note .line { font-size: 14.5px; margin: 3px 0; }
+.note .cardref { font-weight: 700; }
+.note .synthetic { color: var(--faint); font-size: 12px; margin-top: 5px; font-style: italic; }
+.note .meaning {
+  margin-top: 7px; padding: 7px 9px; background: #00000038;
+  border-left: 2px solid var(--bury); border-radius: 4px; font-size: 13.5px;
+}
+
+/* --- position slots ------------------------------------------------------ */
+.slots { display: grid; grid-template-columns: repeat(7, 1fr); gap: var(--gap); margin: 4px 0 2px; }
+.slotwrap { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.slot {
+  height: var(--slot-h);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 7px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  position: relative; overflow: hidden; padding: 2px;
+}
+.slot .pts {
+  position: absolute; top: 2px; left: 0; right: 0; text-align: center;
+  font-size: 10px; color: var(--faint); font-variant-numeric: tabular-nums;
+}
+.slot.armed { border-color: var(--accent); background: #1d2735; cursor: pointer; }
+.slot.filled { background: var(--panel-2); cursor: pointer; }
+.slot.buried { background: #2a2317; border-color: #6a5426; }
+.slot.free   { border-color: #3d6b52; background: #1a2620; }
+.slot .rank { font-size: var(--rank-size); font-weight: 700; line-height: 1; }
+.slot .suit { font-size: var(--suit-size); line-height: 1.1; }
+.slot .tag  { font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--bury); }
+.slot .tag.freetag { color: var(--win); }
+.red { color: var(--red); }
+
+.burybtn {
+  font-size: 10.5px; padding: 4px 0; min-height: 32px; width: 100%;
+  border-radius: 5px; background: #22262e; color: var(--dim); border: 1px solid var(--line);
+}
+.burybtn.on { color: var(--bury); border-color: #6a5426; }
+.burybtn:disabled { opacity: .3; }
+
+/* --- hand tray ----------------------------------------------------------- */
+.tray {
+  display: flex; flex-wrap: wrap; gap: var(--gap);
+  margin: 10px 0 4px; justify-content: center;
+}
+.card {
+  width: var(--card-w); height: var(--card-h);
+  background: #f2f3f5; color: #14161a;
+  border: 1px solid #c9ced6; border-radius: 8px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; cursor: pointer; user-select: none;
+  transition: transform .08s ease;
+}
+.card .rank { font-size: var(--rank-size); font-weight: 750; line-height: 1; }
+.card .suit { font-size: var(--suit-size); line-height: 1; }
+.card .val  { font-size: 10px; color: #6b7484; font-variant-numeric: tabular-nums; }
+.card.sel { outline: 3px solid var(--accent); outline-offset: 2px; transform: translateY(-4px); }
+.card.spent { opacity: .22; pointer-events: none; }
+.card .redsuit { color: #c0392b; }
+
+/* --- sticky commit bar --------------------------------------------------- */
+.commitbar {
+  position: sticky; bottom: 0; z-index: 30;
+  background: #14161aee; backdrop-filter: blur(8px);
+  border-top: 1px solid var(--line);
+  margin: 8px calc(-1 * var(--gap)) 0;
+  padding: 9px var(--gap) calc(9px + var(--safe-b));
+  display: flex; align-items: center; gap: 10px;
+}
+.pips { font-size: 14px; font-variant-numeric: tabular-nums; flex: 1; min-width: 0; }
+.pips b { font-size: 17px; }
+.pips.over { color: var(--lose); }
+.pips .sub { display: block; font-size: 11.5px; color: var(--faint); }
+.commitbar button { flex: 0 0 auto; }
+
+/* --- reveal / result ----------------------------------------------------- */
+.scoreline {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-variant-numeric: tabular-nums; padding: 8px 2px; gap: 8px;
+}
+.scoreline .big { font-size: 26px; font-weight: 700; }
+.rrow {
+  display: grid; grid-template-columns: 30px 1fr 1fr 42px; gap: 8px; align-items: center;
+  padding: 7px 8px; border-bottom: 1px solid var(--line); font-size: 14px;
+  opacity: .25; transition: opacity .18s ease, background .18s ease;
+}
+.rrow.shown { opacity: 1; }
+.rrow.active { background: #1d2735; }
+.rrow .pos { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.rrow .who { font-variant-numeric: tabular-nums; text-align: right; font-weight: 650; }
+.rrow .side { display: flex; align-items: center; gap: 6px; }
+.rrow .side.won { color: var(--win); }
+.rrow .side.lost { color: var(--faint); }
+.rrow .buriedmark { color: var(--bury); font-size: 12.5px; }
+.legend { font-size: 12px; color: var(--faint); padding: 6px 2px; }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 12px; margin: 10px 0; }
+.result-h { font-size: 15px; color: var(--dim); }
+.result-n { font-size: 42px; font-weight: 750; font-variant-numeric: tabular-nums; line-height: 1.05; }
+
+/* --- debug --------------------------------------------------------------- */
+details.debug { margin: 14px 0 0; border: 1px solid var(--line); border-radius: 9px; background: #171a20; }
+details.debug > summary {
+  padding: 10px 12px; cursor: pointer; font-size: 13px; color: var(--dim);
+  list-style: none; user-select: none;
+}
+details.debug > summary::-webkit-details-marker { display: none; }
+/* min-width:0 throughout: flex items default to min-width:auto, which would
+   let the 560px archive table push the whole page sideways at 360px. */
+.dbg-body { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.dbg-row { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; min-width: 0; }
+.dbg-row label { font-size: 12.5px; color: var(--dim); }
+.dbg-sec { border-top: 1px solid var(--line); padding-top: 10px; min-width: 0; }
+.dbg-note { font-size: 11.5px; color: var(--faint); line-height: 1.4; }
+.warn { color: var(--bury); }
+/* The archive table is genuinely wide — it scrolls itself rather than
+   forcing the page sideways. */
+.tablewrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--line); border-radius: 7px;
+  min-width: 0; max-width: 100%;
+}
+table { border-collapse: collapse; font-size: 12px; width: 100%; min-width: 560px; }
+th, td { padding: 5px 7px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--faint); font-weight: 600; position: sticky; top: 0; background: #171a20; }
+td.b { color: var(--bury); }
+.hidden { display: none !important; }
+.cheatfield { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.cheatfield input { width: 100%; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Bury</h1>
+  <div class="meta" id="meta"></div>
+</div>
+
+<div id="note-host"></div>
+<div id="stage"></div>
+
+<details class="debug" id="debugpanel">
+  <summary>▸ Debug panel <span class="warn" id="dbgflags"></span></summary>
+  <div class="dbg-body">
+
+    <div class="dbg-row">
+      <button class="small" id="d-seed">Seed archive (20 lines)</button>
+      <button class="small" id="d-reset">Reset archive</button>
+      <button class="small" id="d-redeal">Re-deal round</button>
+    </div>
+
+    <div class="dbg-sec">
+      <div class="dbg-row">
+        <label>Pip cap <b id="d-capval"></b></label>
+        <input type="range" id="d-cap" min="35" max="90" step="1" style="flex:1;min-width:140px">
+      </div>
+      <div class="dbg-row">
+        <label>Cap mode</label>
+        <select id="d-capmode">
+          <option value="flat">flat — one budget for the whole line (spec)</option>
+          <option value="per-card">per-card — budget shrinks as you bury (over-corrects)</option>
+        </select>
+      </div>
+      <div class="dbg-note" id="d-capnote"></div>
+    </div>
+
+    <div class="dbg-sec">
+      <div class="dbg-row">
+        <label>Max buries</label>
+        <select id="d-maxburies"><option>0</option><option>1</option><option>2</option><option>3</option></select>
+        <label>Ties to</label>
+        <select id="d-tie"><option value="ghost">ghost</option><option value="player">player</option></select>
+        <label>Reveal ms</label>
+        <input type="number" id="d-delay" min="0" max="2000" step="50" style="width:88px">
+      </div>
+    </div>
+
+    <div class="dbg-sec">
+      <div class="dbg-row">
+        <label><input type="checkbox" id="d-cheat"> Cheat log</label>
+        <span class="dbg-note">Testing crutch — off by default. Lets you type what a bury meant.
+        The meaning stays hidden behind a button on the note, so you still have to try to
+        remember first. Remembering your own code is the game; this only measures it.</span>
+      </div>
+    </div>
+
+    <div class="dbg-sec">
+      <div class="dbg-row">
+        <label>Force ghost</label>
+        <select id="d-forceghost" style="flex:1 1 140px"></select>
+        <button class="small" id="d-forceapply">Face it</button>
+      </div>
+    </div>
+
+    <div class="dbg-sec">
+      <div class="dbg-row"><label>Archive</label><span class="dbg-note" id="d-archcount"></span></div>
+      <div class="tablewrap"><table id="d-archive"></table></div>
+    </div>
+
+  </div>
+</details>
+
+<script>
+"use strict";
+
+/* ===========================================================================
+   CONFIG — every tunable number lives here.
+   PIP_CAP is the number most likely to be wrong. It is on a live slider in the
+   debug panel for exactly that reason.
+=========================================================================== */
+const CONFIG = {
+  PIP_CAP: 55,
+  // 'flat'     — one budget for the whole line, as specced.
+  // 'per-card' — budget is PIP_CAP/POSITION_COUNT per card actually played, so
+  //              burying buys concentration but never buys escape from the cap.
+  PIP_CAP_MODE: 'flat',
+  HAND_SIZE: 9,
+  POSITION_COUNT: 7,
+  MAX_BURIES: 2,
+  BOT_ROUNDS: 3,
+  REVEAL_DELAY_MS: 600,
+  TIE_GOES_TO: 'ghost',      // 'ghost' | 'player'
+  CHEAT_LOG: false,
+  SEED: null                 // set for a reproducible deal; null = random
+};
+
+const STORE_KEY = 'bury.archive.v1';
+const SUITS = ['♠', '♥', '♦', '♣'];
+const RED_SUITS = new Set(['♥', '♦']);
+const RANKS = [
+  ['2', 2], ['3', 3], ['4', 4], ['5', 5], ['6', 6], ['7', 7], ['8', 8],
+  ['9', 9], ['10', 10], ['J', 11], ['Q', 12], ['K', 13], ['A', 14]
+];
+
+/* ===========================================================================
+   Random. Seedable so a suspicious deal can be replayed.
+=========================================================================== */
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+let rng = Math.random;
+function reseed(seed) { rng = (seed === null || seed === undefined || seed === '') ? Math.random : mulberry32(Number(seed) >>> 0); }
+
+function freshDeck() {
+  const d = [];
+  for (const s of SUITS) for (const [rank, value] of RANKS) d.push({ rank, suit: s, value });
+  return d;
+}
+function shuffled(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+function deal(n) { return shuffled(freshDeck()).slice(0, n); }
+function positionPoints(pos) { return pos; }            // position 1..7 → 1..7 points
+const TOTAL_POT = (() => { let t = 0; for (let p = 1; p <= CONFIG.POSITION_COUNT; p++) t += positionPoints(p); return t; })();
+
+/* ===========================================================================
+   The cap.
+   Flat mode is the spec. Per-card mode exists because with MAX_BURIES=2 the
+   flat cap stops binding: best-5-of-9 averages ~52 pips, under a cap of 55, so
+   two buries hand you your five best cards unconstrained. Both are live.
+=========================================================================== */
+function capFor(playedCount) {
+  if (CONFIG.PIP_CAP_MODE === 'per-card') {
+    return Math.floor(CONFIG.PIP_CAP / CONFIG.POSITION_COUNT * playedCount);
+  }
+  return CONFIG.PIP_CAP;
+}
+
+/* ===========================================================================
+   Archive — localStorage, one key. A corrupt or absent entry resets to empty
+   rather than crashing.
+=========================================================================== */
+function blankStore() { return { lines: [], record: { w: 0, l: 0, d: 0 } }; }
+
+function loadStore() {
+  let raw = null;
+  try { raw = localStorage.getItem(STORE_KEY); } catch (e) { return blankStore(); }
+  if (!raw) return blankStore();
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.lines)) return blankStore();
+    const rec = parsed.record && typeof parsed.record === 'object' ? parsed.record : {};
+    return {
+      lines: parsed.lines.filter(isSaneLine),
+      record: { w: rec.w | 0, l: rec.l | 0, d: rec.d | 0 }
+    };
+  } catch (e) { return blankStore(); }
+}
+function isSaneLine(l) {
+  return l && typeof l === 'object' && Array.isArray(l.positions) &&
+         l.positions.length === CONFIG.POSITION_COUNT;
+}
+function saveStore() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); }
+  catch (e) { /* private mode / quota — the session still plays, it just won't persist */ }
+}
+let store = loadStore();
+
+/* Hook stub — line mutation / note decay is deliberately not implemented.
+   Every archived line passes through here on its way to becoming a ghost. */
+function mutateLine(line) { return line; }
+
+/* ===========================================================================
+   Ghost selection.
+   Prefer never-served, then lines carrying a bury, else random.
+=========================================================================== */
+function pickGhost(forcedId) {
+  if (forcedId) {
+    const forced = store.lines.find(l => l.id === forcedId);
+    if (forced) return forced;
+  }
+  if (!store.lines.length) return null;
+  const unserved = store.lines.filter(l => (l.timesServed | 0) === 0);
+  const pool = unserved.length ? unserved : store.lines;
+  const withBuries = pool.filter(l => l.positions.some(p => p.buried));
+  const finalPool = withBuries.length ? withBuries : pool;
+  return finalPool[Math.floor(rng() * finalPool.length)];
+}
+
+/* ===========================================================================
+   The bot. Rounds 1..BOT_ROUNDS, because the archive starts empty.
+   Deliberately not smart: a legal line, randomly ordered. It exists to seed.
+=========================================================================== */
+function botLine() {
+  const hand = deal(CONFIG.HAND_SIZE);
+  const asc = hand.slice().sort((a, b) => a.value - b.value);
+  let played = asc.slice(0, CONFIG.POSITION_COUNT);         // cheapest legal line
+  let bench = asc.slice(CONFIG.POSITION_COUNT);
+  const cap = capFor(CONFIG.POSITION_COUNT);
+  // Random upgrades while they stay legal, so it is not always the worst line.
+  for (let tries = 0; tries < 24; tries++) {
+    if (!bench.length) break;
+    const i = Math.floor(rng() * played.length);
+    const j = Math.floor(rng() * bench.length);
+    if (bench[j].value <= played[i].value) continue;
+    const sum = played.reduce((t, c) => t + c.value, 0) - played[i].value + bench[j].value;
+    if (sum > cap) continue;
+    const tmp = played[i]; played[i] = bench[j]; bench[j] = tmp;
+  }
+  played = shuffled(played);
+  return {
+    id: 'bot-' + Math.floor(rng() * 1e9).toString(36),
+    roundNumber: 0,
+    timestamp: new Date().toISOString(),
+    isBot: true,
+    positions: played.map((c, i) => ({ position: i + 1, card: c, buried: null, note: null })),
+    scoreFor: 0, scoreAgainst: 0, timesServed: 0
+  };
+}
+
+/* Synthetic archive lines for the debug seeder. Flagged synthetic so their
+   notes never claim "you buried this" for a bury you never made. */
+function syntheticLine(n) {
+  const hand = deal(CONFIG.HAND_SIZE);
+  const buryCount = rng() < 0.55 ? (rng() < 0.4 ? 2 : 1) : 0;
+  const shuffledHand = shuffled(hand);
+  const positions = [];
+  const buryAt = new Set();
+  while (buryAt.size < buryCount) buryAt.add(1 + Math.floor(rng() * CONFIG.POSITION_COUNT));
+  let k = 0;
+  for (let p = 1; p <= CONFIG.POSITION_COUNT; p++) {
+    const c = shuffledHand[k++];
+    if (buryAt.has(p)) positions.push({ position: p, card: null, buried: { rank: c.rank, suit: c.suit }, note: null });
+    else positions.push({ position: p, card: c, buried: null, note: null });
+  }
+  return {
+    id: 'syn-' + n + '-' + Math.floor(rng() * 1e9).toString(36),
+    roundNumber: n,
+    timestamp: new Date().toISOString(),
+    synthetic: true,
+    positions,
+    scoreFor: 0, scoreAgainst: 0, timesServed: 0
+  };
+}
+
+/* ===========================================================================
+   Resolution.
+   Both sides can bury the same position — the spec's two rules ("buried is
+   auto-lost to the opponent") collide there. Resolved as a tie, which routes
+   it through TIE_GOES_TO so one constant governs every ambiguous case.
+=========================================================================== */
+function resolvePosition(playerCard, ghostCard) {
+  const pv = playerCard ? playerCard.value : null;
+  const gv = ghostCard ? ghostCard.value : null;
+  if (pv === null && gv === null) return CONFIG.TIE_GOES_TO;      // both buried
+  if (pv === null) return 'ghost';
+  if (gv === null) return 'player';                               // ghost's hole
+  if (pv === gv) return CONFIG.TIE_GOES_TO;
+  return pv > gv ? 'player' : 'ghost';
+}
+
+/* ===========================================================================
+   State
+=========================================================================== */
+let state = null;
+let revealTimer = null;
+
+function playerRoundCount() { return store.lines.filter(l => !l.synthetic).length; }
+
+function newRound(forcedGhostId) {
+  clearTimeout(revealTimer);
+  reseed(CONFIG.SEED);
+  const roundNumber = playerRoundCount() + 1;
+  // Bootstrap rounds face the bot because the archive is empty — unless the
+  // debug panel forced a specific line, which overrides the bootstrap.
+  const useBot = roundNumber <= CONFIG.BOT_ROUNDS && !forcedGhostId;
+  let ghost = null, ghostIsBot = false;
+  if (useBot) { ghost = botLine(); ghostIsBot = true; }
+  else {
+    ghost = pickGhost(forcedGhostId);
+    if (!ghost) { ghost = botLine(); ghostIsBot = true; }
+    else ghost = mutateLine(ghost);
+  }
+  state = {
+    phase: 'build',
+    roundNumber,
+    ghost, ghostIsBot,
+    hand: deal(CONFIG.HAND_SIZE),
+    slots: Array.from({ length: CONFIG.POSITION_COUNT }, () => ({ handIdx: null, buried: false, note: null })),
+    selected: null,
+    revealIdx: -1,
+    results: null,
+    meaningShown: {}
+  };
+  render();
+}
+
+/* --- derived ------------------------------------------------------------- */
+function slotCard(s) { return s.handIdx === null ? null : state.hand[s.handIdx]; }
+function playedPips() {
+  return state.slots.reduce((t, s) => t + (!s.buried && s.handIdx !== null ? state.hand[s.handIdx].value : 0), 0);
+}
+function playedCount() { return state.slots.filter(s => !s.buried && s.handIdx !== null).length; }
+function buriedCount() { return state.slots.filter(s => s.buried).length; }
+function filledCount() { return state.slots.filter(s => s.handIdx !== null).length; }
+function usedHandIdx() { const set = new Set(); for (const s of state.slots) if (s.handIdx !== null) set.add(s.handIdx); return set; }
+function currentCap() { return capFor(playedCount()); }
+function overCap() { return playedPips() > currentCap(); }
+function canCommit() { return filledCount() === CONFIG.POSITION_COUNT && !overCap(); }
+
+/* --- reachability --------------------------------------------------------
+   About 1 deal in 6 cannot fill all 7 positions under a cap of 55 — the
+   cheapest seven cards in hand already bust it. Burying is the way out, but a
+   player who doesn't know that just sees a dead Commit button. These answer
+   "how many buries does this hand need" so the UI can say so, up front.
+------------------------------------------------------------------------- */
+function cheapestSum(k) {
+  return state.hand.slice().sort((a, b) => a.value - b.value)
+    .slice(0, k).reduce((t, c) => t + c.value, 0);
+}
+function minBuriesNeeded() {
+  for (let b = 0; b <= CONFIG.MAX_BURIES; b++) {
+    const k = CONFIG.POSITION_COUNT - b;
+    if (cheapestSum(k) <= capFor(k)) return b;
+  }
+  return null;                       // no legal line at any allowed bury count
+}
+
+/* Positions where the ghost buried — the player takes these uncontested,
+   which is what makes a surfaced note tactically live rather than sentimental. */
+function ghostHoles() {
+  const holes = new Set();
+  if (!state.ghost) return holes;
+  for (const p of state.ghost.positions) if (p.buried) holes.add(p.position);
+  return holes;
+}
+
+/* ===========================================================================
+   Actions
+=========================================================================== */
+function selectCard(i) {
+  if (state.phase !== 'build') return;
+  if (usedHandIdx().has(i)) return;
+  state.selected = state.selected === i ? null : i;
+  render();
+}
+function placeAt(pos) {
+  if (state.phase !== 'build') return;
+  const s = state.slots[pos - 1];
+  if (s.handIdx !== null) { s.handIdx = null; s.buried = false; s.note = null; render(); return; }
+  if (state.selected === null) return;
+  s.handIdx = state.selected; s.buried = false; s.note = null;
+  state.selected = null;
+  render();
+}
+function buryAt(pos) {
+  if (state.phase !== 'build') return;
+  const s = state.slots[pos - 1];
+  if (s.buried) { s.handIdx = null; s.buried = false; s.note = null; render(); return; }
+  if (state.selected === null) return;
+  if (buriedCount() >= CONFIG.MAX_BURIES) return;
+  s.handIdx = state.selected; s.buried = true; s.note = null;
+  state.selected = null;
+  render();
+}
+
+function commit() {
+  if (!canCommit()) return;
+  const ghostByPos = new Map();
+  for (const p of state.ghost.positions) ghostByPos.set(p.position, p);
+
+  const results = [];
+  let scoreFor = 0, scoreAgainst = 0;
+  for (let pos = 1; pos <= CONFIG.POSITION_COUNT; pos++) {
+    const s = state.slots[pos - 1];
+    const pCard = s.buried ? null : slotCard(s);
+    const gp = ghostByPos.get(pos);
+    const gCard = (gp && !gp.buried) ? gp.card : null;
+    const winner = resolvePosition(pCard, gCard);
+    const pts = positionPoints(pos);
+    if (winner === 'player') scoreFor += pts; else scoreAgainst += pts;
+    results.push({
+      pos, pts, winner,
+      playerCard: pCard, playerBuried: s.buried ? slotCard(s) : null,
+      ghostCard: gCard, ghostBuried: (gp && gp.buried) ? gp.buried : null
+    });
+  }
+
+  // Record the line — the archive is the player's own, so only player lines
+  // are stored (bot rounds store the player's line, not the bot's).
+  const entry = {
+    id: 'p-' + Date.now().toString(36) + '-' + Math.floor(rng() * 1e6).toString(36),
+    roundNumber: state.roundNumber,
+    timestamp: new Date().toISOString(),
+    positions: state.slots.map((s, i) => {
+      const c = slotCard(s);
+      return s.buried
+        ? { position: i + 1, card: null, buried: { rank: c.rank, suit: c.suit }, note: s.note || null }
+        : { position: i + 1, card: c, buried: null, note: null };
+    }),
+    scoreFor, scoreAgainst, timesServed: 0
+  };
+  store.lines.push(entry);
+
+  if (state.ghost && !state.ghostIsBot) {
+    const served = store.lines.find(l => l.id === state.ghost.id);
+    if (served) served.timesServed = (served.timesServed | 0) + 1;
+  }
+  if (scoreFor > scoreAgainst) store.record.w++;
+  else if (scoreFor < scoreAgainst) store.record.l++;
+  else store.record.d++;
+  saveStore();
+
+  state.results = { rows: results, scoreFor, scoreAgainst };
+  state.phase = 'reveal';
+  state.revealIdx = -1;
+  render();
+  stepReveal();
+}
+
+function stepReveal() {
+  if (state.phase !== 'reveal') return;
+  state.revealIdx++;
+  render();
+  if (state.revealIdx >= CONFIG.POSITION_COUNT - 1) {
+    revealTimer = setTimeout(() => { if (state.phase === 'reveal') { state.phase = 'result'; render(); } },
+                             Math.max(CONFIG.REVEAL_DELAY_MS, 250));
+    return;
+  }
+  revealTimer = setTimeout(stepReveal, CONFIG.REVEAL_DELAY_MS);
+}
+function skipReveal() {
+  clearTimeout(revealTimer);
+  state.revealIdx = CONFIG.POSITION_COUNT - 1;
+  state.phase = 'result';
+  render();
+}
+
+/* ===========================================================================
+   Render
+=========================================================================== */
+const el = (tag, cls, txt) => { const n = document.createElement(tag); if (cls) n.className = cls; if (txt !== undefined) n.textContent = txt; return n; };
+const suitSpan = (suit, light) => { const s = el('span', light ? 'suit' : 'suit', suit); if (RED_SUITS.has(suit)) s.classList.add(light ? 'redsuit' : 'red'); return s; };
+const cardLabel = c => c ? c.rank + c.suit : '—';
+
+function render() {
+  document.getElementById('meta').textContent =
+    `round ${state.roundNumber} · ${store.record.w}W ${store.record.l}L ${store.record.d}D · ` +
+    (state.ghostIsBot ? 'bot' : 'ghost');
+  renderNote();
+  const stage = document.getElementById('stage');
+  stage.replaceChildren();
+  if (state.phase === 'build') renderBuild(stage);
+  else renderRevealOrResult(stage);
+  renderDebug();
+}
+
+/* --- the note ------------------------------------------------------------ */
+function renderNote() {
+  const host = document.getElementById('note-host');
+  host.replaceChildren();
+  if (state.phase !== 'build') return;
+  if (!state.ghost || state.ghostIsBot) return;
+  const buries = state.ghost.positions.filter(p => p.buried);
+  if (!buries.length) return;
+
+  const synthetic = !!state.ghost.synthetic;
+  const box = el('div', 'note');
+  box.appendChild(el('div', 'kicker', synthetic ? 'A seeded note' : `A note from round ${state.ghost.roundNumber}`));
+  for (const p of buries) {
+    const line = el('div', 'line');
+    line.append(synthetic ? 'A line here buried the ' : 'You buried the ');
+    const ref = el('span', 'cardref');
+    ref.append(p.buried.rank);
+    ref.appendChild(suitSpan(p.buried.suit, false));
+    line.appendChild(ref);
+    line.append(` at position ${p.position}.`);
+    box.appendChild(line);
+
+    if (CONFIG.CHEAT_LOG && p.note) {
+      const key = state.ghost.id + ':' + p.position;
+      if (state.meaningShown[key]) {
+        box.appendChild(el('div', 'meaning', '“' + p.note + '”'));
+      } else {
+        const b = el('button', 'small', 'What did I mean?');
+        b.style.marginTop = '6px';
+        b.onclick = () => { state.meaningShown[key] = true; render(); };
+        box.appendChild(b);
+      }
+    }
+  }
+  if (synthetic) box.appendChild(el('div', 'synthetic', 'Synthetic — seeded by the debug panel, not a bury you made.'));
+  host.appendChild(box);
+}
+
+/* --- build --------------------------------------------------------------- */
+function renderBuild(stage) {
+  const holes = ghostHoles();
+  const slots = el('div', 'slots');
+  const used = usedHandIdx();
+
+  for (let pos = 1; pos <= CONFIG.POSITION_COUNT; pos++) {
+    const s = state.slots[pos - 1];
+    const wrap = el('div', 'slotwrap');
+    const box = el('div', 'slot');
+    box.appendChild(el('div', 'pts', positionPoints(pos) + 'p'));
+
+    const c = slotCard(s);
+    if (s.buried) {
+      box.classList.add('buried');
+      const r = el('div', 'rank', c.rank); box.appendChild(r);
+      box.appendChild(suitSpan(c.suit, false));
+      box.appendChild(el('div', 'tag', 'buried'));
+    } else if (c) {
+      box.classList.add('filled');
+      box.appendChild(el('div', 'rank', c.rank));
+      box.appendChild(suitSpan(c.suit, false));
+    } else {
+      if (state.selected !== null) box.classList.add('armed');
+      if (holes.has(pos)) { box.classList.add('free'); box.appendChild(el('div', 'tag freetag', 'open')); }
+    }
+    box.onclick = () => placeAt(pos);
+    wrap.appendChild(box);
+
+    if (CONFIG.MAX_BURIES > 0) {
+      const bb = el('button', 'burybtn' + (s.buried ? ' on' : ''), s.buried ? 'undo' : 'bury');
+      bb.disabled = !s.buried && (state.selected === null || buriedCount() >= CONFIG.MAX_BURIES);
+      bb.onclick = (e) => { e.stopPropagation(); buryAt(pos); };
+      wrap.appendChild(bb);
+    }
+
+    slots.appendChild(wrap);
+  }
+  stage.appendChild(slots);
+
+  if (CONFIG.MAX_BURIES > 0) {
+    stage.appendChild(el('div', 'legend',
+      `Pick a card, then tap a position to play it — or tap bury to forfeit that position and keep the card off the cap. ` +
+      `${buriedCount()}/${CONFIG.MAX_BURIES} buried.` +
+      (holes.size ? `  Green positions are open — the ghost buried there.` : '')));
+  }
+
+  // Cheat-log capture: one field per buried slot, only while the crutch is on.
+  if (CONFIG.CHEAT_LOG) {
+    const buriedSlots = state.slots.map((s, i) => ({ s, pos: i + 1 })).filter(x => x.s.buried);
+    if (buriedSlots.length) {
+      const panel = el('div', 'panel');
+      panel.appendChild(el('div', 'dbg-note', 'Cheat log is on. What does each bury mean?'));
+      for (const { s, pos } of buriedSlots) {
+        const f = el('div', 'cheatfield');
+        f.appendChild(el('label', 'dbg-note', `Position ${pos} — ${cardLabel(slotCard(s))}`));
+        const inp = el('input');
+        inp.type = 'text';
+        inp.placeholder = 'what this bury means';
+        inp.value = s.note || '';
+        inp.oninput = () => { s.note = inp.value; };
+        f.appendChild(inp);
+        panel.appendChild(f);
+      }
+      stage.appendChild(panel);
+    }
+  }
+
+  const tray = el('div', 'tray');
+  state.hand.forEach((c, i) => {
+    const card = el('div', 'card' + (used.has(i) ? ' spent' : '') + (state.selected === i ? ' sel' : ''));
+    card.appendChild(el('div', 'rank', c.rank));
+    card.appendChild(suitSpan(c.suit, true));
+    card.appendChild(el('div', 'val', c.value));
+    card.onclick = () => selectCard(i);
+    tray.appendChild(card);
+  });
+  stage.appendChild(tray);
+
+  const bar = el('div', 'commitbar');
+  const cap = currentCap();
+  const need = minBuriesNeeded();
+  const over = playedPips() - cap;
+  const pips = el('div', 'pips' + (overCap() ? ' over' : ''));
+  const strong = el('b', null, `${playedPips()} / ${cap}`);
+  pips.append('Pips: ', strong);
+
+  // Say why Commit is dead. A disabled button with no reason reads as a bug.
+  let why;
+  if (need === null) {
+    why = 'No legal line in this hand — even at max buries. Re-deal.';
+  } else if (over > 0) {
+    why = `${over} over the cap — bury a position, or swap in a lower card.`;
+  } else if (filledCount() < CONFIG.POSITION_COUNT) {
+    why = `${filledCount()}/${CONFIG.POSITION_COUNT} positions set` +
+          (need > buriedCount() ? ` · this hand needs ${need === 1 ? 'a bury' : need + ' buries'} to fit` : '');
+  } else {
+    why = CONFIG.PIP_CAP_MODE === 'per-card' ? `per-card cap · ${playedCount()} played` : 'ready';
+  }
+  pips.appendChild(el('span', 'sub', why));
+  bar.appendChild(pips);
+
+  if (need === null) {
+    const rd = el('button', 'primary', 'Re-deal');
+    rd.onclick = () => newRound(null);
+    bar.appendChild(rd);
+  } else {
+    const btn = el('button', 'primary', 'Commit');
+    btn.disabled = !canCommit();
+    btn.onclick = commit;
+    bar.appendChild(btn);
+  }
+  stage.appendChild(bar);
+}
+
+/* --- reveal + result ----------------------------------------------------- */
+function renderRevealOrResult(stage) {
+  const r = state.results;
+  const shownUpTo = state.phase === 'result' ? CONFIG.POSITION_COUNT : state.revealIdx + 1;
+
+  let runFor = 0, runAgainst = 0;
+  for (let i = 0; i < shownUpTo; i++) {
+    if (r.rows[i].winner === 'player') runFor += r.rows[i].pts; else runAgainst += r.rows[i].pts;
+  }
+
+  const head = el('div', 'scoreline');
+  const left = el('div'); left.appendChild(el('div', 'big', String(runFor))); left.appendChild(el('div', 'legend', 'you'));
+  const right = el('div'); right.style.textAlign = 'right';
+  right.appendChild(el('div', 'big', String(runAgainst)));
+  right.appendChild(el('div', 'legend', state.ghostIsBot ? 'bot' : 'ghost'));
+  head.append(left, right);
+  stage.appendChild(head);
+
+  const list = el('div', 'panel');
+  list.style.padding = '0';
+  r.rows.forEach((row, i) => {
+    const shown = i < shownUpTo;
+    const active = state.phase === 'reveal' && i === state.revealIdx;
+    const rr = el('div', 'rrow' + (shown ? ' shown' : '') + (active ? ' active' : ''));
+    rr.appendChild(el('div', 'pos', `${row.pos} · ${row.pts}p`));
+
+    const mine = el('div', 'side' + (shown ? (row.winner === 'player' ? ' won' : ' lost') : ''));
+    if (row.playerBuried) {
+      mine.appendChild(el('span', 'buriedmark', 'buried'));
+      const t = el('span', null, shown ? cardLabel(row.playerBuried) : '');
+      mine.appendChild(t);
+    } else {
+      mine.appendChild(el('span', null, shown ? cardLabel(row.playerCard) : '·'));
+    }
+
+    const theirs = el('div', 'side' + (shown ? (row.winner === 'ghost' ? ' won' : ' lost') : ''));
+    if (row.ghostBuried) theirs.appendChild(el('span', 'buriedmark', shown ? 'buried ' + row.ghostBuried.rank + row.ghostBuried.suit : 'buried'));
+    else theirs.appendChild(el('span', null, shown ? cardLabel(row.ghostCard) : '·'));
+
+    const who = el('div', 'who', shown ? (row.winner === 'player' ? '+' + row.pts : '—') : '');
+    rr.append(mine, theirs, who);
+    list.appendChild(rr);
+  });
+  stage.appendChild(list);
+
+  const bar = el('div', 'commitbar');
+  if (state.phase === 'reveal') {
+    const info = el('div', 'pips'); info.append(`Revealing ${Math.min(shownUpTo, CONFIG.POSITION_COUNT)} / ${CONFIG.POSITION_COUNT}`);
+    bar.appendChild(info);
+    const skip = el('button', null, 'Skip');
+    skip.onclick = skipReveal;
+    bar.appendChild(skip);
+  } else {
+    const tally = el('div', 'pips');
+    tally.appendChild(el('div', 'result-n', `${r.scoreFor} / ${TOTAL_POT}`));
+    tally.appendChild(el('div', 'result-h',
+      r.scoreFor > r.scoreAgainst ? 'You take the round.' :
+      r.scoreFor < r.scoreAgainst ? 'The line beat you.' : 'Split.'));
+    bar.appendChild(tally);
+    const next = el('button', 'primary', 'Next round');
+    next.onclick = () => newRound(null);
+    bar.appendChild(next);
+  }
+  stage.appendChild(bar);
+}
+
+/* ===========================================================================
+   Debug panel
+=========================================================================== */
+function renderDebug() {
+  document.getElementById('d-capval').textContent = CONFIG.PIP_CAP;
+  document.getElementById('d-cap').value = CONFIG.PIP_CAP;
+  document.getElementById('d-capmode').value = CONFIG.PIP_CAP_MODE;
+  document.getElementById('d-maxburies').value = String(CONFIG.MAX_BURIES);
+  document.getElementById('d-tie').value = CONFIG.TIE_GOES_TO;
+  document.getElementById('d-delay').value = CONFIG.REVEAL_DELAY_MS;
+  document.getElementById('d-cheat').checked = CONFIG.CHEAT_LOG;
+  document.getElementById('dbgflags').textContent = CONFIG.CHEAT_LOG ? '· cheat log ON' : '';
+
+  const perCard = Math.floor(CONFIG.PIP_CAP / CONFIG.POSITION_COUNT);
+  document.getElementById('d-capnote').textContent =
+    CONFIG.PIP_CAP_MODE === 'per-card'
+      ? `Budget is ${perCard} per card played: ${perCard * CONFIG.POSITION_COUNT} at 0 buries, ` +
+        `${perCard * (CONFIG.POSITION_COUNT - 1)} at 1, ${perCard * (CONFIG.POSITION_COUNT - 2)} at 2. ` +
+        `Burying never loosens the cap — which tools/bury-sim.mjs says over-corrects: never-bury then wins by ~7 of 28. ` +
+        `Kept as an experiment, not a recommendation.`
+      : `One budget of ${CONFIG.PIP_CAP} however many cards you play. Measured over 8k hands: the cap binds ` +
+        `86% of hands at 0 buries, 72% at 1, 40% at 2 — so a second bury largely escapes it. ` +
+        `Around 60 the four bury strategies land within 0.7 points of each other.`;
+
+  document.getElementById('d-archcount').textContent =
+    `${store.lines.length} lines · ${store.lines.filter(l => l.positions.some(p => p.buried)).length} carry a bury · ` +
+    `${store.lines.filter(l => (l.timesServed | 0) === 0).length} unserved`;
+
+  const sel = document.getElementById('d-forceghost');
+  const prev = sel.value;
+  sel.replaceChildren();
+  sel.appendChild(new Option('— pick a line —', ''));
+  for (const l of store.lines) {
+    const b = l.positions.filter(p => p.buried).length;
+    sel.appendChild(new Option(
+      `r${l.roundNumber}${l.synthetic ? ' (syn)' : ''} · ${b} buried · served ${l.timesServed | 0}`, l.id));
+  }
+  sel.value = prev;
+
+  const tbl = document.getElementById('d-archive');
+  tbl.replaceChildren();
+  const thead = el('thead'); const hr = el('tr');
+  for (const h of ['round', 'when', 'line (1→7)', 'buried', 'score', 'served']) hr.appendChild(el('th', null, h));
+  thead.appendChild(hr); tbl.appendChild(thead);
+  const tb = el('tbody');
+  for (const l of store.lines.slice().reverse().slice(0, 60)) {
+    const tr = el('tr');
+    tr.appendChild(el('td', null, (l.synthetic ? 'syn ' : '') + l.roundNumber));
+    tr.appendChild(el('td', null, (l.timestamp || '').slice(5, 16).replace('T', ' ')));
+    tr.appendChild(el('td', null, l.positions.map(p => p.buried ? '▪' : cardLabel(p.card)).join(' ')));
+    const buries = l.positions.filter(p => p.buried)
+      .map(p => `${p.buried.rank}${p.buried.suit}@${p.position}` + (p.note ? ` “${p.note}”` : ''));
+    tr.appendChild(el('td', 'b', buries.join(', ') || '—'));
+    tr.appendChild(el('td', null, `${l.scoreFor}–${l.scoreAgainst}`));
+    tr.appendChild(el('td', null, String(l.timesServed | 0)));
+    tb.appendChild(tr);
+  }
+  tbl.appendChild(tb);
+}
+
+function wireDebug() {
+  const cap = document.getElementById('d-cap');
+  cap.oninput = () => { CONFIG.PIP_CAP = Number(cap.value); render(); };
+  document.getElementById('d-capmode').onchange = e => { CONFIG.PIP_CAP_MODE = e.target.value; render(); };
+  document.getElementById('d-maxburies').onchange = e => {
+    CONFIG.MAX_BURIES = Number(e.target.value);
+    if (state.phase === 'build') {
+      // Drop buries that no longer fit the new limit, highest position first.
+      let over = buriedCount() - CONFIG.MAX_BURIES;
+      for (let i = state.slots.length - 1; i >= 0 && over > 0; i--) {
+        if (state.slots[i].buried) { state.slots[i].buried = false; state.slots[i].handIdx = null; over--; }
+      }
+    }
+    render();
+  };
+  document.getElementById('d-tie').onchange = e => { CONFIG.TIE_GOES_TO = e.target.value; render(); };
+  document.getElementById('d-delay').onchange = e => { CONFIG.REVEAL_DELAY_MS = Math.max(0, Number(e.target.value) || 0); };
+  document.getElementById('d-cheat').onchange = e => { CONFIG.CHEAT_LOG = e.target.checked; render(); };
+
+  document.getElementById('d-seed').onclick = () => {
+    const base = store.lines.length;
+    for (let i = 0; i < 20; i++) store.lines.push(syntheticLine(base + i + 1));
+    saveStore(); render();
+  };
+  document.getElementById('d-reset').onclick = () => {
+    if (!confirm('Reset the archive? Every recorded line and bury is deleted.')) return;
+    store = blankStore(); saveStore(); newRound(null);
+  };
+  document.getElementById('d-redeal').onclick = () => newRound(null);
+  document.getElementById('d-forceapply').onclick = () => {
+    const id = document.getElementById('d-forceghost').value;
+    if (!id) return;
+    newRound(id);
+    document.getElementById('d-forceghost').value = id;
+  };
+}
+
+wireDebug();
+newRound(null);
+</script>
+</body>
+</html>

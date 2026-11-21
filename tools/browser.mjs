@@ -12,7 +12,7 @@
  *
  * Never run `playwright install` — the browsers are already here.
  */
-import { readdirSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const ROOT = process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers';
@@ -23,7 +23,12 @@ export function chromiumPath() {
     .sort()
     .pop();
   if (!dir) throw new Error(`no chromium build under ${ROOT}`);
-  return `${ROOT}/${dir}/chrome-linux/chrome`;
+  // Newer builds ship as chrome-linux64/, older ones as chrome-linux/.
+  for (const sub of ['chrome-linux64', 'chrome-linux']) {
+    const path = `${ROOT}/${dir}/${sub}/chrome`;
+    if (existsSync(path)) return path;
+  }
+  throw new Error(`no chrome binary under ${ROOT}/${dir}`);
 }
 
 export function launch(opts = {}) {

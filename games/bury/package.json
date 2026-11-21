@@ -1,0 +1,10 @@
+{
+  "name": "bury",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "node -e \"require('fs').mkdirSync('dist',{recursive:true});require('fs').copyFileSync('index.html','dist/index.html')\"",
+    "sim": "node tools/bury-sim.mjs"
+  }
+}

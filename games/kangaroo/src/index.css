@@ -1,0 +1,449 @@
+@import 'tailwindcss';
+
+html,
+body {
+  height: 100%;
+}
+
+/*
+ * On a phone the page grows with its content and the document scrolls, so the
+ * score log can run to full length. The desktop layout is the fixed-height,
+ * internally-scrolling one, so pin the root only there.
+ */
+#root {
+  min-height: 100%;
+}
+
+@media (min-width: 1280px) {
+  #root {
+    height: 100%;
+  }
+}
+
+body {
+  background:
+    radial-gradient(120% 80% at 50% -10%, #1a1f2b 0%, #12151d 45%, #0d1015 100%),
+    #0d1015;
+  background-attachment: fixed;
+  color: #e6e8ec;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+/*
+ * Board and hand cards are sized off these, so the 7x7 grid always fits the
+ * viewport without a media query. The min() caps them at the desktop size and
+ * shrinks them only when the screen is genuinely narrow.
+ *   cell:  page padding (2rem) + 6 gaps of 4px
+ *   hand:  page padding (2rem) + tray padding (1rem) + 6 gaps of 6px
+ */
+:root {
+  --cell: min(76px, calc((100vw - 2rem - 24px) / 7));
+  --hand-card-w: min(64px, calc((100vw - 3rem - 36px) / 7));
+}
+
+/* Taps target cards and cells, never text selection or a grey flash. */
+button,
+[data-cell] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+[data-cell] {
+  user-select: none;
+  /* --footer-h is set by App while the preview/hand footer is docked, so
+     scrolling a targeted cell into view clears it instead of hiding behind. */
+  scroll-margin-bottom: calc(var(--footer-h, 0px) + 12px);
+  scroll-margin-top: 12px;
+}
+
+/* A drag must own the gesture, or the page scrolls out from under the card. */
+[data-hand-index] {
+  touch-action: none;
+}
+
+/* ---------------------------------------------------------------------------
+ * Surfaces. Depth comes from three consistent moves: a soft top-lit gradient,
+ * a 1px light seam along the top edge, and shadow that separates the layer
+ * from the one behind it. Cards sit on the board; the board sits in the page.
+ * ------------------------------------------------------------------------- */
+
+.card-face {
+  background:
+    radial-gradient(circle at 1px 1px, rgba(0, 0, 0, 0.05) 0.5px, transparent 0.5px),
+    linear-gradient(163deg, #ffffff 0%, #f4f5f7 42%, #dde1e7 100%);
+  background-size: 3px 3px, 100% 100%;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.1),
+    0 1px 1px rgba(0, 0, 0, 0.4),
+    0 3px 6px rgba(0, 0, 0, 0.35);
+}
+
+/*
+ * The tray the grid sits in — a recessed table surface. Three layers, thinnest
+ * on top: a warm lamp wash (the table is lit from above, not the cool chrome
+ * around it), a fine woven grain (felt, not glass), then the same navy well
+ * the rest of the UI uses so the board still reads as part of one screen.
+ */
+.board-tray {
+  background:
+    radial-gradient(65% 45% at 50% 0%, rgba(255, 197, 138, 0.06) 0%, transparent 70%),
+    radial-gradient(circle at 1px 1px, rgba(0, 0, 0, 0.14) 0.5px, transparent 0.5px),
+    radial-gradient(130% 110% at 50% 0%, #232a3a 0%, #181d28 55%, #12161e 100%);
+  background-size:
+    100% 100%,
+    4px 4px,
+    100% 100%;
+  border: 1px solid #272d3a;
+  border-radius: 12px;
+  box-shadow:
+    inset 0 3px 18px rgba(0, 0, 0, 0.72),
+    inset 0 0 46px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 10px 26px rgba(0, 0, 0, 0.4);
+}
+
+/* Panels: status bar, score log, preview. */
+.panel {
+  background: linear-gradient(180deg, #191d26 0%, #12151c 100%);
+  border: 1px solid #272d3a;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.panel-inset {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, rgba(255, 255, 255, 0.015) 100%);
+  border: 1px solid #232936;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+/* ---------------------------------------------------------------------------
+ * Motion. Short, physical, and never blocking — every animation here is
+ * decorative, so nothing waits on it to finish.
+ * ------------------------------------------------------------------------- */
+
+@keyframes deal-in {
+  from {
+    opacity: 0;
+    transform: translateY(22px) scale(0.9) rotate(-4deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * The hand fans like cards actually held: each one tilted a little further
+ * than its neighbour around a shared pivot at the bottom, the outer cards
+ * dipping along the arc. `--fan-rot`/`--fan-y` are set per card in
+ * HandTray.tsx from its offset from the hand's centre; this class only
+ * consumes them, the same split item 6 used for the near-miss badge (one
+ * element carries position, animation/interaction never fights it for the
+ * `transform` property).
+ */
+.hand-card {
+  transform: rotate(var(--fan-rot, 0deg)) translateY(var(--fan-y, 0px));
+  transform-origin: bottom center;
+}
+
+.hand-card.is-selected {
+  transform: translateY(-8px) rotate(0deg);
+}
+
+@media (min-width: 1280px) {
+  /* Picking a card out of the fan: it lifts clear of its neighbours and
+     straightens, rather than just nudging up at its held angle. `z-index`
+     keeps it clear of a rotated neighbour's corner at the fan's outer edges,
+     the same reason `.is-selected` gets one. */
+  .hand-card:not(.is-selected):not(:disabled):hover {
+    z-index: 10;
+    transform: translateY(calc(var(--fan-y, 0px) - 6px)) rotate(0deg);
+  }
+}
+
+@keyframes discard-fly {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-90px) scale(0.82) rotate(14deg);
+  }
+}
+
+@keyframes score-fly {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.85);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--score-fly-dx)), calc(-50% + var(--score-fly-dy))) scale(0.6);
+  }
+}
+
+@keyframes place-drop {
+  0% {
+    opacity: 0;
+    transform: scale(1.35) rotate(-7deg);
+  }
+  65% {
+    opacity: 1;
+    transform: scale(0.96) rotate(1deg);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 240ms — under the visual budget's 250ms cap. This item is what actually
+   touches the deal, so it's the point to bring it into budget; previously
+   320ms, noted as a pre-existing violation items 1-8 correctly left alone. */
+.animate-deal {
+  animation: deal-in 240ms cubic-bezier(0.2, 0.9, 0.3, 1.2) backwards;
+}
+
+.animate-discard {
+  animation: discard-fly 380ms cubic-bezier(0.4, 0, 0.7, 0.2) forwards;
+}
+
+.animate-place {
+  animation: place-drop 260ms cubic-bezier(0.2, 0.8, 0.3, 1.1);
+}
+
+/* 220ms — within the visual budget's 250ms cap, and matched to the score
+   count-up in StatusBar so the flying total and the ticking number land
+   together. */
+.animate-score-fly {
+  animation: score-fly 220ms cubic-bezier(0.3, 0, 0.4, 1) forwards;
+}
+
+@keyframes run-end-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-run-end {
+  animation: run-end-in 200ms cubic-bezier(0.2, 0.8, 0.3, 1.1) backwards;
+}
+
+@keyframes cascade-lit {
+  0% {
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* One cell's turn in the line-scoring cascade. `animation-delay` (set inline,
+   per cell) is what actually staggers them — this class only defines what a
+   single cell's flash looks like. 200ms, under the 250ms cap; `both` so a
+   cell stays invisible through its delay instead of flashing early. */
+.cascade-flash {
+  animation: cascade-lit 200ms cubic-bezier(0.3, 0, 0.4, 1) both;
+}
+
+.cascade-flash-chips {
+  background: rgba(56, 189, 248, 0.55);
+}
+
+/* A run reaching the cap gets a permanent violet/pink inset border, computed
+   fresh every render from board state in BoardGrid — this overlay rides on
+   top of that for one pulse so the marker reads as arriving with a snap and
+   a glow, rather than the border just being present on the next paint. 220ms,
+   under the 250ms cap; `both` so it starts invisible rather than flashing at
+   full strength on its very first frame. */
+@keyframes line-punch-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+.line-punch {
+  animation: line-punch-in 220ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.line-punch-row {
+  box-shadow:
+    inset 0 3px 0 0 rgba(167, 139, 250, 0.9),
+    inset 0 -3px 0 0 rgba(167, 139, 250, 0.9),
+    0 0 14px rgba(167, 139, 250, 0.6);
+}
+
+.line-punch-col {
+  box-shadow:
+    inset 3px 0 0 0 rgba(244, 114, 182, 0.9),
+    inset -3px 0 0 0 rgba(244, 114, 182, 0.9),
+    0 0 14px rgba(244, 114, 182, 0.6);
+}
+
+/* Near-miss feedback: an illegal drop used to be a silent no-op. The badge's
+   own visible time is a JS hold timer (see nearMiss.ts), not this animation's
+   duration, so reduced-motion collapsing the fade to ~0 still leaves the
+   message readable for its full hold — only the flourish is cut. */
+/* Only opacity/scale — never a translate — since the badge is centred and
+   positioned by a plain, unanimated wrapper div one level up (both callers'
+   own position math would otherwise fight this keyframe for the `transform`
+   property, which only the last-applied one wins). */
+@keyframes near-miss-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes near-miss-out {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes near-miss-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+
+.near-miss-badge {
+  animation: near-miss-in 160ms cubic-bezier(0.3, 0, 0.4, 1) both;
+}
+
+.near-miss-badge.near-miss-leaving {
+  animation: near-miss-out 160ms cubic-bezier(0.3, 0, 0.4, 1) both;
+}
+
+.near-miss-shake {
+  animation: near-miss-shake 220ms ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Kangaroo — letter tiles and the racks they sit in.
+ *
+ * A tile has to read as a physical object or moving it is not satisfying, so
+ * it borrows the card's lighting: a warm gradient, a light seam on the top
+ * edge, and a shadow that lifts it off the well. Wood, not paper — the rack is
+ * a Scrabble rack, and the tiles are meant to look at home on it.
+ * ------------------------------------------------------------------------- */
+
+.kangaroo {
+  --tile: 44px;
+}
+
+@media (min-width: 900px) {
+  .kangaroo {
+    --tile: 52px;
+  }
+}
+
+/* A drag must own the gesture, or the page scrolls out from under the tile. */
+.kangaroo [data-tile-id] {
+  touch-action: none;
+  user-select: none;
+}
+
+.tile-face {
+  background:
+    radial-gradient(circle at 1px 1px, rgba(120, 80, 30, 0.07) 0.5px, transparent 0.5px),
+    linear-gradient(163deg, #fdf6e6 0%, #f3e7cd 45%, #e2d0ac 100%);
+  background-size: 3px 3px, 100% 100%;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(120, 85, 40, 0.22),
+    0 1px 1px rgba(0, 0, 0, 0.45),
+    0 3px 6px rgba(0, 0, 0, 0.35);
+}
+
+/* A tray tile is the same tile, set down. Desaturated and pressed into the
+   well rather than greyed out — it is still a letter you own. */
+.tile-tray {
+  filter: saturate(0.5) brightness(0.82);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 1px 1px rgba(0, 0, 0, 0.4);
+}
+
+/* Picked up by tap or keyboard: it lifts, exactly as it would under a finger. */
+.tile-selected {
+  filter: none;
+  transform: translateY(-5px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 0 0 2px #38bdf8,
+    0 6px 12px rgba(0, 0, 0, 0.5);
+}
+
+/* The rack: a lit wooden ledge. The tray below it is the same ledge in
+   shadow, so removed letters read as set aside rather than thrown away. */
+.rack-well {
+  background:
+    radial-gradient(70% 60% at 50% 0%, rgba(255, 197, 138, 0.07) 0%, transparent 70%),
+    linear-gradient(180deg, #2a2f3d 0%, #1b202b 100%);
+  border: 1px solid #333a4a;
+  box-shadow:
+    inset 0 3px 12px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.tray-well {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.4) 0%, rgba(255, 255, 255, 0.012) 100%);
+  border: 1px dashed #2c3342;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.45);
+}
