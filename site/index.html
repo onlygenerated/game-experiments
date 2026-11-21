@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Game experiments</title>
+<style>
+  :root {
+    --bg: #f6f4ef; --card: #ffffff; --ink: #1d1b18; --muted: #6b665d;
+    --line: #e3ded4; --accent: #2f5d50; --accent-ink: #ffffff; --tag: #ece7dc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121315; --card: #1b1d20; --ink: #ece9e2; --muted: #9a958c;
+      --line: #2b2e33; --accent: #7fc2ab; --accent-ink: #0f1a16; --tag: #26292d;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 880px; margin: 0 auto; padding: 48px 16px 64px; }
+  h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { color: var(--muted); margin: 0 0 32px; }
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 20px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .card h2 { font-size: 19px; margin: 0; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; flex: 1; }
+  .tag {
+    align-self: flex-start; font-size: 12px; padding: 2px 8px; border-radius: 999px;
+    background: var(--tag); color: var(--muted);
+  }
+  .links { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .play {
+    background: var(--accent); color: var(--accent-ink); text-decoration: none;
+    padding: 8px 14px; border-radius: 8px; font-weight: 600; font-size: 14px;
+  }
+  .play:hover { filter: brightness(1.08); }
+  .more { color: var(--muted); font-size: 14px; }
+  .more:hover { color: var(--ink); }
+  footer { margin-top: 40px; color: var(--muted); font-size: 14px; }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Game experiments</h1>
+  <p class="lede">Small prototypes, one folder each under <code>games/</code>. Pick one to play.</p>
+
+  <div class="grid">
+    <article class="card">
+      <span class="tag">Roguelike · in progress</span>
+      <h2>Unfolding</h2>
+      <p>A dungeon crawl that starts almost too simple and grows its own rulebook. You draft the rules each world adopts, and every rule cuts both ways.</p>
+      <div class="links">
+        <a class="play" href="./unfolding/">Play</a>
+        <a class="more" href="https://github.com/onlygenerated/game-experiments/tree/main/games/unfolding">Source</a>
+      </div>
+    </article>
+
+    <article class="card">
+      <span class="tag">Card placement · explored out</span>
+      <h2>Grid cards</h2>
+      <p>Place a card on a grid and score every line it joins. Three boards (grid, hex sprawl, rooms) and thirty scoring variants.</p>
+      <div class="links">
+        <a class="play" href="./grid-cards/">Play</a>
+        <a class="more" href="https://github.com/onlygenerated/game-experiments/tree/main/games/grid-cards">Source</a>
+      </div>
+    </article>
+
+    <article class="card">
+      <span class="tag">Card game · prototype</span>
+      <h2>Bury</h2>
+      <p>Nine cards, seven positions, a pip cap. Bury a card to dodge the cap, and it comes back to haunt you when that line returns as a ghost.</p>
+      <div class="links">
+        <a class="play" href="./bury/">Play</a>
+        <a class="more" href="https://github.com/onlygenerated/game-experiments/tree/main/games/bury">Source</a>
+      </div>
+    </article>
+
+    <article class="card">
+      <span class="tag">Word toy · playable</span>
+      <h2>Kangaroo racks</h2>
+      <p>Hunt for kangaroo words, words hiding a synonym inside them (lager carries ale), by stripping letters off racks of tiles.</p>
+      <div class="links">
+        <a class="play" href="./kangaroo/">Play</a>
+        <a class="more" href="https://github.com/onlygenerated/game-experiments/tree/main/games/kangaroo">Source</a>
+      </div>
+    </article>
+
+    <article class="card">
+      <span class="tag">Spec only · not built</span>
+      <h2>Qwirkle 3D</h2>
+      <p>The Qwirkle set and line rule in a cubic lattice, so a placement joins three lines instead of two. Nothing playable yet.</p>
+      <div class="links">
+        <a class="more" href="https://github.com/onlygenerated/game-experiments/tree/main/games/qwirkle-3d">Read the spec</a>
+      </div>
+    </article>
+  </div>
+
+  <footer>Built from <a href="https://github.com/onlygenerated/game-experiments">onlygenerated/game-experiments</a> by <code>npm run site</code>.</footer>
+</main>
+</body>
+</html>

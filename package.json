@@ -1,9 +1,13 @@
 {
   "name": "game-experiments",
   "private": true,
-  "workspaces": ["games/*"],
+  "workspaces": [
+    "games/*"
+  ],
   "scripts": {
     "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "site": "node tools/build-site.mjs",
+    "site:preview": "npx vite preview --outDir _site --port 4300"
   }
 }
