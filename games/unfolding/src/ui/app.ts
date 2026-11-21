@@ -190,6 +190,7 @@ export class App {
         <button class="recenter" data-cmd="recenter" hidden>⌖ Center on ${esc(game.run.player.name)}</button>
         <div class="toasts" aria-hidden="true"></div>
         <button data-cmd="fire" class="fire-fab" hidden></button>
+        <button data-cmd="stairs" class="stairs-fab" hidden></button>
         <div class="lookslot"></div></main>
       <section class="log" aria-live="polite"></section>
       <nav class="pad" aria-label="Controls">
@@ -442,6 +443,17 @@ export class App {
       if (stairsBtn.textContent !== label) stairsBtn.textContent = label;
       (stairsBtn as HTMLButtonElement).disabled = !here;
       stairsBtn.classList.toggle('here', !!here);
+    }
+    // Without the on-screen pad (desktop), the same action floats over the map
+    // while you stand on stairs.
+    const stairsFab = q('.stairs-fab');
+    if (stairsFab) {
+      const here = this.stairsHere();
+      const padEl = q('.pad');
+      const padUp = !!padEl && getComputedStyle(padEl).display !== 'none';
+      stairsFab.hidden = !here || padUp || !!this.look;
+      const label = here === 'up' ? '↑ Ascend' : '↓ Descend';
+      if (here && stairsFab.textContent !== label) stairsFab.textContent = label;
     }
     const pickup = q('.pad-pickup') as HTMLButtonElement | null;
     if (pickup) pickup.disabled = game.itemsHere().length === 0;

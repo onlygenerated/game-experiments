@@ -388,6 +388,8 @@ try {
       a.refresh();
     });
     const depthBefore = await page.evaluate(() => window.unfolding.game.run.depth);
+    if (vp.isMobile) ok(`${vp.name}: with the pad up, no extra stairs button covers the map`, !(await page.isVisible('.stairs-fab')));
+    else ok(`${vp.name}: on stairs a Descend button floats over the map`, /Descend/.test((await page.textContent('.stairs-fab')) ?? '') && (await page.isVisible('.stairs-fab')));
     if (vp.isMobile) {
       const lit = await page.evaluate(() => { const b = document.querySelector('.pad-stairs'); return { on: !b.disabled && b.classList.contains('here'), text: b.textContent }; });
       ok(`${vp.name}: on stairs down the stairs button lights up as Descend`, lit.on && /Descend/.test(lit.text));
@@ -398,8 +400,8 @@ try {
     await shot(page, `${vp.name}-2h-confirm`);
     await page.click('.modal.confirm [data-cmd="dismiss"]');
     ok(`${vp.name}: Stay keeps you here`, (await page.evaluate(() => window.unfolding.game.run.depth)) === depthBefore);
-    if (vp.isMobile) await page.click('.pad-stairs');
-    else await page.keyboard.press('>');
+    // Phone: the pad's button. Desktop: the one floating over the map.
+    await page.click(vp.isMobile ? '.pad-stairs' : '.stairs-fab');
     await page.click('[data-cmd="stairs-confirmed"]');
     ok(`${vp.name}: Descend anyway descends`, (await page.evaluate(() => window.unfolding.game.run.depth)) === depthBefore + 1);
 
