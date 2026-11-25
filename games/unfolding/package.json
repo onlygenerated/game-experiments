@@ -10,7 +10,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "smoke": "vite build && node tools/smoke.mjs",
-    "single": "vite build && node tools/inline.mjs"
+    "single": "vite build && node tools/inline.mjs",
+    "single:sim": "vite build --mode sim && node tools/inline.mjs dist-sim sim.html sim"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
