@@ -192,6 +192,7 @@ export class App {
         <button class="recenter" data-cmd="recenter" hidden>⌖ Center on ${esc(game.run.player.name)}</button>
         <div class="toasts" aria-hidden="true"></div>
         <button data-cmd="fire" class="fire-fab" hidden></button>
+        <button data-cmd="stairs" class="stairs-fab" hidden></button>
         <div class="lookslot"></div></main>
       <section class="log" aria-live="polite"></section>
       <nav class="pad" aria-label="Controls">
@@ -201,7 +202,7 @@ export class App {
             .join('')}
         </div>
         <div class="pad-actions">
-          <button data-cmd="stairs" class="pad-stairs">Descend</button>
+          <button data-cmd="stairs" class="pad-stairs" disabled>Stairs</button>
           <button data-cmd="wait">Wait</button>
           <button data-cmd="pickup" class="pad-pickup" disabled>Pick up</button>
           <button data-cmd="look" class="pad-look" aria-pressed="false">Look</button>
@@ -406,7 +407,6 @@ export class App {
     this.act(at ? { type: 'fire', x: at.x, y: at.y } : { type: 'fire' });
   }
 
-  /** Descend, unless that would leave an unanswered shrine behind and the player wants a warning. */
   /** Which stairs the player is standing on, if any. */
   private stairsHere(): 'up' | 'down' | null {
     const g = this.game;
@@ -470,7 +470,25 @@ export class App {
     const q = (s: string) => this.root.querySelector<HTMLElement>(s);
     q('.topbar')!.innerHTML = topbarHTML(game, !!this.look);
     const stairsBtn = q('.pad-stairs');
-    if (stairsBtn) stairsBtn.textContent = this.stairsHere() === 'up' ? 'Climb up' : 'Descend';
+    if (stairsBtn) {
+      // Dim until you stand on stairs, then lit and named for the way they go.
+      const here = this.stairsHere();
+      const label = here === 'up' ? 'Ascend' : here === 'down' ? 'Descend' : 'Stairs';
+      if (stairsBtn.textContent !== label) stairsBtn.textContent = label;
+      (stairsBtn as HTMLButtonElement).disabled = !here;
+      stairsBtn.classList.toggle('here', !!here);
+    }
+    // Without the on-screen pad (desktop), the same action floats over the map
+    // while you stand on stairs.
+    const stairsFab = q('.stairs-fab');
+    if (stairsFab) {
+      const here = this.stairsHere();
+      const padEl = q('.pad');
+      const padUp = !!padEl && getComputedStyle(padEl).display !== 'none';
+      stairsFab.hidden = !here || padUp || !!this.look;
+      const label = here === 'up' ? '↑ Ascend' : '↓ Descend';
+      if (here && stairsFab.textContent !== label) stairsFab.textContent = label;
+    }
     const pickup = q('.pad-pickup') as HTMLButtonElement | null;
     if (pickup) pickup.disabled = game.itemsHere().length === 0;
     // The means' own verb (Fire, Cast, Speak), on the map where a thumb can reach it,

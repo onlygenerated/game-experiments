@@ -378,6 +378,14 @@ try {
       await page.mouse.move(box.x + 2, box.y + box.height + 40);
     }
 
+    if (vp.isMobile) {
+      const dim = await page.evaluate(() => {
+        const g = window.unfolding.game, f = g.run.floor, p = g.run.player, b = document.querySelector('.pad-stairs');
+        const on = (p.x === f.stairs.x && p.y === f.stairs.y) || f.tiles[p.y * f.w + p.x] === 3;
+        return b.disabled === !on && b.classList.contains('here') === on;
+      });
+      ok(`${vp.name}: the stairs button is dim off the stairs and lit on them`, dim);
+    }
     // Leaving an unanswered shrine behind asks first.
     await page.evaluate(() => {
       const a = window.unfolding, g = a.game, f = g.run.floor;
@@ -387,14 +395,20 @@ try {
       a.refresh();
     });
     const depthBefore = await page.evaluate(() => window.unfolding.game.run.depth);
+    if (vp.isMobile) ok(`${vp.name}: with the pad up, no extra stairs button covers the map`, !(await page.isVisible('.stairs-fab')));
+    else ok(`${vp.name}: on stairs a Descend button floats over the map`, /Descend/.test((await page.textContent('.stairs-fab')) ?? '') && (await page.isVisible('.stairs-fab')));
+    if (vp.isMobile) {
+      const lit = await page.evaluate(() => { const b = document.querySelector('.pad-stairs'); return { on: !b.disabled && b.classList.contains('here'), text: b.textContent }; });
+      ok(`${vp.name}: on stairs down the stairs button lights up as Descend`, lit.on && /Descend/.test(lit.text));
+    }
     if (vp.isMobile) await page.click('.pad-stairs');
     else await page.keyboard.press('>');
     ok(`${vp.name}: descending past a live shrine asks first`, await page.isVisible('.modal.confirm'));
     await shot(page, `${vp.name}-2h-confirm`);
     await page.click('.modal.confirm [data-cmd="dismiss"]');
     ok(`${vp.name}: Stay keeps you here`, (await page.evaluate(() => window.unfolding.game.run.depth)) === depthBefore);
-    if (vp.isMobile) await page.click('.pad-stairs');
-    else await page.keyboard.press('>');
+    // Phone: the pad's button. Desktop: the one floating over the map.
+    await page.click(vp.isMobile ? '.pad-stairs' : '.stairs-fab');
     await page.click('[data-cmd="stairs-confirmed"]');
     ok(`${vp.name}: Descend anyway descends`, (await page.evaluate(() => window.unfolding.game.run.depth)) === depthBefore + 1);
 
@@ -408,10 +422,10 @@ try {
     });
     ok(`${vp.name}: you arrive on stairs up`, onUp);
     if (vp.isMobile) {
-      ok(`${vp.name}: the stairs button says Climb up`, (await page.textContent('.pad-stairs')) === 'Climb up');
+      ok(`${vp.name}: the stairs button says Ascend`, /Ascend/.test((await page.textContent('.pad-stairs')) ?? ''));
       await page.click('.pad-stairs');
     } else await page.keyboard.press('<');
-    ok(`${vp.name}: climbing past a live shrine asks first`, /Climb up anyway/.test((await page.textContent('.modal.confirm')) ?? ''));
+    ok(`${vp.name}: climbing past a live shrine asks first`, /Ascend anyway/.test((await page.textContent('.modal.confirm')) ?? ''));
     await page.click('[data-cmd="stairs-confirmed"]');
     const up = await page.evaluate(() => { const g = window.unfolding.game, f = g.run.floor, p = g.run.player; return { depth: g.run.depth, onDown: p.x === f.stairs.x && p.y === f.stairs.y }; });
     ok(`${vp.name}: climbing returns to the floor above, on its stairs down`, up.depth === depthBefore && up.onDown);

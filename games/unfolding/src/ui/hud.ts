@@ -406,7 +406,7 @@ export function confirmDescendHTML(game: Game, dir: 'up' | 'down'): string {
     <header class="modal-head"><span class="eyebrow">${esc(L.t('hud.depth', { n: game.run.depth }))}</span><h1>Leave this ${esc(L.role('floor'))}’s ${esc(L.role('shrine'))} behind?</h1>
     <p class="muted">Once you take the stairs, this shrine is gone.${offered}</p></header>
     <footer class="confirm-btns">
-      <button class="primary" data-cmd="stairs-confirmed"><kbd>Enter</kbd> ${dir === 'up' ? 'Climb up anyway' : 'Descend anyway'}</button>
+      <button class="primary" data-cmd="stairs-confirmed"><kbd>Enter</kbd> ${dir === 'up' ? 'Ascend anyway' : 'Descend anyway'}</button>
       <button class="ghost" data-cmd="dismiss"><kbd>Esc</kbd> Stay</button>
     </footer>
     <p class="muted small">You can turn this warning off in Options.</p>
