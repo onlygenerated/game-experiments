@@ -14,12 +14,24 @@ npm run dev      # http://localhost:5173
 npm test         # engine tests, including bot-driven fuzz runs under every rule
 npm run smoke    # build, serve, and play it in headless Chromium (desktop + phone)
 npm run single   # dist/unfolding.html — the whole game in one file (+ dist/artifact.html)
+npm run single:sim   # dist-sim/sim.html — the branch simulator in one file (+ sim-artifact.html)
 npx vite-node tools/probe.ts 60   # balance probe: per-floor economy + rule-by-rule comparison
 PROBE_DEPTH=25 npx vite-node tools/probe.ts 60 full   # how deep the late game goes
 ```
 
 No framework: TypeScript, a canvas for the map and plain DOM for panels. Worlds and the
 run in progress are saved in `localStorage`.
+
+## Branch simulator
+
+`sim.html` (on the site: `unfolding/sim.html`) steps through a world's choices without
+walking it. It runs the real engine: each choice ("go to the rule shrine", "fight every
+foe", "take the stairs") is carried out with ordinary moves, so foes still close in and
+clocks still tick. Every decision is kept in a tree; tap any step to go back and choose
+differently. A rule graph shows which rules are in, on offer, draftable, waiting to emerge
+or locked, and a legend fixes one icon, colour and plain name per kind of thing (choices,
+Means of Harm, foes, floor shapes, time, hazards). Code: `src/sim/`; tests:
+`src/__tests__/sim.test.ts`.
 
 ## Controls and options
 
