@@ -70,7 +70,7 @@ export type Roles = Record<RoleKey, string>;
 export const BASE_TEXT = {
   // --- Arrival -------------------------------------------------------------
   'start.fresh': 'You wake in a quiet room. A {shrine} waits in the corner; the {stairsDown} lead on.',
-  'start.hint': 'Move with the arrow keys or by tapping the map; hold a spot to walk there. Step onto the {shrine} (Ω) to change the world.',
+  'start.hint': 'Tap the map to walk there (or use the arrow keys); hold a spot to inspect it. Step onto the {shrine} (Ω) to change the world.',
   'start.heir': '{name} arrives in {world}, {heir} to {n} rules.',
   'intrusion.restorative': 'The {restoratives} here come from {donor}.',
   'intrusion.foes': 'The {foes} here come from {donor}.',

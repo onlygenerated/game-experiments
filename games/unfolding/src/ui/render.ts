@@ -70,6 +70,11 @@ export class Renderer {
   hoverCursor: { x: number; y: number } | null = null;
   /** Smallest and largest tile size in CSS pixels (the Map tile size option). */
   tileRange: readonly [number, number] = [16, 32];
+  /**
+   * Phones: a fixed, zoomed-in tile size that follows the player instead of
+   * shrinking to fit the floor. Null on wide screens.
+   */
+  followCell: number | null = null;
   /** Skip hit flashes. */
   reduceMotion = false;
   /** Who "fire" would hit right now (the nearest foe in reach), marked on the map. */
@@ -189,7 +194,7 @@ export class Renderer {
     // Fit what exists of the floor when it can be shown legibly; otherwise follow the player.
     const b = this.bounds(f);
     const fit = Math.floor(Math.min(v.w / (b.x1 - b.x0), v.h / (b.y1 - b.y0)));
-    v.cell = Math.max(this.tileRange[0], Math.min(this.tileRange[1], fit));
+    v.cell = this.followCell ?? Math.max(this.tileRange[0], Math.min(this.tileRange[1], fit));
     const c = v.cell;
 
     [v.camX, this.panX] = this.axis(v.w, b.x0 * c, b.x1 * c, p.x * c + c / 2, this.panX);

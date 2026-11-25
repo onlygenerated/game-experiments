@@ -212,10 +212,10 @@ export function topbarHTML(game: Game, look: boolean): string {
     ${game.has('peril') ? `<span class="tb-hp${run.player.hp <= game.stats.maxHp / 3 ? ' low' : ''}">${esc(L.t('hud.hpOf', { n: Math.max(0, run.player.hp), max: game.stats.maxHp }))}</span>` : ''}
     <span class="spacer"></span>
     <button data-cmd="look" class="ghost tb-look${look ? ' on' : ''}" aria-pressed="${look}">Look <kbd>;</kbd></button>
-    ${game.world.rules.length ? '<button data-cmd="codex" class="ghost">Codex <kbd>C</kbd></button>' : ''}
+    ${game.world.rules.length ? '<button data-cmd="codex" class="ghost tb-codex">Codex <kbd>C</kbd></button>' : ''}
     <button data-cmd="help" class="ghost tb-keys">Keys <kbd>?</kbd></button>
-    <button data-cmd="options" class="ghost">Options <kbd>O</kbd></button>
-    <button data-cmd="leave" class="ghost">Save &amp; quit</button>`;
+    <button data-cmd="options" class="ghost tb-options" aria-label="Options"><span class="tb-long">Options <kbd>O</kbd></span><span class="tb-short" aria-hidden="true">⚙</span></button>
+    <button data-cmd="leave" class="ghost tb-leave" aria-label="Save and quit"><span class="tb-long">Save &amp; quit</span><span class="tb-short" aria-hidden="true">Quit</span></button>`;
 }
 
 function floorNameHTML(game: Game): string {
@@ -352,9 +352,9 @@ export function helpHTML(L: Lexicon = lexiconOf(DEFAULT_PREMISE)): string {
       <div><dt>; · v</dt><dd>Look: inspect any tile (arrows move the cursor, Esc leaves)</dd></div>
       <div><dt>c</dt><dd>Codex</dd></div>
       <div><dt>o</dt><dd>Options</dd></div>
-      <div><dt>Tap the map</dt><dd>Step toward that spot; tap yourself to wait. In Look mode, inspect it</dd></div>
+      <div><dt>Tap the map</dt><dd>Walk there (one step if it's next to you, or attack a foe beside you); stops if a foe appears or you're hurt. Tap yourself to wait or take the stairs. In Look mode, inspect it</dd></div>
       <div><dt>Drag the map</dt><dd>Look around; your next move recenters</dd></div>
-      <div><dt>Press and hold the map</dt><dd>Walk there; stops if a foe appears or you're hurt. Any key or tap stops it</dd></div>
+      <div><dt>Press and hold the map</dt><dd>Describe that tile</dd></div>
     </dl>
     <p class="muted small">${L.t('help.legend')}</p>
     <footer><button data-cmd="dismiss" class="primary"><kbd>Esc</kbd> Close</button></footer>

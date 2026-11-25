@@ -11,7 +11,7 @@ import type { Premise } from './premise.ts';
 const TEXT: Record<MessageKey, string> = {
   // --- Arrival -------------------------------------------------------------
   'start.fresh': 'You wake in a quiet room. A shrine hums in the corner; stairs lead down.',
-  'start.hint': 'Move with the arrow keys or by tapping the map; hold a spot to walk there. Step onto the shrine (Ω) to change the world.',
+  'start.hint': 'Tap the map to walk there (or use the arrow keys); hold a spot to inspect it. Step onto the shrine (Ω) to change the world.',
   'start.heir': '{name} descends into {world}, heir to {n} rules.',
   'intrusion.restorative': 'The {restoratives} here come from {donor}.',
   'intrusion.foes': 'The {foes} here come from {donor}.',

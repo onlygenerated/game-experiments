@@ -28,7 +28,7 @@ import {
   sidebarHTML,
   topbarHTML,
 } from './hud.ts';
-import { HOLD_MS, loadOptions, parseOption, saveOptions, TILE_PX, TRAVEL_STEP_MS, type Options } from './options.ts';
+import { HOLD_MS, loadOptions, PHONE_BOARD_PX, PHONE_TILES_ACROSS, parseOption, saveOptions, TILE_PX, TRAVEL_STEP_MS, type Options } from './options.ts';
 import { COLORS, Renderer } from './render.ts';
 
 type Overlay =
@@ -78,6 +78,8 @@ export class App {
   look: Pos | null = null;
   /** Mouse hover inspection (when Look mode is off). */
   private hover: Pos | null = null;
+  /** The hover card was opened by a long press (touch), so the next action clears it. */
+  private peeked = false;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -111,11 +113,18 @@ export class App {
           </div></li>`;
       })
       .join('');
+    // One tap back into the most recently played run, if one is still going.
+    const live = worlds.map((w) => ({ w, run: this.store.run(w.id) })).find((x) => x.run && !x.run.over);
+    const cont = live
+      ? `<div class="continue-hero"><button class="primary big" data-cmd="resume" data-world="${live.w.id}">Continue</button>
+          <span class="muted small">${esc(live.run!.player.name)} · ${esc(lexiconFor(live.w, this.options.plainLabels).t('hud.depth', { n: live.run!.depth }))} · ${esc(live.w.name)}</span></div>`
+      : '';
     this.root.innerHTML = `<div class="screen title-screen">
       <header class="hero">
         <h1 class="logo">Unfolding</h1>
         <p class="lede">A dungeon that starts almost too simple, and writes its own rules as you go.
           You choose which rules each world adopts. Every rule cuts both ways.</p>
+        ${cont}
       </header>
       <div class="title-cols">
         <section class="start-new">
@@ -202,14 +211,16 @@ export class App {
             .join('')}
         </div>
         <div class="pad-actions">
+          <button data-cmd="sheet" class="pad-sheet" aria-expanded="false">Pack</button>
           <button data-cmd="stairs" class="pad-stairs" disabled>Stairs</button>
-          <button data-cmd="wait">Wait</button>
+          <button data-cmd="wait" class="pad-wait">Wait</button>
           <button data-cmd="pickup" class="pad-pickup" disabled>Pick up</button>
           <button data-cmd="look" class="pad-look" aria-pressed="false">Look</button>
           <button data-cmd="fire" class="pad-fire" hidden></button>
         </div>
       </nav>
-      <aside class="side"></aside>
+      <div class="sheet-scrim" data-cmd="sheet"></div>
+      <aside class="side"><div class="sheet-head"><span class="grip"></span><button class="ghost" data-cmd="sheet">Close</button></div><div class="side-body"></div></aside>
       <div class="overlay" hidden></div>
     </div>`;
     const board = this.root.querySelector<HTMLElement>('.board')!;
@@ -407,6 +418,16 @@ export class App {
     this.act(at ? { type: 'fire', x: at.x, y: at.y } : { type: 'fire' });
   }
 
+  /** Phones: open or close the Pack sheet (stats, pack, rules) over the map. */
+  private toggleSheet(open?: boolean) {
+    const screen = this.root.querySelector<HTMLElement>('.play-screen');
+    if (!screen) return;
+    const on = open ?? !screen.classList.contains('sheet-open');
+    screen.classList.toggle('sheet-open', on);
+    this.root.querySelector('.pad-sheet')?.setAttribute('aria-expanded', String(on));
+    if (on) this.stopTravel(null);
+  }
+
   /** Which stairs the player is standing on, if any. */
   private stairsHere(): 'up' | 'down' | null {
     const g = this.game;
@@ -443,6 +464,8 @@ export class App {
     if (!board || !this.renderer || !this.game) return;
     const r = board.getBoundingClientRect();
     this.renderer.resize(Math.max(100, r.width), Math.max(100, r.height));
+    this.renderer.followCell =
+      r.width < PHONE_BOARD_PX ? Math.max(24, Math.min(56, Math.floor(r.width / PHONE_TILES_ACROSS[this.options.tileSize]))) : null;
     this.draw();
   }
 
@@ -513,7 +536,7 @@ export class App {
       lookBtn.setAttribute('aria-pressed', String(!!this.look));
     }
     this.renderLook();
-    q('.side')!.innerHTML = sidebarHTML(game, this.fresh);
+    q('.side-body')!.innerHTML = sidebarHTML(game, this.fresh);
     q('.log')!.innerHTML = logHTML(game);
     const screen = q('.play-screen')!;
     screen.classList.toggle('has-arcana', game.has('arcana'));
@@ -571,6 +594,10 @@ export class App {
     // Acting snaps the camera back to the player after a look around, and ends Look mode.
     this.renderer?.recenter();
     this.look = null;
+    if (this.peeked) {
+      this.peeked = false;
+      this.hover = null;
+    }
     game.autoPickup = this.options.autoPickup;
     game.act(a);
     if (target && this.renderer) this.renderer.flash(target.x, target.y, COLORS.player);
@@ -625,6 +652,11 @@ export class App {
   private onKey(e: KeyboardEvent) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const k0 = e.key;
+    if (k0 === 'Escape' && !this.overlays.length && this.root.querySelector('.sheet-open')) {
+      e.preventDefault();
+      this.toggleSheet(false);
+      return;
+    }
     // Options work from any screen.
     if (this.overlays[0]?.kind === 'options') {
       if (k0 === 'Escape' || k0 === 'o' || k0 === 'Enter') {
@@ -819,7 +851,7 @@ export class App {
   }
 
   // -------------------------------------------------------------------------
-  // Auto-travel (press and hold a spot on the map)
+  // Auto-travel (tap a spot on the map)
   // -------------------------------------------------------------------------
 
   private startTravel(target: Pos) {
@@ -894,8 +926,8 @@ export class App {
 
   /**
    * Drag the map to look around; a press that barely moves is a tap, which
-   * steps toward the tapped spot; press and hold to travel there. One pointer
-   * at a time.
+   * walks to the tapped spot (one step if it's next to you); press and hold to
+   * describe the tile. One pointer at a time.
    */
   private bindMapGestures(canvas: HTMLCanvasElement, board: HTMLElement) {
     const SLOP = 8;
@@ -923,9 +955,9 @@ export class App {
           try {
             if (this.options.vibrate) navigator.vibrate?.(12);
           } catch {
-            /* not allowed here; the target marker is feedback enough */
+            /* not allowed here; the card is feedback enough */
           }
-          this.startTravel(tile);
+          this.peek(tile);
         }, HOLD_MS[this.options.holdDelay]);
       }
       this.drag = d;
@@ -962,8 +994,9 @@ export class App {
       this.renderLook();
       this.scheduleDraw();
     });
-    canvas.addEventListener('pointerleave', () => {
-      if (!this.hover) return;
+    canvas.addEventListener('pointerleave', (e) => {
+      // A lifted finger "leaves" too; only a mouse moving off the map ends hover.
+      if (!this.hover || e.pointerType !== 'mouse') return;
       this.hover = null;
       this.renderLook();
       this.scheduleDraw();
@@ -987,12 +1020,32 @@ export class App {
       this.fire(t);
       return;
     }
+    // A tap clears whatever a long press was showing.
+    if (this.hover && e.pointerType !== 'mouse') {
+      this.hover = null;
+      this.renderLook();
+    }
     const dx = Math.sign(t.x - p.x);
     const dy = Math.sign(t.y - p.y);
     if (dx === 0 && dy === 0) {
       if (this.stairsHere()) this.tryStairs();
       else this.act({ type: 'wait' });
-    } else this.act({ type: 'move', dx, dy });
+      return;
+    }
+    // Further than one step: walk the whole way there, unless a foe is already
+    // at your side (then one deliberate step) or the spot can't be reached.
+    const far = Math.max(Math.abs(t.x - p.x), Math.abs(t.y - p.y)) > 1;
+    const engaged = game.run.monsters.some((m) => Math.max(Math.abs(m.x - p.x), Math.abs(m.y - p.y)) === 1);
+    if (far && !engaged && canTravelTo(game, t)) this.startTravel(t);
+    else this.act({ type: 'move', dx, dy });
+  }
+
+  /** Long press: describe a tile without entering Look mode. The next tap clears it. */
+  private peek(t: Pos) {
+    this.hover = t;
+    this.peeked = true;
+    this.renderLook();
+    this.scheduleDraw();
   }
 
   private onClick(e: MouseEvent) {
@@ -1130,6 +1183,9 @@ export class App {
       case 'recenter':
         this.renderer?.recenter();
         this.draw();
+        break;
+      case 'sheet':
+        this.toggleSheet();
         break;
     }
   }

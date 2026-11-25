@@ -96,11 +96,20 @@ try {
     ok(`${vp.name}: HP appears with Peril`, await page.isVisible('.tb-hp'));
     await shot(page, `${vp.name}-2b-opened`);
 
-    // Walk around with keys (or the pad on phones) for a while.
+    // Phones: tapping the map walks, so the direction pad is off by default and
+    // everything fits on one screen with no page scroll.
+    if (vp.isMobile) {
+      ok('phone: no direction pad by default', !(await page.isVisible('.dpad')));
+      ok('phone: the action bar shows Pack, Wait and Look', (await page.isVisible('.pad-sheet')) && (await page.isVisible('.pad-wait')) && (await page.isVisible('.pad-look')));
+      const fits = await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1);
+      ok('phone: the play screen fits without scrolling', fits);
+      const cell = await page.evaluate(() => window.unfolding.renderer.view.cell);
+      ok(`phone: the map is zoomed in (${cell}px tiles)`, cell >= 30);
+    }
+    // Walk around with keys for a while.
     for (let i = 0; i < 40; i++) {
       const dirs = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'];
-      if (vp.isMobile) await page.click(`.dpad button >> nth=${[5, 7, 3, 1][i % 4]}`);
-      else await page.keyboard.press(dirs[Math.floor(i / 6) % 4]);
+      await page.keyboard.press(dirs[Math.floor(i / 6) % 4]);
     }
     const turn = await page.evaluate(() => window.unfolding.game?.run.turn ?? -1);
     ok(`${vp.name}: turns pass when moving (${turn})`, turn > 5);
@@ -235,18 +244,28 @@ try {
       };
       await page.evaluate(() => { const a = window.unfolding; a.game.run.monsters = []; a.game.run.pending = null; a.refresh(); });
 
-      // 1. Hold on a tile four steps away: the player walks there.
+      // 1. Tap a tile four steps away: the player walks there.
       const short = await route(4);
       const goal = short.at(-1);
       const at = await screenOf(goal);
       const s0 = await state();
       await touch('touchStart', box.x + at.x, box.y + at.y);
-      await page.waitForTimeout(520);
       await touch('touchEnd');
       await settle();
       const s1 = await state();
-      ok(`phone: press-and-hold walks to the spot (${s1.x},${s1.y} → goal ${goal.x},${goal.y})`, s1.x === goal.x && s1.y === goal.y);
+      ok(`phone: a tap walks to the spot (${s1.x},${s1.y} → goal ${goal.x},${goal.y})`, s1.x === goal.x && s1.y === goal.y);
       ok(`phone: the walk took one turn per step (${s1.turn - s0.turn})`, s1.turn - s0.turn === short.length);
+
+      // 1b. Press and hold describes a tile and doesn't move you.
+      const peekAt = await screenOf(short[0]);
+      await touch('touchStart', box.x + peekAt.x, box.y + peekAt.y);
+      await page.waitForTimeout(520);
+      await touch('touchEnd');
+      await page.waitForTimeout(80);
+      const s1b = await state();
+      ok('phone: press-and-hold shows a description card', await page.isVisible('.lookslot .lookcard'));
+      ok('phone: press-and-hold does not move you', s1b.turn === s1.turn && s1b.x === s1.x && s1b.y === s1.y);
+      await shot(page, 'phone-2c2-peek');
 
       // 2. A foe coming within range stops the walk.
       const long = await route(14);
@@ -316,11 +335,22 @@ try {
     });
     const left = await page.evaluate(() => window.unfolding.game.itemsHere().map((fi) => fi.item.id));
     ok(`${vp.name}: with auto pickup off, the potion stays put`, left.includes(8800));
+    if (vp.isMobile) {
+      ok('phone: the bar offers Pick up when something is underfoot', await page.isVisible('.pad-pickup'));
+      await page.click('.pad-sheet');
+      await page.waitForTimeout(300);
+      ok('phone: Pack opens the sheet', await page.isVisible('.side .sheet-head'));
+    }
     ok(`${vp.name}: the Here panel offers it`, await page.isVisible('[data-cmd="pickup"][data-id="8800"]'));
     await shot(page, `${vp.name}-2f-here`);
     await page.click('[data-cmd="pickup"][data-id="8800"]');
     const packed = await page.evaluate(() => window.unfolding.game.run.player.inventory.some((i) => i.id === 8800));
     ok(`${vp.name}: Pick up puts it in the pack`, packed);
+    if (vp.isMobile) {
+      await page.click('.sheet-head [data-cmd="sheet"]');
+      await page.waitForTimeout(300);
+      ok('phone: Close hides the sheet', !(await page.isVisible('.side .sheet-head')));
+    }
 
     // Look mode.
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -468,8 +498,9 @@ try {
       ok(`${vp.name}: codex opens`, await page.isVisible('.modal.codex'));
       await page.keyboard.press('Escape');
     }
-    await page.click('text=Save & quit');
+    await page.click('.tb-leave');
     ok(`${vp.name}: title lists the world with a resumable run`, await page.isVisible('text=Resume'));
+    ok(`${vp.name}: title offers one-tap Continue`, await page.isVisible('.continue-hero [data-cmd="resume"]'));
     await page.click('text=Resume');
     ok(`${vp.name}: resumed run keeps the rules`, (await page.evaluate(() => window.unfolding.game.world.rules.length)) === 6);
 

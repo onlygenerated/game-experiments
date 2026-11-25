@@ -38,6 +38,10 @@ export const TRAVEL_STEP_MS = { slow: 140, normal: 70, fast: 25 } as const;
 export const HOLD_MS = { short: 250, normal: 380, long: 600 } as const;
 /** Smallest and largest map tile, in CSS pixels. */
 export const TILE_PX = { small: [12, 24], normal: [16, 32], large: [22, 44] } as const;
+/** On a narrow (phone) screen the map zooms in and follows you: this many tiles across. */
+export const PHONE_TILES_ACROSS = { small: 13, normal: 11, large: 9 } as const;
+/** Below this board width the map uses the phone camera. */
+export const PHONE_BOARD_PX = 640;
 
 type Choice = { value: string; label: string };
 export interface OptionDef {
@@ -76,7 +80,7 @@ export const OPTION_DEFS: OptionDef[] = [
     key: 'travelSpeed',
     group: 'Controls',
     label: 'Walk speed',
-    help: 'How fast press-and-hold travel steps.',
+    help: 'How fast you walk to a tapped spot.',
     choices: [
       { value: 'slow', label: 'Slow' },
       { value: 'normal', label: 'Normal' },
@@ -86,8 +90,8 @@ export const OPTION_DEFS: OptionDef[] = [
   {
     key: 'holdDelay',
     group: 'Controls',
-    label: 'Hold to walk after',
-    help: 'How long to press a spot before you set off toward it.',
+    label: 'Hold to inspect after',
+    help: 'How long to press a spot before it’s described.',
     choices: [
       { value: 'short', label: '0.25 s' },
       { value: 'normal', label: '0.4 s' },
@@ -104,18 +108,18 @@ export const OPTION_DEFS: OptionDef[] = [
   {
     key: 'dpad',
     group: 'Controls',
-    label: 'On-screen controls',
-    help: 'Auto shows them on touch screens and narrow windows.',
+    label: 'Direction pad',
+    help: 'Tapping the map walks you there, so the pad is off by default. Turn it on for single steps with buttons. Off also hides the button bar on wide touch screens (phones always keep it).',
     choices: [
-      { value: 'auto', label: 'Auto' },
-      { value: 'always', label: 'Always' },
-      { value: 'never', label: 'Never' },
+      { value: 'auto', label: 'Off' },
+      { value: 'always', label: 'On' },
+      { value: 'never', label: 'Off, no bar' },
     ],
   },
   {
     key: 'vibrate',
     group: 'Controls',
-    label: 'Vibrate when a walk starts',
+    label: 'Vibrate on a long press',
     help: 'Only on devices and browsers that allow it.',
     choices: onOff,
   },
