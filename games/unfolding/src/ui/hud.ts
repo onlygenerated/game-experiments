@@ -4,8 +4,9 @@ import { OPTION_DEFS, type OptionDef, type Options } from './options.ts';
 import { CLEAVE_COST, MEND_COST, xpNeeded, type Game } from '../engine/game.ts';
 import { BALANCE } from '../engine/balance.ts';
 import { DEFAULT_PREMISE, lexiconFor, lexiconOf, PREMISES, type Lexicon } from '../theme/lexicon.ts';
-import type { Item, RuleId, World } from '../engine/types.ts';
+import type { Item, RuleId, SpaceId, TimeId, World } from '../engine/types.ts';
 import { aims, MEANS, type HarmId } from '../rules/harm.ts';
+import { driftLeft, tideLeft } from '../rules/axioms.ts';
 import {
   alt,
   derive,
@@ -207,7 +208,7 @@ export function topbarHTML(game: Game, look: boolean): string {
   return `<span class="brand">Unfolding</span>
     <span class="tb-world">${esc(game.world.name)}</span>
     <span class="tb-heir">${esc(run.player.name)} · ${esc(L.t('hud.heir', { n: run.gen }))}</span>
-    <span class="tb-depth">${esc(L.t('hud.depth', { n: run.depth }))}${floorNameHTML(game)}</span>
+    <span class="tb-depth">${esc(L.t('hud.depth', { n: run.depth }))}${floorNameHTML(game)}</span>${game.testing ? '<span class="tb-testing" title="Testing mode is on (Options)">Testing</span>' : ''}
     ${game.has('peril') ? `<span class="tb-hp${run.player.hp <= game.stats.maxHp / 3 ? ' low' : ''}">${esc(L.t('hud.hpOf', { n: Math.max(0, run.player.hp), max: game.stats.maxHp }))}</span>` : ''}
     <span class="spacer"></span>
     <button data-cmd="look" class="ghost tb-look${look ? ' on' : ''}" aria-pressed="${look}">Look <kbd>;</kbd></button>
@@ -323,6 +324,7 @@ export function codexHTML(world: World, L: Lexicon): string {
       <p class="muted premise-name">${esc(premiseLine(world))}</p>
       ${borrowed.length ? `<ul class="borrowed">${borrowed.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}</header>
     ${world.rules.includes('peril') ? codexMeansHTML(world, L) : ''}
+    ${codexShapeHTML(world, L)}
     <div class="codex-list">${active
       .map((r) => `<article class="codex-entry"><h2>${esc(L.rule(r).name)}${glossHTML(L.ruleGloss(r))} <span class="tier">Tier ${RULES[r].tier}</span></h2>
         <p class="tagline">${esc(L.rule(r).tagline)}</p>${ruleBody(r, world.variants, L)}</article>`)
@@ -330,7 +332,7 @@ export function codexHTML(world: World, L: Lexicon): string {
     ${front.length ? `<p class="muted">Shrines may offer next: ${esc(front.map((r) => L.rule(r).name).join(', '))}.</p>` : ''}
     ${unknown > 0 ? `<p class="muted">${unknown} more ${unknown === 1 ? 'rule lies' : 'rules lie'} beyond those.</p>` : ''}
     ${world.history.length ? `<h3>Chronicle</h3><ol class="chronicle">${world.history
-      .map((h) => `<li><b>${esc(h.name)}</b>, ${esc(L.role('heir'))} ${h.gen} — ${esc(L.role('level'))} ${h.level}, ${esc(h.cause)} after ${h.turns} turns.</li>`)
+      .map((h) => `<li${h.won ? ' class="won"' : ''}>${h.won ? '♥ ' : ''}<b>${esc(h.name)}</b>, ${esc(L.role('heir'))} ${h.gen} — ${esc(L.role('level'))} ${h.level}, ${esc(h.cause)} after ${h.turns} turns.</li>`)
       .join('')}</ol>` : ''}
     <footer><button data-cmd="dismiss" class="primary"><kbd>Esc</kbd> Close</button></footer>
   </div>`;
@@ -375,7 +377,7 @@ export function lookCardHTML(info: TileInfo, mode: 'look' | 'hover', aim: string
 }
 
 export function optionsHTML(o: Options): string {
-  const groups = ['Gameplay', 'Controls', 'Display'] as const;
+  const groups = ['Gameplay', 'Controls', 'Display', 'Testing'] as const;
   const field = (d: OptionDef) => `<fieldset class="opt">
       <legend>${esc(d.label)}</legend>
       <div class="seg" role="radiogroup" aria-label="${esc(d.label)}">${d.choices
@@ -433,7 +435,27 @@ function meansHTML(game: Game): string {
   const bits = [`<b>${esc(m.name)}</b>${glossHTML(L.ruleGlossOf(m.name, lexiconOf('plain').means(id).name))}`];
   if (aims(id)) bits.push(`${esc(L.t('preview.range'))} ${game.stats.range}`);
   if (MEANS[id].cost === 'ammo') bits.push(`<span class="ammo${(p.ammo ?? 0) === 0 ? ' out' : ''}">${esc(L.t('hud.ammo'))} ${p.ammo ?? 0}</span>`);
-  return `<p class="means small" title="${esc(m.summary)}">${bits.join(' · ')}</p>`;
+  return `<p class="means small" title="${esc(m.summary)}">${bits.join(' · ')}</p>${tideHTML(game)}`;
+}
+
+/** Tide Clock: how long until this floor's next mark. Drift: until the floor next shifts. */
+function tideHTML(game: Game): string {
+  const f = game.run.floor;
+  const drift =
+    game.world.genome?.axioms.space === 'drift' && game.has('halls') && !f.solo && !f.caverns
+      ? `<p class="means tide small" title="${esc(game.lex.space('drift').summary)}"><b>${esc(game.lex.space('drift').name)}</b>${glossHTML(game.lex.ruleGlossOf(game.lex.space('drift').name, lexiconOf('plain').space('drift').name))} · ${esc(game.lex.t('hud.drift', { n: driftLeft(f.driftClock ?? 0) }))}</p>`
+      : '';
+  return drift + tideClockHTML(game);
+}
+
+function tideClockHTML(game: Game): string {
+  if (game.world.genome?.axioms.time !== 'tide') return '';
+  const L = game.lex;
+  const t = L.time('tide');
+  const left = tideLeft(game.run.floor.clock ?? 0);
+  const urgent = left === null || left <= 20;
+  const line = left === null ? L.t('hud.tide.struck') : L.t('hud.tide', { n: left });
+  return `<p class="means tide small${urgent ? ' warn' : ''}" title="${esc(t.summary)}"><b>${esc(t.name)}</b>${glossHTML(L.ruleGlossOf(t.name, lexiconOf('plain').time('tide').name))} · ${esc(line)}</p>`;
 }
 
 function codexMeansHTML(world: World, L: Lexicon): string {
@@ -442,6 +464,22 @@ function codexMeansHTML(world: World, L: Lexicon): string {
   const m = L.means(id);
   return `<section class="codex-axiom"><span class="eyebrow">${esc(L.t('hud.harm'))}</span>
     <h2>${esc(m.name)}${glossHTML(L.ruleGlossOf(m.name, lexiconOf('plain').means(id).name))}</h2><p class="tagline">${esc(m.tagline)}</p>${meansBody(id, L)}</section>`;
+}
+
+/** Codex: the world's space and time, and where this Age's Heart lies. */
+function codexShapeHTML(world: World, L: Lexicon): string {
+  const ax = world.genome?.axioms;
+  const plain = lexiconOf('plain');
+  const ages = world.ages ?? [];
+  const open = (what: string) => `<span class="muted">Unsettled: a ${esc(L.role('schism'))} will decide ${what}.</span>`;
+  const space = ax?.space ? L.space(ax.space) : null;
+  const time = ax?.time ? L.time(ax.time) : null;
+  return `<section class="codex-axiom codex-shape">
+    <p><span class="eyebrow">Space</span> ${space ? `<b>${esc(space.name)}</b>${glossHTML(L.ruleGlossOf(space.name, plain.space(ax!.space!).name))} — ${esc(space.summary)}` : open('once the floors open up')}</p>
+    <p><span class="eyebrow">Time</span> ${time ? `<b>${esc(time.name)}</b>${glossHTML(L.ruleGlossOf(time.name, plain.time(ax!.time!).name))} — ${esc(time.summary)}` : open('once foes exist')}</p>
+    ${world.heart ? `<p><span class="eyebrow">Age ${world.age ?? 1}</span> ${esc(L.t('hud.heart.depth', { n: world.heart }))}</p>` : ''}
+    ${ages.length ? `<ol class="ages">${ages.map((a) => `<li>Age ${a.age}: <b>${esc(a.name)}</b>, ${esc(L.role('heir'))} ${a.gen}, after ${a.turns} turns with ${a.rules.length} rules.</li>`).join('')}</ol>` : ''}
+  </section>`;
 }
 
 /** The banner shown when a world's means becomes known. */
@@ -460,8 +498,10 @@ export function axiomBannerHTML(id: HarmId, how: 'rolled' | 'schism', L: Lexicon
 
 /** A schism shrine's question: one card per offered means. */
 export function schismHTML(game: Game): string {
+  const sc = game.run.floor.schism;
+  if (sc?.family === 'space' || sc?.family === 'time') return axiomSchismHTML(game, sc.family, sc.offers);
   const L = game.lex;
-  const offers = game.run.floor.schism?.offers ?? [];
+  const offers = (sc?.offers ?? []) as HarmId[];
   const cards = offers.map((id, i) => {
     // Each card speaks in the words that means would bring.
     const W = lexiconFor(game.world, L.plain, id);
@@ -475,6 +515,31 @@ export function schismHTML(game: Game): string {
   return `<div class="modal shrine schism" role="dialog" aria-label="${esc(L.role('schism'))}">
     <header class="modal-head"><span class="eyebrow">${esc(L.t('look.schism'))} · ${esc(L.t('hud.depth', { n: game.run.depth }))}</span>
       <h1>How should harm work in ${esc(game.world.name)}?</h1>
+      <p class="muted">This choice is permanent. Every ${esc(L.role('heir'))} who follows lives with it, and it can never be repealed.</p></header>
+    <div class="cards">${cards.join('')}</div>
+    <footer><button data-cmd="schism" data-harm="" class="ghost"><kbd>Esc</kbd> Not yet — it will ask again</button></footer>
+  </div>`;
+}
+
+/** A schism shrine for Shape of Space or Flow of Time: one card per option. */
+function axiomSchismHTML(game: Game, family: 'space' | 'time', offers: string[]): string {
+  const L = game.lex;
+  const plain = lexiconOf('plain');
+  const label = family === 'space' ? 'Shape of space' : 'Flow of time';
+  const words = (id: string) => (family === 'space' ? L.space(id as SpaceId) : L.time(id as TimeId));
+  const plainName = (id: string) => (family === 'space' ? plain.space(id as SpaceId) : plain.time(id as TimeId)).name;
+  const cards = offers.map((id, i) => {
+    const w = words(id);
+    return `<article class="rule-card schism-card">
+      <header><span class="tier">${esc(label)}</span><h2>${esc(w.name)}${glossHTML(L.ruleGlossOf(w.name, plainName(id)))}</h2><p class="tagline">${esc(w.tagline)}</p></header>
+      <p class="summary">${esc(w.summary)}</p>
+      <button class="primary" data-cmd="schism" data-harm="${id}"><kbd>${i + 1}</kbd> Choose ${esc(w.name)}</button>
+    </article>`;
+  });
+  const q = family === 'space' ? `What shape should ${game.world.name} take?` : `How should time pass in ${game.world.name}?`;
+  return `<div class="modal shrine schism" role="dialog" aria-label="${esc(L.role('schism'))}">
+    <header class="modal-head"><span class="eyebrow">${esc(L.t('look.schism'))} · ${esc(L.t('hud.depth', { n: game.run.depth }))}</span>
+      <h1>${esc(q)}</h1>
       <p class="muted">This choice is permanent. Every ${esc(L.role('heir'))} who follows lives with it, and it can never be repealed.</p></header>
     <div class="cards">${cards.join('')}</div>
     <footer><button data-cmd="schism" data-harm="" class="ghost"><kbd>Esc</kbd> Not yet — it will ask again</button></footer>

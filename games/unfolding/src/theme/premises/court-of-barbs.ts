@@ -48,6 +48,7 @@ export const COURT_OF_BARBS: Premise = {
     ammos: 'gloves',
     schism: 'Throne of Etiquette',
     merchant: 'go-between',
+    heart: 'the Empty Throne',
   },
   foes: {
     rat: { name: 'page', plural: 'pages', glyph: 'p', color: '#e9d7b0' },
@@ -211,6 +212,15 @@ export const COURT_OF_BARBS: Premise = {
       },
     },
   },
+  space: {
+    rooms: { name: 'Suites', tagline: 'Salons, antechambers, and doors with footmen.', summary: 'Each {floor} is salons joined by galleries.' },
+    caverns: { name: 'The Ruined Wing', tagline: 'The walls came down in the last scandal.', summary: 'Each {floor} is one wide, roofless hall: no doors, no galleries, nowhere to hide.' },
+    drift: { name: 'Musical Chairs', tagline: 'The furniture is rearranged nightly.', summary: 'Every {driftEvery} turns, the rooms you aren\'t in change places and the corridors reroute. The {stairsDown}, the {shrine} and the room you\'re in stay put.' },
+  },
+  time: {
+    turns: { name: 'Leisure', tagline: 'No one hurries at court.', summary: 'Nothing happens until you act, however long you take.' },
+    tide: { name: 'The Season', tagline: 'Fashion waits for no one.', summary: 'Every {floor} keeps a clock once {foes} exist. At {tide1} turns more {foes} arrive; at {tide2} every {foe} hunts you; from {tide3}, you are out of fashion: −1 {hp} every {tideHurtEvery} turns until you leave.' },
+  },
   tiles: {
     void: '#0a0508',
     floor: '#190f15',
@@ -282,6 +292,13 @@ export const COURT_OF_BARBS: Premise = {
     'starving': 'Everyone has forgotten you.',
     'death': 'You are laughed out of court — {cause}.',
     'cause.slain': 'humiliated by {a} {foe} in salon {n}',
+    'drift.shift': 'Footmen rearrange the {floor} in a blur of gilt. The doors lead elsewhere now.',
+    'heart.win': '{name} sits upon the Empty Throne. No one dares say a word; this Age is over.',
+    'tide.1': 'The season is turning. More {foes} have been invited.',
+    'tide.2': 'Word travels. Every {foe} in this {floor} has heard your name.',
+    'tide.3': 'The season is over, and you are last season. Leave this {floor}!',
+    'tide.hurt': 'Someone cuts you dead. −1 {hp}.',
+    'cause.tide': 'gone out of fashion in salon {n}',
     'cause.starved': '{starving} in salon {n}',
     'cause.burned': 'ruined by scandal in salon {n}',
     'note.halls': 'This salon opens up right away — and its grand staircase moves somewhere you haven’t been.',

@@ -10,6 +10,7 @@
  *                      here or while you were on another floor
  *  - onAdopt:          one-time effects and messages when it arrives here
  *  - notes:            the shrine preview's personal notes
+ *  - onTurn:           once at the end of every turn while the rule is active
  *
  * Modules don't import the engine at runtime; they act through RuleHost and
  * the `make` function they're handed, so there are no import cycles.
@@ -41,6 +42,12 @@ export interface RuleHost {
   expandFloor(): void;
   /** Commerce: put a merchant on the current floor. */
   placeMerchant(): void;
+  /** Drift: rearrange the floor around you. */
+  shiftFloor(): void;
+  /** Every foe on the floor knows where you are. */
+  alertAll(): void;
+  /** Lose vitality to something other than a foe; `cause` is the epitaph if it kills. */
+  hurt(n: number, line: string, cause: string): void;
 }
 
 export interface NoteCtx {
@@ -67,6 +74,7 @@ export interface RuleModule {
   loot?(depth: number, g: GenCtx, make: Make): Item[];
   reinterpretFloor?(host: RuleHost): void;
   onAdopt?(host: RuleHost): void;
+  onTurn?(host: RuleHost): void;
   notes?(n: NoteCtx): string[];
 }
 

@@ -48,6 +48,7 @@ export const OVERGROWN_CHOIR: Premise = {
     ammos: 'seed pods',
     schism: 'Lychgate',
     merchant: 'seed-swapper',
+    heart: 'the First Seed',
   },
   foes: {
     rat: { name: 'aphid hound', plural: 'aphid hounds', glyph: 'a', color: '#a7c46b' },
@@ -212,6 +213,15 @@ export const OVERGROWN_CHOIR: Premise = {
       },
     },
   },
+  space: {
+    rooms: { name: 'Cloisters', tagline: 'Stone aisles, arches and doors.', summary: 'Each {floor} is chapels joined by cloisters.' },
+    caverns: { name: 'Root Hollows', tagline: 'The roots ate the masonry long ago.', summary: 'Each {floor} is one wide hollow among the roots: no doors, no aisles, nowhere to hide.' },
+    drift: { name: 'Wandering Aisles', tagline: 'The garden moves its own paths.', summary: 'Every {driftEvery} turns, the rooms you aren\'t in change places and the corridors reroute. The {stairsDown}, the {shrine} and the room you\'re in stay put.' },
+  },
+  time: {
+    turns: { name: 'Plainsong', tagline: 'The hours pass unmarked.', summary: 'Nothing happens until you act, however long you take.' },
+    tide: { name: 'The Evening Bell', tagline: 'Vespers comes for everyone.', summary: 'Every {floor} keeps a clock once {foes} exist. At {tide1} turns more {foes} arrive; at {tide2} every {foe} hunts you; from {tide3}, the brambles close in: −1 {hp} every {tideHurtEvery} turns until you leave.' },
+  },
   tiles: {
     void: '#050906',
     floor: '#0e1811',
@@ -281,6 +291,13 @@ export const OVERGROWN_CHOIR: Premise = {
     'starving': 'You are withering.',
     'death': 'You return to the soil — {cause}.',
     'cause.slain': 'taken by {a} {foe} in nave {n}',
+    'drift.shift': 'The hedges shuffle. The aisles of this {floor} lead somewhere new.',
+    'heart.win': '{name} kneels before the First Seed. It splits, and green light fills the choir; this Age is over.',
+    'tide.1': 'The first bell for vespers. More {foes} creep in from the weeds.',
+    'tide.2': 'The second bell. Every {foe} in this {floor} turns toward you.',
+    'tide.3': 'The last bell tolls, and the brambles close over this {floor}. Leave!',
+    'tide.hurt': 'Thorns close around you. −1 {hp}.',
+    'cause.tide': 'choked by brambles in nave {n}',
     'cause.starved': 'withered in nave {n}',
     'cause.burned': 'choked by fever pollen in nave {n}',
     'note.halls': 'This nave opens up right away — and its root-well moves somewhere you haven’t been.',

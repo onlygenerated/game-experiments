@@ -1,7 +1,7 @@
 import { itemGlyph } from '../engine/content.ts';
 import { idx } from '../engine/dungeon.ts';
 import type { Game } from '../engine/game.ts';
-import { T_STAIRS, T_UP, T_WALL, type Floor } from '../engine/types.ts';
+import { T_HEART, T_STAIRS, T_UP, T_WALL, type Floor } from '../engine/types.ts';
 
 export const COLORS = {
   void: '#07080c',
@@ -12,6 +12,8 @@ export const COLORS = {
   player: '#ffe7a3',
   stairs: '#f2c46d',
   stairsUp: '#b9a27a',
+  /** The Heart: the end of an Age. */
+  heart: '#ff5c7a',
   shrine: '#c9a2ff',
   shrineUsed: '#4a4458',
   schism: '#7fe0cf',
@@ -245,6 +247,7 @@ export class Renderer {
         if (covered.has(i) && !(g && elements)) continue;
         if (t === T_STAIRS) glyph('>', x, y, COLORS.stairs, true, 0.8);
         else if (t === T_UP) glyph('<', x, y, COLORS.stairsUp, true, 0.8);
+        else if (t === T_HEART) glyph('♥', x, y, COLORS.heart, true, 0.9);
         else if (g && elements) {
           const look = game.lex.element(g);
           ctx.fillStyle = look.tint;
@@ -272,7 +275,7 @@ export class Renderer {
       glyph('Ω', s.pos.x, s.pos.y, s.used ? COLORS.shrineUsed : COLORS.shrine, true, 0.8);
     }
     const sc = f.schism;
-    if (sc && !sc.used && !game.harmSettled && remembered(sc.pos.x, sc.pos.y)) glyph('◈', sc.pos.x, sc.pos.y, COLORS.schism, true, 0.85);
+    if (sc && game.schismOpen(sc) && remembered(sc.pos.x, sc.pos.y)) glyph('◈', sc.pos.x, sc.pos.y, COLORS.schism, true, 0.85);
     const mc = f.merchant;
     if (mc && game.has('commerce') && remembered(mc.pos.x, mc.pos.y)) glyph('&', mc.pos.x, mc.pos.y, COLORS.merchant, true, 0.8);
     for (const g of game.floorGraves()) {

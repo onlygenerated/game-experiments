@@ -292,6 +292,13 @@ try {
     const plainHp = await hpWord();
     await page.click('label[for="opt-plainLabels-false"]');
     ok(`${vp.name}: Plain labels swaps the words ("${themedHp}" → "${plainHp}" → "${await hpWord()}")`, plain && plainHp === 'HP' && (await hpWord()) === themedHp);
+    // Testing mode: a badge in the top bar, and the game knows; then off again.
+    await page.click('label[for="opt-testing-true"]');
+    const testingOn = await page.evaluate(() => window.unfolding.game.testing && !!document.querySelector('.tb-testing'));
+    await shot(page, `${vp.name}-2f-testing`);
+    await page.click('label[for="opt-testing-false"]');
+    const testingOff = await page.evaluate(() => !window.unfolding.game.testing && !document.querySelector('.tb-testing'));
+    ok(`${vp.name}: Testing mode switches on and off`, testingOn && testingOff);
     await page.click('.modal.options [data-cmd="dismiss"]');
 
     // With auto pickup off, walking onto a potion leaves it; the Here panel picks it up.
@@ -576,6 +583,77 @@ try {
     await shot(page, `${vp.name}-7c-shop`);
     await page.click('.modal.shop [data-cmd="leave-shop"]');
     ok(`${vp.name}: leaving the shop closes it`, !(await page.isVisible('.modal.shop')));
+
+    // ---- Phase 3: the Tide Clock shows, and the Heart ends an Age -----------
+    await page.evaluate(() => {
+      const a = window.unfolding;
+      a.game.world.genome.axioms.time = 'tide';
+      a.refresh();
+    });
+    ok(`${vp.name}: a tide world shows its clock`, (await page.$('.means.tide')) !== null);
+    // A space schism shrine, then Drift rearranging the floor.
+    await page.evaluate(() => {
+      const a = window.unfolding, g = a.game;
+      g.world.genome.axioms.time = 'turns';
+      delete g.world.genome.axioms.space;
+      for (const m of g.run.monsters) m.stun = 9999;
+      g.run.floor.schism = null;
+      g.placeSchism();
+      const sc = g.run.floor.schism;
+      g.events.splice(0);
+      a.overlays = [];
+      g.run.pending = null;
+      g.run.player.x = sc.pos.x;
+      g.run.player.y = sc.pos.y;
+      g.enterTile();
+      a.refresh();
+    });
+    ok(`${vp.name}: a schism shrine asks what shape the world should take`, await page.isVisible('.modal.schism >> text=What shape should'));
+    await shot(page, `${vp.name}-7c2-space-schism`);
+    await page.click('.modal.schism [data-harm="drift"]');
+    const shifted = await page.evaluate(() => {
+      const a = window.unfolding, g = a.game;
+      const before = g.run.floor.tiles.join('');
+      g.shiftFloor();
+      a.overlays = [];
+      a.refresh();
+      return { space: g.world.genome.axioms.space, changed: g.run.floor.tiles.join('') !== before };
+    });
+    ok(`${vp.name}: choosing Drift settles space, and the floor can rearrange itself`, shifted.space === 'drift' && shifted.changed);
+    ok(`${vp.name}: a drift world shows when the floor next shifts`, (await page.$('.means.tide')) !== null);
+    await page.evaluate(() => { window.unfolding.game.world.genome.axioms.space = 'rooms'; });
+    await page.evaluate(() => {
+      const a = window.unfolding, g = a.game;
+      g.world.genome.axioms.time = 'turns';
+      g.world.heart = g.run.depth + 1;
+      for (const m of g.run.monsters) m.stun = 9999;
+      g.run.pending = null;
+      a.overlays = [];
+      g.run.player.x = g.run.floor.stairs.x;
+      g.run.player.y = g.run.floor.stairs.y;
+      a.act({ type: 'descend' });
+      a.overlays = [];
+      a.refresh();
+    });
+    const heartFloor = await page.evaluate(() => !!window.unfolding.game.run.floor.heart);
+    ok(`${vp.name}: the Heart's floor is the deepest`, heartFloor);
+    await shot(page, `${vp.name}-7d-heart-floor`);
+    await page.evaluate(() => {
+      const a = window.unfolding, g = a.game;
+      for (const m of g.run.monsters) m.stun = 9999;
+      g.run.pending = null;
+      a.overlays = [];
+      g.run.player.x = g.run.floor.stairs.x;
+      g.run.player.y = g.run.floor.stairs.y;
+      a.act({ type: 'descend' });
+    });
+    await page.waitForSelector('.victory-screen', { timeout: 3000 }).catch(() => {});
+    ok(`${vp.name}: reaching the Heart shows the end of the Age`, await page.isVisible('.victory-screen'));
+    await shot(page, `${vp.name}-7e-victory`);
+    await page.click('.victory-screen [data-cmd="heir"]');
+    if (await page.isVisible('.heir-screen')) await page.click('.heir-screen [data-cmd="begin"]');
+    await page.evaluate(() => { const a = window.unfolding; a.overlays = []; a.refresh(); });
+    ok(`${vp.name}: a new Age begins`, await page.evaluate(() => window.unfolding.game?.world.age === 2));
 
     // ---- Every premise speaks its own words -----------------------------
     // New worlds roll their premise; keep making them until each one has shown up.

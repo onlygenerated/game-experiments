@@ -20,6 +20,7 @@ import {
   itemsForRule,
   lootFor,
   makeItem,
+  makeMonster,
   monsterCount,
   MONSTERS,
   populate,
@@ -27,15 +28,16 @@ import {
   spawnMonsters,
   type GenCtx,
 } from './content.ts';
-import { DIRS, distanceMap, generateLayout, idx, passable, randomFloorTile, soloRoom, type LayoutOpts } from './dungeon.ts';
+import { DIRS, distanceMap, driftLayout, generateLayout, idx, passable, randomFloorTile, soloRoom, type LayoutOpts } from './dungeon.ts';
 import { ray } from './aim.ts';
 import { HARMS, MEANS, type HarmId, type MeansModule } from '../rules/harm.ts';
 import { article, lexiconFor, PREMISES, type Lexicon } from '../theme/lexicon.ts';
 import type { RuleHost } from '../rules/modules.ts';
 import { computeVisible, lineOfSight } from './fov.ts';
 import { hashSeed, Rng } from './rng.ts';
-import { T_FLOOR, T_UP, type FloorItem, type Grave, type Item, type Monster, type Player, type Pos, type RuleId, type RunState, type Tone, type World } from './types.ts';
-import { heirName } from './world.ts';
+import { T_FLOOR, T_UP, type FloorItem, type MonsterKind, type Rect, type Schism, type SpaceId, type TimeId, type Grave, type Item, type Monster, type Player, type Pos, type RuleId, type RunState, type Tone, type World } from './types.ts';
+import { heirName, rollHeart } from './world.ts';
+import { SPACE, SPACES, TIME, TIMES } from '../rules/axioms.ts';
 
 export type Action =
   | { type: 'move'; dx: number; dy: number }
@@ -59,8 +61,11 @@ export type Action =
   | { type: 'leaveShop' }
   /** Commerce: pay the shrine you're answering to show other offers. */
   | { type: 'reroll' }
-  /** Answer a schism shrine: settle how harm works, or step away (null). */
-  | { type: 'schism'; harm: HarmId | null };
+  /**
+   * Answer a schism shrine: settle the question it asks, or step away (null).
+   * `harm` is the option for any family (named for the first one it asked).
+   */
+  | { type: 'schism'; harm: string | null };
 
 export type GameEvent =
   | { type: 'rule'; rule: RuleId; how: 'shrine' | 'mastery' | 'milestone' }
@@ -73,6 +78,8 @@ export type GameEvent =
   /** Aimed harm flew over these tiles (for the renderer to draw). */
   | { type: 'shot'; path: Pos[] }
   | { type: 'death' }
+  /** The player reached the Heart: the world's Age is over. */
+  | { type: 'victory' }
   /** The player moved to another floor (either direction). */
   | { type: 'floor'; depth: number };
 
@@ -123,6 +130,11 @@ export class Game implements RuleHost {
   visible = new Set<number>();
   /** A player preference, not part of the run: set by the UI from its options. */
   autoPickup: AutoPickup = 'all';
+  /**
+   * Testing mode (a player preference, set by the UI): every new floor is laid
+   * out for trying rules quickly. See arrangeForTesting.
+   */
+  testing = false;
   /** The words this world speaks: every message the engine logs comes from here. The UI swaps in Plain labels. */
   lex: Lexicon;
   /**
@@ -153,7 +165,7 @@ export class Game implements RuleHost {
   }
 
   /** Start a new character in `world`. The world's rulebook carries over untouched. */
-  static start(world: World, plain = false): Game {
+  static start(world: World, plain = false, testing = false): Game {
     world.generation += 1;
     const gen = world.generation;
     const run: RunState = {
@@ -161,7 +173,7 @@ export class Game implements RuleHost {
       gen,
       turn: 0,
       depth: 1,
-      floor: generateLayout(world.seed, 1, layoutOpts(world)),
+      floor: generateLayout(world.seed, 1, layoutOpts(world, 1)),
       monsters: [],
       items: [],
       player: newPlayer(heirName(world, gen)),
@@ -174,6 +186,7 @@ export class Game implements RuleHost {
       cause: null,
     };
     const game = new Game(world, run, plain);
+    game.testing = testing;
     game.enterFloor(1);
     const p = run.player;
     const d = game.stats;
@@ -182,6 +195,18 @@ export class Game implements RuleHost {
     if (game.ctx.harm === 'volley') p.ammo = B.harm.startAmmo;
     const L = game.lex;
     const story: string[] = [];
+    const lastAge = world.ages?.[world.ages.length - 1];
+    if (lastAge && lastAge.gen === gen - 1) {
+      const line = L.t('age.begin', { age: world.age ?? 1, name: lastAge.name });
+      story.push(line);
+      game.log(line, 'rule');
+      const reset = B.heart.newAge;
+      if (reset !== 'none') {
+        const more = L.t(reset === 'all' ? 'age.reset.all' : 'age.reset.rules');
+        story.push(more);
+        game.log(more, 'dim');
+      }
+    }
     if (world.rules.length === 0) {
       story.push(L.premise.pitch, L.t('start.fresh'));
       game.log(L.t('start.fresh'), 'info');
@@ -222,6 +247,12 @@ export class Game implements RuleHost {
   /** How harm works in this world right now (Strike while a schism is still open). */
   get means(): MeansModule {
     return MEANS[this.ctx.harm];
+  }
+
+  /** The question a schism shrine asks, if its question is still open. */
+  schismOpen(sc: Schism | null | undefined): boolean {
+    if (!sc || sc.used) return false;
+    return !this.world.genome?.axioms[sc.family ?? 'harm'];
   }
 
   /** Has this world settled its Means of Harm? Open worlds wait for a schism shrine. */
@@ -298,19 +329,21 @@ export class Game implements RuleHost {
       for (const r of missed) this.reinterpretFloor(r);
       if (missed.length) this.log(this.lex.t('floor.changed'), 'dim');
     } else {
-      run.floor = generateLayout(this.world.seed, depth, layoutOpts(this.world));
+      run.floor = generateLayout(this.world.seed, depth, layoutOpts(this.world, depth));
       const { monsters, items } = populate(run.floor, this.genCtx('populate'));
       run.monsters = monsters;
       run.items = items;
       this.countSpawned(items.map((fi) => fi.item));
       this.count('floorsEntered');
-      if (this.has('peril') && !this.harmSettled) this.placeSchism();
+      this.placeSchism();
       if (this.has('commerce')) this.placeMerchant();
+      if (this.testing) this.arrangeForTesting(true);
     }
     arrive();
     this.clearArrival();
     this.world.deepest = Math.max(this.world.deepest, depth);
     this.refreshVision();
+    if (run.floor.heart && !stored) this.log(this.lex.t('heart.near'), 'rule', true);
     if (stored) return;
     const graves = this.floorGraves().filter((g) => !g.looted);
     if (graves.length) this.log(graves.length === 1 ? this.lex.t('graves.one') : this.lex.t('graves.many', { n: graves.length }), 'dim', true);
@@ -468,7 +501,7 @@ export class Game implements RuleHost {
         this.log(this.lex.t(g === 'ember' ? 'glimmer.ember' : 'glimmer.frost'), 'dim');
       }
     }
-    if (p.x === floor.stairs.x && p.y === floor.stairs.y) this.log(this.lex.t('stairs.down.here'), 'info');
+    if (p.x === floor.stairs.x && p.y === floor.stairs.y) this.log(this.lex.t(floor.heart ? 'heart.here' : 'stairs.down.here'), floor.heart ? 'rule' : 'info');
     if (floor.tiles[idx(floor, p.x, p.y)] === T_UP) this.log(this.lex.t('stairs.up.here', { n: this.run.depth - 1 }), 'info');
     const sh = floor.shrine;
     if (sh && !sh.used && sh.pos.x === p.x && sh.pos.y === p.y) this.openShrine();
@@ -478,8 +511,9 @@ export class Game implements RuleHost {
       this.run.pending = { kind: 'shop' };
     }
     const sc = floor.schism;
-    if (sc && !sc.used && !this.harmSettled && sc.pos.x === p.x && sc.pos.y === p.y) {
-      this.log(this.lex.t('schism.open'), 'rule');
+    if (this.schismOpen(sc) && sc!.pos.x === p.x && sc!.pos.y === p.y) {
+      const fam = sc!.family ?? 'harm';
+      this.log(this.lex.t(fam === 'harm' ? 'schism.open' : `schism.open.${fam}`), 'rule');
       this.run.pending = { kind: 'schism' };
     }
     const grave = this.graveAt(p.x, p.y);
@@ -492,6 +526,10 @@ export class Game implements RuleHost {
     if (p.x !== floor.stairs.x || p.y !== floor.stairs.y) {
       this.log(this.lex.t('stairs.down.none'), 'dim');
       return false;
+    }
+    if (floor.heart) {
+      this.reachHeart();
+      return true;
     }
     this.leaveFloor();
     const depth = this.run.depth + 1;
@@ -704,7 +742,12 @@ export class Game implements RuleHost {
     const p = this.run.player;
     this.reinterpretFloor(rule);
     RULES[rule].onAdopt?.(this);
-    if (rule === 'peril') this.revealHarm();
+    if (rule === 'halls' && !this.world.genome?.axioms.space && this.placeSchism()) this.log(this.lex.t('schism.appears.space'), 'rule', true);
+    if (rule === 'peril') {
+      this.revealHarm();
+      if (this.harmSettled && !this.world.genome?.axioms.time && this.placeSchism()) this.log(this.lex.t('schism.appears.time'), 'rule', true);
+      if (this.world.genome?.axioms.time === 'tide') this.log(this.lex.t('axiom.tide', { name: this.lex.time('tide').name, tagline: this.lex.time('tide').tagline }), 'rule', true);
+    }
     p.hp = Math.min(p.hp, this.stats.maxHp);
     this.refreshVision();
   }
@@ -846,11 +889,29 @@ export class Game implements RuleHost {
     if (harm === 'arcanum') p.mana = this.stats.maxMana;
   }
 
-  /** One schism shrine per floor while the question is open, somewhere in the open. */
-  private placeSchism() {
+  /**
+   * The open question a schism shrine should ask on this floor, if any: how
+   * harm works once foes exist, the shape of space once Halls has opened the
+   * floors up, how time flows once foes exist. One at a time, in that order.
+   */
+  private openFamily(): 'harm' | 'space' | 'time' | null {
+    const ax = this.world.genome?.axioms ?? {};
+    if (this.has('peril') && !ax.harm) return 'harm';
+    if (this.has('halls') && !ax.space) return 'space';
+    if (this.has('peril') && !ax.time) return 'time';
+    return null;
+  }
+
+  /** One schism shrine per floor while a question is open, somewhere in the open. */
+  private placeSchism(): boolean {
     const f = this.run.floor;
-    if (f.schism || this.harmSettled) return;
-    const g = this.genCtx('schism');
+    const family = this.openFamily();
+    if (!family) return false;
+    // One per floor: a floor whose shrine settled one question raises the next only on a later floor.
+    // An unanswered one gives way to a more pressing question (harm, then space, then time).
+    const rank = { harm: 0, space: 1, time: 2 };
+    if (f.schism && (f.schism.used || (this.schismOpen(f.schism) && rank[f.schism.family ?? 'harm'] <= rank[family]))) return false;
+    const g = this.genCtx(family === 'harm' ? 'schism' : `schism-${family}`);
     const p = this.run.player;
     const pos = randomFloorTile(f, g.rng, (x, y) =>
       (x === p.x && y === p.y) ||
@@ -860,23 +921,41 @@ export class Game implements RuleHost {
       this.run.items.some((fi) => fi.x === x && fi.y === y) ||
       !!this.monsterAt(x, y),
     );
-    if (!pos) return;
+    if (!pos) return false;
     delete f.glimmer[idx(f, pos.x, pos.y)];
-    f.schism = { pos, offers: g.rng.shuffle([...HARMS]).slice(0, B.harm.schismOffers), used: false };
+    if (family === 'harm') f.schism = { pos, offers: g.rng.shuffle([...HARMS]).slice(0, B.harm.schismOffers), used: false };
+    else f.schism = { pos, family, offers: family === 'space' ? [...SPACES] : [...TIMES], used: false };
+    return true;
   }
 
-  private resolveSchism(harm: HarmId | null): boolean {
+  private resolveSchism(choice: string | null): boolean {
     const sc = this.run.floor.schism;
     this.run.pending = null;
     if (!sc) return true;
-    if (harm === null || !sc.offers.includes(harm)) {
+    const fam = sc.family ?? 'harm';
+    if (choice === null || !sc.offers.includes(choice)) {
       this.log(this.lex.t('schism.stepback'), 'dim');
-    } else {
+    } else if (fam === 'harm') {
       sc.used = true;
+      const harm = choice as HarmId;
       this.world.genome.axioms.harm = harm;
       // A new means brings its own words for implements, shots and blows.
       this.lex = lexiconFor(this.world, this.lex.plain);
       this.announceHarm(harm, 'schism');
+    } else if (fam === 'space') {
+      sc.used = true;
+      const space = choice as SpaceId;
+      this.world.genome.axioms.space = space;
+      const w = this.lex.space(space);
+      this.log(this.lex.t('axiom.space', { name: w.name, tagline: w.tagline }), 'rule', true);
+      // Caves are dug from the next new floor on; Drift starts here.
+      if (space === 'caverns') this.log(this.lex.t('axiom.space.next'), 'dim');
+    } else {
+      sc.used = true;
+      const time = choice as TimeId;
+      this.world.genome.axioms.time = time;
+      const w = this.lex.time(time);
+      this.log(this.lex.t(time === 'tide' ? 'axiom.tide' : 'axiom.time', { name: w.name, tagline: w.tagline }), 'rule', true);
     }
     this.settlePending();
     return true;
@@ -1040,7 +1119,7 @@ export class Game implements RuleHost {
     const run = this.run;
     const old = run.floor;
     if (!old.solo) return;
-    const full = generateLayout(this.world.seed, run.depth, layoutOpts(this.world));
+    const full = generateLayout(this.world.seed, run.depth, { ...layoutOpts(this.world, run.depth), caverns: !!old.caverns });
     full.shrine = old.shrine;
     if (old.shrine) delete full.glimmer[idx(full, old.shrine.pos.x, old.shrine.pos.y)];
     // The stairs up stay where you came in; the down stairs move to the full floor's.
@@ -1054,7 +1133,8 @@ export class Game implements RuleHost {
     full.start = old.start;
     for (let i = 0; i < old.explored.length; i++) if (old.explored[i]) full.explored[i] = 1;
     run.floor = full;
-    const room = soloRoom(full);
+    // The room you were in (under Caverns, the pocket of cave): nothing new spawns in it.
+    const room = old.rooms[0] ?? soloRoom(full);
     const p = run.player;
     const inRoom = (x: number, y: number) => x >= room.x && x < room.x + room.w && y >= room.y && y < room.y + room.h;
     const taken = (x: number, y: number) =>
@@ -1064,8 +1144,206 @@ export class Game implements RuleHost {
     const loot = lootFor(full, g);
     run.items.push(...scatter(loot, full, g, taken));
     this.countSpawned(loot);
+    if (this.testing) this.arrangeForTesting(false);
     if (p.x === full.stairs.x && p.y === full.stairs.y) return;
     this.log(this.lex.t('adopt.halls'), 'dim');
+  }
+
+  /**
+   * Drift: the floor rearranges itself. The room you stand in (or the few
+   * tiles around you, in a corridor), the stairs, the shrine, the merchant
+   * and the schism shrine stay put; whatever stood where rock now is moves
+   * to the nearest open ground.
+   */
+  shiftFloor() {
+    const run = this.run;
+    const old = run.floor;
+    const p = run.player;
+    const room = old.rooms.find((r) => p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h);
+    const keep: Rect = room ?? { x: Math.max(0, p.x - 1), y: Math.max(0, p.y - 1), w: 3, h: 3 };
+    const anchors = [old.shrine?.pos, old.merchant?.pos, old.schism?.pos, { x: p.x, y: p.y }].filter((a): a is Pos => !!a);
+    const n = (old.shifts ?? 0) + 1;
+    const sprawl = this.has('halls') && this.world.variants.halls === 'alt';
+    const f = driftLayout(old, hashSeed(this.world.seed, run.gen), n, sprawl, keep, anchors);
+    run.floor = f;
+    const taken = new Set<number>();
+    const settle = (at: Pos): Pos => {
+      if (passable(f, at.x, at.y) && !taken.has(idx(f, at.x, at.y))) return at;
+      // The nearest open tile, by plain distance.
+      let best: Pos | null = null;
+      let bd = Infinity;
+      for (let y = 0; y < f.h; y++)
+        for (let x = 0; x < f.w; x++) {
+          if (!passable(f, x, y) || taken.has(idx(f, x, y)) || (x === p.x && y === p.y)) continue;
+          const d = Math.max(Math.abs(x - at.x), Math.abs(y - at.y));
+          if (d < bd) {
+            bd = d;
+            best = { x, y };
+          }
+        }
+      return best ?? at;
+    };
+    for (const m of run.monsters) {
+      const at = settle(m);
+      m.x = at.x;
+      m.y = at.y;
+      taken.add(idx(f, m.x, m.y));
+    }
+    taken.clear();
+    for (const fi of run.items) {
+      if (passable(f, fi.x, fi.y)) continue;
+      const at = settle(fi);
+      fi.x = at.x;
+      fi.y = at.y;
+    }
+    this.count('shifts');
+    this.log(this.lex.t('drift.shift'), 'rule', true);
+    this.refreshVision();
+  }
+
+  /**
+   * Testing mode: lay this floor out for trying rules quickly. The shrine and
+   * the way down move to within 3 tiles of where you arrived; `stock` also
+   * puts a sample of every item the world's rules can make within 10 tiles,
+   * and (once foes exist) one of every foe, plus both kinds of hazard stone,
+   * within 30. Arranged on the floor's own seeded stream, so it replays.
+   */
+  arrangeForTesting(stock: boolean) {
+    const T = B.testing;
+    const run = this.run;
+    const f = run.floor;
+    // A new floor: around where you arrive. Halls opening the floor mid-visit: around you.
+    const home = stock ? { x: f.start.x, y: f.start.y } : { x: run.player.x, y: run.player.y };
+    const g = this.genCtx(stock ? 'testing' : 'testing-expand');
+    const dist = distanceMap(f, home);
+    const ring = (lo: number, hi: number) => {
+      const out: Pos[] = [];
+      for (let i = 0; i < dist.length; i++) {
+        if (dist[i] < lo || dist[i] > hi || f.tiles[i] !== T_FLOOR) continue;
+        const x = i % f.w;
+        out.push({ x, y: (i - x) / f.w });
+      }
+      return out;
+    };
+    const used = new Set<number>([idx(f, home.x, home.y)]);
+    for (const m of run.monsters) used.add(idx(f, m.x, m.y));
+    for (const fi of run.items) used.add(idx(f, fi.x, fi.y));
+    const pick = (lo: number, hi: number): Pos | null => {
+      const spots = ring(lo, hi).filter((p) => !used.has(idx(f, p.x, p.y)) && !(p.x === f.stairs.x && p.y === f.stairs.y));
+      if (!spots.length) return null;
+      const p = g.rng.pick(spots);
+      used.add(idx(f, p.x, p.y));
+      return p;
+    };
+    // The way down (or the Heart), close by.
+    if ((dist[idx(f, f.stairs.x, f.stairs.y)] ?? -1) > T.near || dist[idx(f, f.stairs.x, f.stairs.y)] < 0) {
+      const to = pick(2, T.near);
+      if (to) {
+        const tile = f.tiles[idx(f, f.stairs.x, f.stairs.y)];
+        f.tiles[idx(f, f.stairs.x, f.stairs.y)] = T_FLOOR;
+        f.tiles[idx(f, to.x, to.y)] = tile;
+        delete f.glimmer[idx(f, to.x, to.y)];
+        f.stairs = to;
+      }
+    }
+    used.add(idx(f, f.stairs.x, f.stairs.y));
+    // The shrine, unanswered, close by.
+    if (f.shrine && !f.shrine.used && dist[idx(f, f.shrine.pos.x, f.shrine.pos.y)] > T.near) {
+      const to = pick(1, T.near);
+      if (to) {
+        delete f.glimmer[idx(f, to.x, to.y)];
+        f.shrine.pos = to;
+      }
+    }
+    if (f.shrine) used.add(idx(f, f.shrine.pos.x, f.shrine.pos.y));
+    // A schism shrine and a merchant, if the floor has them, not far off either.
+    for (const [spot, hi] of [[f.schism?.pos, T.near + 2], [f.merchant?.pos, T.items]] as const) {
+      if (!spot || (dist[idx(f, spot.x, spot.y)] >= 0 && dist[idx(f, spot.x, spot.y)] <= hi)) continue;
+      const to = pick(2, hi);
+      if (!to) continue;
+      delete f.glimmer[idx(f, to.x, to.y)];
+      spot.x = to.x;
+      spot.y = to.y;
+    }
+    if (!stock) return;
+    // A sample of every item this world's rules can make.
+    const kinds: Item['kind'][] = [];
+    if (this.has('things')) kinds.push('potion', 'gold');
+    if (this.has('arms')) kinds.push('weapon', 'armor');
+    if (this.has('hunger')) kinds.push('food');
+    if (this.ctx.harm === 'volley') kinds.push('ammo');
+    const items: Item[] = kinds.map((k) => makeItem(k, run.depth, g));
+    if (this.has('arms')) {
+      // An elemental implement of each kind, so Elements has something to show.
+      for (const el of ['ember', 'frost'] as const) items.push({ ...makeItem('weapon', run.depth, g), element: el });
+    }
+    for (const item of items) {
+      const at = pick(1, T.items);
+      if (at) run.items.push({ item, x: at.x, y: at.y });
+    }
+    this.countSpawned(items);
+    // One of every foe (and, under Elements, one of each kind), awake to nothing yet.
+    if (this.has('peril')) {
+      const roster: { kind: MonsterKind; element: Monster['element'] }[] = (['rat', 'bat', 'goblin', 'slime'] as MonsterKind[]).map((kind) => ({ kind, element: null }));
+      if (this.has('elements')) roster.push({ kind: 'rat', element: 'ember' }, { kind: 'rat', element: 'frost' });
+      for (const r of roster) {
+        const at = pick(T.foesFrom, T.far);
+        if (!at) continue;
+        const m = makeMonster(r.kind, run.depth, g, at.x, at.y);
+        m.element = r.element;
+        run.monsters.push(m);
+      }
+    }
+    // Both kinds of hazard stone (dormant until Elements).
+    for (const el of ['ember', 'frost'] as const) {
+      const have = Object.entries(f.glimmer).some(([k, v]) => v === el && (dist[Number(k)] ?? -1) >= 0 && dist[Number(k)] <= T.far);
+      if (have) continue;
+      const at = pick(2, T.far);
+      if (at) f.glimmer[idx(f, at.x, at.y)] = el;
+    }
+  }
+
+  alertAll() {
+    for (const m of this.run.monsters) m.aware = true;
+  }
+
+  hurt(n: number, line: string, cause: string) {
+    const p = this.run.player;
+    p.hp -= n;
+    this.count('damageTaken', n);
+    this.log(line, 'bad');
+    if (p.hp <= 0) this.die(cause);
+  }
+
+  // -------------------------------------------------------------------------
+  // The Heart (M-55): the end of an Age
+  // -------------------------------------------------------------------------
+
+  /**
+   * The heir reached the Heart. The run ends in victory, the Age is recorded
+   * with its winner, and the world turns to a new Age with a new Heart.
+   */
+  private reachHeart() {
+    const run = this.run;
+    const p = run.player;
+    const w = this.world;
+    const age = w.age ?? 1;
+    const cause = this.lex.t('cause.won', { n: run.depth });
+    run.over = true;
+    run.won = true;
+    run.cause = cause;
+    this.log(this.lex.t('heart.win', { name: p.name }), 'good', true);
+    w.history.push({ gen: run.gen, name: p.name, depth: run.depth, level: p.level, turns: run.turn, cause, rules: [...w.rules], won: true, age });
+    w.ages = [...(w.ages ?? []), { age, gen: run.gen, name: p.name, depth: run.depth, turns: run.turn, level: p.level, rules: [...w.rules] }];
+    w.age = age + 1;
+    w.heart = rollHeart(w.seed, w.age);
+    // What a new Age keeps (BALANCE.heart.newAge). Graves, chronicle and look always stay.
+    const reset = B.heart.newAge;
+    if (reset === 'rules' || reset === 'all') w.rules = [];
+    if (reset === 'all') {
+      delete w.genome.axioms.harm;
+    }
+    this.events.push({ type: 'victory' });
   }
 
   private resolveLevelUp(stat: 'str' | 'agi' | 'vit'): boolean {
@@ -1333,6 +1611,10 @@ export class Game implements RuleHost {
         p.mana = Math.min(this.stats.maxMana, p.mana + 1);
       }
     }
+    // Rule and axiom hooks that run every turn.
+    for (const id of RULE_ORDER) if (this.has(id) && !run.over) RULES[id].onTurn?.(this);
+    if (!run.over) SPACE[this.ctx.space ?? 'rooms'].onTurn?.(this);
+    if (!run.over) TIME[this.ctx.time ?? 'turns'].onTurn?.(this);
   }
 
   /** Discourse: a foe left alone gathers itself again. */
@@ -1444,6 +1726,11 @@ export class Game implements RuleHost {
   }
 }
 
-function layoutOpts(world: World): LayoutOpts {
-  return { halls: world.rules.includes('halls'), sprawl: world.rules.includes('halls') && world.variants.halls === 'alt' };
+function layoutOpts(world: World, depth: number): LayoutOpts {
+  return {
+    halls: world.rules.includes('halls'),
+    sprawl: world.rules.includes('halls') && world.variants.halls === 'alt',
+    caverns: world.genome?.axioms.space === 'caverns',
+    heart: !!world.heart && depth === world.heart,
+  };
 }

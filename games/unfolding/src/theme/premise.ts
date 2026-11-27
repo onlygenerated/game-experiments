@@ -6,7 +6,7 @@
  * internal and keep their original names for save compatibility. Only the
  * premise decides what a player is shown.
  */
-import type { Element, MonsterKind, RuleId } from '../engine/types.ts';
+import type { Element, MonsterKind, RuleId, SpaceId, TimeId } from '../engine/types.ts';
 import type { HarmId } from '../rules/harm.ts';
 import type { MessageKey, Roles, ThemedKey } from './base.ts';
 
@@ -73,6 +73,13 @@ export interface MeansWords {
   /** Implements under this means, index-aligned with WEAPONS in content.ts. */
   weapons?: string[];
   text?: Partial<Record<MessageKey, string>>;
+}
+
+/** How a premise names one option of Shape of Space or Flow of Time (Phase 3). */
+export interface AxiomWords {
+  name: string;
+  tagline: string;
+  summary: string;
 }
 
 /** A Means of Harm's full text, as the UI shows it. */
@@ -148,6 +155,9 @@ export interface Premise {
   rules: Record<RuleId, RuleWords>;
   /** Each Means of Harm in this premise's words. */
   means: Record<HarmId, MeansWords>;
+  /** Shape of Space and Flow of Time in this premise's words. */
+  space: Record<SpaceId, AxiomWords>;
+  time: Record<TimeId, AxiomWords>;
   /** How its floors look. */
   tiles: Tileset;
   naming: {

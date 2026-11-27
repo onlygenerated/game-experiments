@@ -150,6 +150,7 @@ export function monsterCount(floor: Floor, ctx: RuleCtx): number {
   const M = B.monsters;
   let count = Math.min(M.countCap, M.countBase + Math.ceil(floor.depth * M.countPerDepth));
   if (alt(ctx, 'bestiary')) count += M.swarmExtra;
+  if (ctx.space === 'caverns') count = Math.ceil(count * B.space.caveFoes);
   if (floor.solo) {
     const r = floor.rooms[0];
     count = Math.min(count, Math.max(2, Math.floor((r.w * r.h) / M.soloTilesPerFoe)));
