@@ -727,6 +727,18 @@ p.gloss {
   padding: 0 10px;
   white-space: nowrap;
 }
+/* Stairs: dim until you stand on them, then lit in the stairs' own gold. */
+/* Wide enough for its longest label, so lighting up never shifts the pad. */
+.pad-actions button.pad-stairs {
+  min-width: 96px;
+}
+.pad-actions button.pad-stairs.here {
+  background: #f2c46d;
+  border-color: #f2c46d;
+  color: #2a1e08;
+  font-weight: 700;
+  box-shadow: 0 0 0 3px rgba(242, 196, 109, 0.25);
+}
 .pad-actions button.on,
 .topbar button.on {
   border-color: var(--accent);
@@ -734,37 +746,165 @@ p.gloss {
   background: #241c38;
 }
 
+/* The Pack sheet and its button only exist on narrow screens. */
+.pad-sheet,
+.sheet-scrim,
+.sheet-head {
+  display: none;
+}
+.tb-short {
+  display: none;
+}
+
+/* Touch screens: tapping the map walks, so the bar of actions shows and the
+   direction pad stays tucked away unless the player turns it on. */
 @media (pointer: coarse) {
   .pad {
     display: flex;
+  }
+  .dpad {
+    display: none;
   }
   .topbar .tb-keys {
     display: none;
   }
 }
 
+/* Phones: one screen, no page scroll. A slim bar on top, the map, three lines
+   of log, and a single row of thumb-sized actions at the bottom. Stats, pack
+   and rules open as a sheet from the Pack button. */
 @media (max-width: 860px) {
   .play-screen {
-    height: auto;
-    min-height: 100%;
+    height: 100dvh;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto 56dvh auto auto auto;
-    grid-template-areas: 'top' 'board' 'pad' 'log' 'side';
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: 'top' 'board' 'log' 'pad';
+    overflow: hidden;
   }
-  .pad {
-    display: flex;
-  }
-  .side {
-    border-left: 0;
-    overflow: visible;
+  .topbar {
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding: 6px max(10px, env(safe-area-inset-right, 0px)) 6px max(12px, env(safe-area-inset-left, 0px));
+    white-space: nowrap;
   }
   .topbar .tb-world,
   .topbar .brand,
-  .topbar .tb-keys {
+  .topbar .tb-keys,
+  .topbar .tb-heir,
+  .topbar .tb-look,
+  .topbar .tb-floor,
+  .topbar .tb-long {
     display: none;
   }
-  .topbar .tb-floor {
+  .topbar .tb-short {
+    display: inline;
+  }
+  .topbar button {
+    padding: 6px 10px;
+    min-height: 34px;
+  }
+  .topbar .tb-options .tb-short {
+    font-size: 16px;
+    line-height: 1;
+  }
+  .pad {
+    display: flex;
+    padding: 8px max(10px, env(safe-area-inset-right, 0px)) max(10px, env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-left, 0px));
+  }
+  .play-screen:not(.pad-always) .pad-actions {
+    display: flex;
+    flex: 1;
+    gap: 6px;
+  }
+  .play-screen:not(.pad-always) .pad-actions button {
+    flex: 1 1 0;
+    height: 48px;
+    min-width: 0;
+    padding: 0 6px;
+  }
+  .play-screen:not(.pad-always) .pad-actions button.pad-stairs {
+    min-width: 0;
+    flex-grow: 1.4;
+  }
+  .play-screen:not(.pad-always) .pad-fire {
+    flex-direction: column;
+    gap: 0;
+    line-height: 1.1;
+  }
+  /* Stairs and Pick up only take room when they'd do something. */
+  .pad-actions .pad-stairs:disabled,
+  .pad-actions .pad-pickup:disabled {
     display: none;
+  }
+  .pad-sheet {
+    display: block;
+  }
+  .log {
+    padding: 6px 14px;
+    min-height: 0;
+    height: calc(3 * 1.4em + 12px);
+    overflow: hidden;
+    font-size: 12.5px;
+    line-height: 1.4;
+  }
+  .log p:nth-child(n + 4) {
+    display: none;
+  }
+  /* The sidebar becomes a sheet that slides up over the map. */
+  .side {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    max-height: 78dvh;
+    overflow-y: auto;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    border-radius: 16px 16px 0 0;
+    background: var(--bg-2);
+    box-shadow: 0 -12px 40px #000a;
+    padding: 0 14px max(16px, env(safe-area-inset-bottom, 0px));
+    transform: translateY(105%);
+    visibility: hidden;
+    transition: transform 0.2s ease, visibility 0s linear 0.2s;
+  }
+  .sheet-open .side {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.2s ease;
+  }
+  .sheet-head {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 10px 0 6px;
+    background: var(--bg-2);
+  }
+  .sheet-head .grip {
+    position: absolute;
+    left: 50%;
+    top: 8px;
+    width: 40px;
+    height: 4px;
+    margin-left: -20px;
+    border-radius: 2px;
+    background: var(--line);
+  }
+  .sheet-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+    background: #0008;
+  }
+  .play-screen:not(.sheet-open) .sheet-scrim {
+    display: none;
+  }
+  .sheet-open .sheet-scrim {
+    display: block;
   }
   .title-cols {
     grid-template-columns: minmax(0, 1fr);
@@ -776,7 +916,7 @@ p.gloss {
 .overlay {
   position: fixed;
   inset: 0;
-  z-index: 10;
+  z-index: 50;
   background: rgba(5, 6, 10, 0.78);
   backdrop-filter: blur(3px);
   display: grid;
@@ -1045,11 +1185,17 @@ p.gloss {
 
 /* ------------------------------------------------- d-pad option overrides */
 
+/* The direction pad: off by default, since tapping the map walks you there. */
 .play-screen.pad-always .pad {
   display: flex;
 }
-.play-screen.pad-never .pad {
-  display: none;
+.play-screen.pad-always .dpad {
+  display: grid;
+}
+@media (min-width: 861px) {
+  .play-screen.pad-never .pad {
+    display: none;
+  }
 }
 
 /* ------------------------------------------------------- look & hover card */
@@ -1289,6 +1435,34 @@ button.linkish:hover:not(:disabled) {
 .fire-fab[hidden] {
   display: none;
 }
+/* Descend / Ascend: on the map, bottom centre, only while you stand on stairs. */
+.stairs-fab {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 3;
+  min-height: 52px;
+  padding: 8px 22px;
+  border-radius: 14px;
+  background: #f2c46d;
+  border: 1px solid #f2c46d;
+  color: #2a1e08;
+  font-size: 17px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.7);
+}
+.stairs-fab:hover:not(:disabled) {
+  background: #f7d38a;
+  border-color: #f7d38a;
+}
+.stairs-fab:active:not(:disabled) {
+  transform: translateX(-50%) translateY(1px);
+}
+.stairs-fab[hidden] {
+  display: none;
+}
 /* Make room for it when both are showing. */
 .board:has(.fire-fab:not([hidden])) .recenter {
   bottom: 80px;
@@ -1430,4 +1604,55 @@ button.linkish:hover:not(:disabled) {
 }
 .modal.story .hint {
   margin-top: 1.2em;
+}
+
+/* Phase 3: the Tide Clock line, the Heart, and the end of an Age. */
+.means.tide {
+  margin-top: 0.3em;
+  padding-top: 0;
+  border-top: 0;
+}
+.means.tide.warn {
+  color: var(--bad);
+}
+.victory-screen h1 {
+  color: #ff8fa3;
+}
+.chronicle li.won {
+  color: #ff8fa3;
+}
+.codex-shape p {
+  margin: 0.25em 0;
+}
+.codex-shape .ages {
+  margin: 0.4em 0 0;
+  padding-left: 1.2em;
+}
+.topbar .tb-testing {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #0b0d12;
+  background: var(--warn);
+  padding: 1px 6px;
+  border-radius: 5px;
+}
+
+/* ------------------------------------------------- title: one-tap continue */
+
+.continue-hero {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  margin: 22px auto 0;
+  max-width: 360px;
+}
+.continue-hero button {
+  width: 100%;
+}
+@media (max-width: 860px) {
+  .title-screen .hero {
+    padding-top: 24px;
+  }
 }

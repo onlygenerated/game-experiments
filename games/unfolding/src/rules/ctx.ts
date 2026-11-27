@@ -1,5 +1,5 @@
 /** The small shared vocabulary every rule module and the engine use to ask "which rules are on?". */
-import type { Item, Player, RuleId, World } from '../engine/types.ts';
+import type { Item, Player, RuleId, SpaceId, TimeId, World } from '../engine/types.ts';
 import type { HarmId } from './harm.ts';
 
 export interface RuleCtx {
@@ -7,10 +7,14 @@ export interface RuleCtx {
   variants: Partial<Record<RuleId, 'base' | 'alt'>>;
   /** How harm works here. A world that hasn't settled it yet strikes, for want of anything else. */
   harm: HarmId;
+  /** Shape of Space and Flow of Time (Phase 3). Missing means rooms and turns. */
+  space?: SpaceId;
+  time?: TimeId;
 }
 
 export function ctxOf(world: Pick<World, 'rules' | 'variants'> & { genome?: World['genome'] }): RuleCtx {
-  return { rules: new Set(world.rules), variants: world.variants, harm: world.genome?.axioms.harm ?? 'strike' };
+  const ax = world.genome?.axioms;
+  return { rules: new Set(world.rules), variants: world.variants, harm: ax?.harm ?? 'strike', space: ax?.space ?? 'rooms', time: ax?.time ?? 'turns' };
 }
 
 export function has(ctx: RuleCtx, id: RuleId): boolean {
@@ -23,7 +27,7 @@ export function alt(ctx: RuleCtx, id: RuleId): boolean {
 }
 
 export function withRule(ctx: RuleCtx, id: RuleId): RuleCtx {
-  return { rules: new Set([...ctx.rules, id]), variants: ctx.variants, harm: ctx.harm };
+  return { ...ctx, rules: new Set([...ctx.rules, id]) };
 }
 
 export function weightOf(item: Item, ctx: RuleCtx): number {

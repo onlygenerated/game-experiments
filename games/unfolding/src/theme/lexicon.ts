@@ -1,10 +1,10 @@
 import { BALANCE } from '../engine/balance.ts';
-import type { Element, Item, MonsterKind, RuleId, World } from '../engine/types.ts';
+import type { Element, Item, MonsterKind, RuleId, SpaceId, TimeId, World } from '../engine/types.ts';
 import type { HarmId } from '../rules/harm.ts';
 import { BASE_MEANS_RULE, BASE_MEANS_TEXT, BASE_RULE_TEXT, BASE_TEXT, BUNDLES, type BundleId, type MessageKey } from './base.ts';
 import { OLD_STONE } from './old-stone.ts';
 import { PLAIN } from './plain.ts';
-import type { ElementLook, FoeLook, MeansText, Premise, PremiseId, RuleText } from './premise.ts';
+import type { AxiomWords, ElementLook, FoeLook, MeansText, Premise, PremiseId, RuleText } from './premise.ts';
 import { COURT_OF_BARBS } from './premises/court-of-barbs.ts';
 import { MERGER } from './premises/merger.ts';
 import { MINISTRY } from './premises/ministry.ts';
@@ -54,6 +54,11 @@ export const RULE_TEXT_VARS: Vars = {
   volleyRange: BALANCE.harm.volleyRange,
   arcanumRange: BALANCE.harm.arcanumRange,
   earshot: BALANCE.harm.earshot,
+  tide1: BALANCE.time.tideStages[0],
+  tide2: BALANCE.time.tideStages[1],
+  tide3: BALANCE.time.tideStages[2],
+  tideHurtEvery: BALANCE.time.tideHurtEvery,
+  driftEvery: BALANCE.space.driftEvery,
   boltCost: BALANCE.harm.boltCost,
   startAmmo: BALANCE.harm.startAmmo,
   strikeGuard: BALANCE.harm.strikeGuard,
@@ -259,6 +264,21 @@ export class Lexicon {
       upside: f(BASE_MEANS_RULE[id].upside),
       downside: f(BASE_MEANS_RULE[id].downside),
     };
+  }
+
+  /** Shape of Space in this world's words. */
+  space(id: SpaceId): AxiomWords {
+    return this.axiomWords(this.premise.space[id]);
+  }
+
+  /** Flow of Time in this world's words. */
+  time(id: TimeId): AxiomWords {
+    return this.axiomWords(this.premise.time[id]);
+  }
+
+  private axiomWords(w: AxiomWords): AxiomWords {
+    const vars: Vars = { ...this.builtins, ...RULE_TEXT_VARS };
+    return { name: fill(w.name, vars), tagline: fill(w.tagline, vars), summary: fill(w.summary, vars) };
   }
 
   /** "a, b and c" in this premise's words. */

@@ -3,6 +3,7 @@ import { canTravelTo, nearbyThreats, travelStep } from '../engine/travel.ts';
 import { T_UP, type Pos } from '../engine/types.ts';
 import type { RuleId, World } from '../engine/types.ts';
 import { defaultKV, heirName, newWorld, randomSeed, Store } from '../engine/world.ts';
+import { BALANCE } from '../engine/balance.ts';
 import { repealable, RULE_ORDER } from '../rules/rules.ts';
 import { lexiconFor } from '../theme/lexicon.ts';
 import { describeTile } from './describe.ts';
@@ -27,7 +28,7 @@ import {
   sidebarHTML,
   topbarHTML,
 } from './hud.ts';
-import { HOLD_MS, loadOptions, parseOption, saveOptions, TILE_PX, TRAVEL_STEP_MS, type Options } from './options.ts';
+import { HOLD_MS, loadOptions, PHONE_BOARD_PX, PHONE_TILES_ACROSS, parseOption, saveOptions, TILE_PX, TRAVEL_STEP_MS, type Options } from './options.ts';
 import { COLORS, Renderer } from './render.ts';
 
 type Overlay =
@@ -77,6 +78,8 @@ export class App {
   look: Pos | null = null;
   /** Mouse hover inspection (when Look mode is off). */
   private hover: Pos | null = null;
+  /** The hover card was opened by a long press (touch), so the next action clears it. */
+  private peeked = false;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -102,7 +105,7 @@ export class App {
         const rules = RULE_ORDER.filter((r) => w.rules.includes(r));
         const L = lexiconFor(w, this.options.plainLabels);
         return `<li class="world-card">
-          <div class="wc-head"><h3>${esc(w.name)}</h3><span class="premise-name">${esc(premiseLine(w))}</span><span class="muted small">Age ${w.generation} · deepest ${w.deepest || '—'} · ${esc(L.t(w.graves.length === 1 ? 'screen.graves.one' : 'screen.graves.many', { n: w.graves.length }))}</span></div>
+          <div class="wc-head"><h3>${esc(w.name)}</h3><span class="premise-name">${esc(premiseLine(w))}</span><span class="muted small">Age ${w.age ?? 1} · ${esc(L.role('heir'))} ${w.generation} · deepest ${w.deepest || '—'}${(w.ages?.length ?? 0) ? ` · ♥ ${w.ages!.length}` : ''} · ${esc(L.t(w.graves.length === 1 ? 'screen.graves.one' : 'screen.graves.many', { n: w.graves.length }))}</span></div>
           <div class="chips">${rules.length ? rules.map((r) => `<span class="chip">${esc(L.rule(r).name)}</span>`).join('') : '<span class="muted small">No rules yet</span>'}</div>
           <div class="wc-btns">
             ${run && !run.over ? `<button class="primary" data-cmd="resume" data-world="${w.id}">${esc(L.t('screen.resume', { name: run.player.name, n: run.depth }))}</button>` : `<button class="primary" data-cmd="heir" data-world="${w.id}">New heir</button>`}
@@ -110,11 +113,18 @@ export class App {
           </div></li>`;
       })
       .join('');
+    // One tap back into the most recently played run, if one is still going.
+    const live = worlds.map((w) => ({ w, run: this.store.run(w.id) })).find((x) => x.run && !x.run.over);
+    const cont = live
+      ? `<div class="continue-hero"><button class="primary big" data-cmd="resume" data-world="${live.w.id}">Continue</button>
+          <span class="muted small">${esc(live.run!.player.name)} · ${esc(lexiconFor(live.w, this.options.plainLabels).t('hud.depth', { n: live.run!.depth }))} · ${esc(live.w.name)}</span></div>`
+      : '';
     this.root.innerHTML = `<div class="screen title-screen">
       <header class="hero">
         <h1 class="logo">Unfolding</h1>
         <p class="lede">A dungeon that starts almost too simple, and writes its own rules as you go.
           You choose which rules each world adopts. Every rule cuts both ways.</p>
+        ${cont}
       </header>
       <div class="title-cols">
         <section class="start-new">
@@ -146,9 +156,9 @@ export class App {
     }
     const last = world.history[world.history.length - 1];
     this.root.innerHTML = `<div class="screen heir-screen">
-      <span class="eyebrow">${esc(world.name)} · ${esc(premiseLine(world))} · age ${world.generation}</span>
+      <span class="eyebrow">${esc(world.name)} · ${esc(premiseLine(world))} · Age ${world.age ?? 1}</span>
       <h1>${esc(name)}, ${esc(L.role('heir'))} ${gen}</h1>
-      ${last ? `<p class="lede">${esc(L.t('screen.fell', { name: last.name, cause: last.cause }))}</p>` : ''}
+      ${last ? `<p class="lede">${esc(L.t(last.won ? 'screen.won' : 'screen.fell', { name: last.name, cause: last.cause }))}</p>` : ''}
       ${rules.length ? `<h2>The rules you inherit</h2>
       <p class="muted">You may repeal one — only a rule nothing else depends on. A repealed rule leaves the world and can be offered again at shrines.</p>
       <form class="repeal" id="repeal-form">
@@ -171,7 +181,7 @@ export class App {
     if (repeal && repealable(new Set(world.rules)).includes(repeal)) {
       world.rules = world.rules.filter((r) => r !== repeal);
     }
-    const game = Game.start(world, this.options.plainLabels);
+    const game = Game.start(world, this.options.plainLabels, this.options.testing);
     if (repeal) game.log(game.lex.t('rule.repealed', { rule: game.lex.rule(repeal).name }), 'rule');
     this.play(game);
     this.save();
@@ -184,12 +194,14 @@ export class App {
     this.look = null;
     this.hover = null;
     game.autoPickup = this.options.autoPickup;
+    game.testing = this.options.testing;
     this.root.innerHTML = `<div class="screen play-screen">
       <header class="topbar"></header>
       <main class="board"><canvas aria-label="Dungeon map"></canvas>
         <button class="recenter" data-cmd="recenter" hidden>⌖ Center on ${esc(game.run.player.name)}</button>
         <div class="toasts" aria-hidden="true"></div>
         <button data-cmd="fire" class="fire-fab" hidden></button>
+        <button data-cmd="stairs" class="stairs-fab" hidden></button>
         <div class="lookslot"></div></main>
       <section class="log" aria-live="polite"></section>
       <nav class="pad" aria-label="Controls">
@@ -199,14 +211,16 @@ export class App {
             .join('')}
         </div>
         <div class="pad-actions">
-          <button data-cmd="stairs" class="pad-stairs">Descend</button>
-          <button data-cmd="wait">Wait</button>
+          <button data-cmd="sheet" class="pad-sheet" aria-expanded="false">Pack</button>
+          <button data-cmd="stairs" class="pad-stairs" disabled>Stairs</button>
+          <button data-cmd="wait" class="pad-wait">Wait</button>
           <button data-cmd="pickup" class="pad-pickup" disabled>Pick up</button>
           <button data-cmd="look" class="pad-look" aria-pressed="false">Look</button>
           <button data-cmd="fire" class="pad-fire" hidden></button>
         </div>
       </nav>
-      <aside class="side"></aside>
+      <div class="sheet-scrim" data-cmd="sheet"></div>
+      <aside class="side"><div class="sheet-head"><span class="grip"></span><button class="ghost" data-cmd="sheet">Close</button></div><div class="side-body"></div></aside>
       <div class="overlay" hidden></div>
     </div>`;
     const board = this.root.querySelector<HTMLElement>('.board')!;
@@ -239,6 +253,7 @@ export class App {
 
   death() {
     const game = this.game!;
+    if (game.run.won) return this.victory();
     this.save();
     const run = game.run;
     const p = run.player;
@@ -258,6 +273,36 @@ export class App {
       <p class="muted">${esc(game.lex.t('screen.graveNow', { n: run.depth }))}</p>
       <div class="heir-btns">
         <button class="primary big" data-cmd="heir" data-world="${w.id}">Send the next heir</button>
+        <button class="ghost" data-cmd="new-world">New world</button>
+        <button class="ghost" data-cmd="title">Title</button>
+      </div></div>`;
+    this.game = null;
+  }
+
+  /** The heir reached the Heart: the Age is over. */
+  victory() {
+    const game = this.game!;
+    this.save();
+    const run = game.run;
+    const p = run.player;
+    const w = game.world;
+    const L = game.lex;
+    const age = (w.age ?? 2) - 1;
+    this.teardownPlay();
+    this.root.innerHTML = `<div class="screen death-screen victory-screen">
+      <span class="eyebrow">${esc(w.name)} · Age ${age} · ${esc(L.role('heir'))} ${run.gen}</span>
+      <h1>♥ ${esc(p.name)} reached ${esc(L.role('heart'))}</h1>
+      <p class="lede">${esc(L.t('heart.win', { name: p.name }))}</p>
+      <dl class="stats wide">
+        <div><dt>Depth</dt><dd>${run.depth}</dd></div>
+        <div><dt>Turns</dt><dd>${run.turn}</dd></div>
+        <div><dt>Kills</dt><dd>${p.kills}</dd></div>
+        ${run.player.level > 1 ? `<div><dt>Level</dt><dd>${p.level}</dd></div>` : ''}
+        <div><dt>Heirs this world</dt><dd>${run.gen}</dd></div>
+      </dl>
+      <p class="muted">The chronicle records ${esc(p.name)} as the winner of Age ${age}. The next ${esc(L.role('heir'))} begins Age ${age + 1}, and ${esc(L.role('heart'))} moves: it now lies somewhere between depth ${BALANCE.heart.depth[0]} and ${BALANCE.heart.depth[1]}.${w.rules.length ? '' : ' ' + esc(L.t('age.reset.rules'))}</p>
+      <div class="heir-btns">
+        <button class="primary big" data-cmd="heir" data-world="${w.id}">Begin Age ${age + 1}</button>
         <button class="ghost" data-cmd="new-world">New world</button>
         <button class="ghost" data-cmd="title">Title</button>
       </div></div>`;
@@ -287,6 +332,7 @@ export class App {
     play?.classList.toggle('pad-never', o.dpad === 'never');
     if (this.game) {
       this.game.autoPickup = o.autoPickup;
+      this.game.testing = o.testing;
       this.game.lex = lexiconFor(this.game.world, o.plainLabels);
     }
     if (this.renderer) {
@@ -372,7 +418,16 @@ export class App {
     this.act(at ? { type: 'fire', x: at.x, y: at.y } : { type: 'fire' });
   }
 
-  /** Descend, unless that would leave an unanswered shrine behind and the player wants a warning. */
+  /** Phones: open or close the Pack sheet (stats, pack, rules) over the map. */
+  private toggleSheet(open?: boolean) {
+    const screen = this.root.querySelector<HTMLElement>('.play-screen');
+    if (!screen) return;
+    const on = open ?? !screen.classList.contains('sheet-open');
+    screen.classList.toggle('sheet-open', on);
+    this.root.querySelector('.pad-sheet')?.setAttribute('aria-expanded', String(on));
+    if (on) this.stopTravel(null);
+  }
+
   /** Which stairs the player is standing on, if any. */
   private stairsHere(): 'up' | 'down' | null {
     const g = this.game;
@@ -409,6 +464,8 @@ export class App {
     if (!board || !this.renderer || !this.game) return;
     const r = board.getBoundingClientRect();
     this.renderer.resize(Math.max(100, r.width), Math.max(100, r.height));
+    this.renderer.followCell =
+      r.width < PHONE_BOARD_PX ? Math.max(24, Math.min(56, Math.floor(r.width / PHONE_TILES_ACROSS[this.options.tileSize]))) : null;
     this.draw();
   }
 
@@ -436,7 +493,25 @@ export class App {
     const q = (s: string) => this.root.querySelector<HTMLElement>(s);
     q('.topbar')!.innerHTML = topbarHTML(game, !!this.look);
     const stairsBtn = q('.pad-stairs');
-    if (stairsBtn) stairsBtn.textContent = this.stairsHere() === 'up' ? 'Climb up' : 'Descend';
+    if (stairsBtn) {
+      // Dim until you stand on stairs, then lit and named for the way they go.
+      const here = this.stairsHere();
+      const label = here === 'up' ? 'Ascend' : here === 'down' ? 'Descend' : 'Stairs';
+      if (stairsBtn.textContent !== label) stairsBtn.textContent = label;
+      (stairsBtn as HTMLButtonElement).disabled = !here;
+      stairsBtn.classList.toggle('here', !!here);
+    }
+    // Without the on-screen pad (desktop), the same action floats over the map
+    // while you stand on stairs.
+    const stairsFab = q('.stairs-fab');
+    if (stairsFab) {
+      const here = this.stairsHere();
+      const padEl = q('.pad');
+      const padUp = !!padEl && getComputedStyle(padEl).display !== 'none';
+      stairsFab.hidden = !here || padUp || !!this.look;
+      const label = here === 'up' ? '↑ Ascend' : '↓ Descend';
+      if (here && stairsFab.textContent !== label) stairsFab.textContent = label;
+    }
     const pickup = q('.pad-pickup') as HTMLButtonElement | null;
     if (pickup) pickup.disabled = game.itemsHere().length === 0;
     // The means' own verb (Fire, Cast, Speak), on the map where a thumb can reach it,
@@ -461,7 +536,7 @@ export class App {
       lookBtn.setAttribute('aria-pressed', String(!!this.look));
     }
     this.renderLook();
-    q('.side')!.innerHTML = sidebarHTML(game, this.fresh);
+    q('.side-body')!.innerHTML = sidebarHTML(game, this.fresh);
     q('.log')!.innerHTML = logHTML(game);
     const screen = q('.play-screen')!;
     screen.classList.toggle('has-arcana', game.has('arcana'));
@@ -519,6 +594,10 @@ export class App {
     // Acting snaps the camera back to the player after a look around, and ends Look mode.
     this.renderer?.recenter();
     this.look = null;
+    if (this.peeked) {
+      this.peeked = false;
+      this.hover = null;
+    }
     game.autoPickup = this.options.autoPickup;
     game.act(a);
     if (target && this.renderer) this.renderer.flash(target.x, target.y, COLORS.player);
@@ -573,6 +652,11 @@ export class App {
   private onKey(e: KeyboardEvent) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const k0 = e.key;
+    if (k0 === 'Escape' && !this.overlays.length && this.root.querySelector('.sheet-open')) {
+      e.preventDefault();
+      this.toggleSheet(false);
+      return;
+    }
     // Options work from any screen.
     if (this.overlays[0]?.kind === 'options') {
       if (k0 === 'Escape' || k0 === 'o' || k0 === 'Enter') {
@@ -767,7 +851,7 @@ export class App {
   }
 
   // -------------------------------------------------------------------------
-  // Auto-travel (press and hold a spot on the map)
+  // Auto-travel (tap a spot on the map)
   // -------------------------------------------------------------------------
 
   private startTravel(target: Pos) {
@@ -842,8 +926,8 @@ export class App {
 
   /**
    * Drag the map to look around; a press that barely moves is a tap, which
-   * steps toward the tapped spot; press and hold to travel there. One pointer
-   * at a time.
+   * walks to the tapped spot (one step if it's next to you); press and hold to
+   * describe the tile. One pointer at a time.
    */
   private bindMapGestures(canvas: HTMLCanvasElement, board: HTMLElement) {
     const SLOP = 8;
@@ -871,9 +955,9 @@ export class App {
           try {
             if (this.options.vibrate) navigator.vibrate?.(12);
           } catch {
-            /* not allowed here; the target marker is feedback enough */
+            /* not allowed here; the card is feedback enough */
           }
-          this.startTravel(tile);
+          this.peek(tile);
         }, HOLD_MS[this.options.holdDelay]);
       }
       this.drag = d;
@@ -910,8 +994,9 @@ export class App {
       this.renderLook();
       this.scheduleDraw();
     });
-    canvas.addEventListener('pointerleave', () => {
-      if (!this.hover) return;
+    canvas.addEventListener('pointerleave', (e) => {
+      // A lifted finger "leaves" too; only a mouse moving off the map ends hover.
+      if (!this.hover || e.pointerType !== 'mouse') return;
       this.hover = null;
       this.renderLook();
       this.scheduleDraw();
@@ -935,12 +1020,32 @@ export class App {
       this.fire(t);
       return;
     }
+    // A tap clears whatever a long press was showing.
+    if (this.hover && e.pointerType !== 'mouse') {
+      this.hover = null;
+      this.renderLook();
+    }
     const dx = Math.sign(t.x - p.x);
     const dy = Math.sign(t.y - p.y);
     if (dx === 0 && dy === 0) {
       if (this.stairsHere()) this.tryStairs();
       else this.act({ type: 'wait' });
-    } else this.act({ type: 'move', dx, dy });
+      return;
+    }
+    // Further than one step: walk the whole way there, unless a foe is already
+    // at your side (then one deliberate step) or the spot can't be reached.
+    const far = Math.max(Math.abs(t.x - p.x), Math.abs(t.y - p.y)) > 1;
+    const engaged = game.run.monsters.some((m) => Math.max(Math.abs(m.x - p.x), Math.abs(m.y - p.y)) === 1);
+    if (far && !engaged && canTravelTo(game, t)) this.startTravel(t);
+    else this.act({ type: 'move', dx, dy });
+  }
+
+  /** Long press: describe a tile without entering Look mode. The next tap clears it. */
+  private peek(t: Pos) {
+    this.hover = t;
+    this.peeked = true;
+    this.renderLook();
+    this.scheduleDraw();
   }
 
   private onClick(e: MouseEvent) {
@@ -1078,6 +1183,9 @@ export class App {
       case 'recenter':
         this.renderer?.recenter();
         this.draw();
+        break;
+      case 'sheet':
+        this.toggleSheet();
         break;
     }
   }

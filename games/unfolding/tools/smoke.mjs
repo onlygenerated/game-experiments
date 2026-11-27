@@ -96,11 +96,20 @@ try {
     ok(`${vp.name}: HP appears with Peril`, await page.isVisible('.tb-hp'));
     await shot(page, `${vp.name}-2b-opened`);
 
-    // Walk around with keys (or the pad on phones) for a while.
+    // Phones: tapping the map walks, so the direction pad is off by default and
+    // everything fits on one screen with no page scroll.
+    if (vp.isMobile) {
+      ok('phone: no direction pad by default', !(await page.isVisible('.dpad')));
+      ok('phone: the action bar shows Pack, Wait and Look', (await page.isVisible('.pad-sheet')) && (await page.isVisible('.pad-wait')) && (await page.isVisible('.pad-look')));
+      const fits = await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1);
+      ok('phone: the play screen fits without scrolling', fits);
+      const cell = await page.evaluate(() => window.unfolding.renderer.view.cell);
+      ok(`phone: the map is zoomed in (${cell}px tiles)`, cell >= 30);
+    }
+    // Walk around with keys for a while.
     for (let i = 0; i < 40; i++) {
       const dirs = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'];
-      if (vp.isMobile) await page.click(`.dpad button >> nth=${[5, 7, 3, 1][i % 4]}`);
-      else await page.keyboard.press(dirs[Math.floor(i / 6) % 4]);
+      await page.keyboard.press(dirs[Math.floor(i / 6) % 4]);
     }
     const turn = await page.evaluate(() => window.unfolding.game?.run.turn ?? -1);
     ok(`${vp.name}: turns pass when moving (${turn})`, turn > 5);
@@ -235,18 +244,28 @@ try {
       };
       await page.evaluate(() => { const a = window.unfolding; a.game.run.monsters = []; a.game.run.pending = null; a.refresh(); });
 
-      // 1. Hold on a tile four steps away: the player walks there.
+      // 1. Tap a tile four steps away: the player walks there.
       const short = await route(4);
       const goal = short.at(-1);
       const at = await screenOf(goal);
       const s0 = await state();
       await touch('touchStart', box.x + at.x, box.y + at.y);
-      await page.waitForTimeout(520);
       await touch('touchEnd');
       await settle();
       const s1 = await state();
-      ok(`phone: press-and-hold walks to the spot (${s1.x},${s1.y} → goal ${goal.x},${goal.y})`, s1.x === goal.x && s1.y === goal.y);
+      ok(`phone: a tap walks to the spot (${s1.x},${s1.y} → goal ${goal.x},${goal.y})`, s1.x === goal.x && s1.y === goal.y);
       ok(`phone: the walk took one turn per step (${s1.turn - s0.turn})`, s1.turn - s0.turn === short.length);
+
+      // 1b. Press and hold describes a tile and doesn't move you.
+      const peekAt = await screenOf(short[0]);
+      await touch('touchStart', box.x + peekAt.x, box.y + peekAt.y);
+      await page.waitForTimeout(520);
+      await touch('touchEnd');
+      await page.waitForTimeout(80);
+      const s1b = await state();
+      ok('phone: press-and-hold shows a description card', await page.isVisible('.lookslot .lookcard'));
+      ok('phone: press-and-hold does not move you', s1b.turn === s1.turn && s1b.x === s1.x && s1b.y === s1.y);
+      await shot(page, 'phone-2c2-peek');
 
       // 2. A foe coming within range stops the walk.
       const long = await route(14);
@@ -292,6 +311,13 @@ try {
     const plainHp = await hpWord();
     await page.click('label[for="opt-plainLabels-false"]');
     ok(`${vp.name}: Plain labels swaps the words ("${themedHp}" → "${plainHp}" → "${await hpWord()}")`, plain && plainHp === 'HP' && (await hpWord()) === themedHp);
+    // Testing mode: a badge in the top bar, and the game knows; then off again.
+    await page.click('label[for="opt-testing-true"]');
+    const testingOn = await page.evaluate(() => window.unfolding.game.testing && !!document.querySelector('.tb-testing'));
+    await shot(page, `${vp.name}-2f-testing`);
+    await page.click('label[for="opt-testing-false"]');
+    const testingOff = await page.evaluate(() => !window.unfolding.game.testing && !document.querySelector('.tb-testing'));
+    ok(`${vp.name}: Testing mode switches on and off`, testingOn && testingOff);
     await page.click('.modal.options [data-cmd="dismiss"]');
 
     // With auto pickup off, walking onto a potion leaves it; the Here panel picks it up.
@@ -309,11 +335,22 @@ try {
     });
     const left = await page.evaluate(() => window.unfolding.game.itemsHere().map((fi) => fi.item.id));
     ok(`${vp.name}: with auto pickup off, the potion stays put`, left.includes(8800));
+    if (vp.isMobile) {
+      ok('phone: the bar offers Pick up when something is underfoot', await page.isVisible('.pad-pickup'));
+      await page.click('.pad-sheet');
+      await page.waitForTimeout(300);
+      ok('phone: Pack opens the sheet', await page.isVisible('.side .sheet-head'));
+    }
     ok(`${vp.name}: the Here panel offers it`, await page.isVisible('[data-cmd="pickup"][data-id="8800"]'));
     await shot(page, `${vp.name}-2f-here`);
     await page.click('[data-cmd="pickup"][data-id="8800"]');
     const packed = await page.evaluate(() => window.unfolding.game.run.player.inventory.some((i) => i.id === 8800));
     ok(`${vp.name}: Pick up puts it in the pack`, packed);
+    if (vp.isMobile) {
+      await page.click('.sheet-head [data-cmd="sheet"]');
+      await page.waitForTimeout(300);
+      ok('phone: Close hides the sheet', !(await page.isVisible('.side .sheet-head')));
+    }
 
     // Look mode.
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -371,6 +408,14 @@ try {
       await page.mouse.move(box.x + 2, box.y + box.height + 40);
     }
 
+    if (vp.isMobile) {
+      const dim = await page.evaluate(() => {
+        const g = window.unfolding.game, f = g.run.floor, p = g.run.player, b = document.querySelector('.pad-stairs');
+        const on = (p.x === f.stairs.x && p.y === f.stairs.y) || f.tiles[p.y * f.w + p.x] === 3;
+        return b.disabled === !on && b.classList.contains('here') === on;
+      });
+      ok(`${vp.name}: the stairs button is dim off the stairs and lit on them`, dim);
+    }
     // Leaving an unanswered shrine behind asks first.
     await page.evaluate(() => {
       const a = window.unfolding, g = a.game, f = g.run.floor;
@@ -380,14 +425,20 @@ try {
       a.refresh();
     });
     const depthBefore = await page.evaluate(() => window.unfolding.game.run.depth);
+    if (vp.isMobile) ok(`${vp.name}: with the pad up, no extra stairs button covers the map`, !(await page.isVisible('.stairs-fab')));
+    else ok(`${vp.name}: on stairs a Descend button floats over the map`, /Descend/.test((await page.textContent('.stairs-fab')) ?? '') && (await page.isVisible('.stairs-fab')));
+    if (vp.isMobile) {
+      const lit = await page.evaluate(() => { const b = document.querySelector('.pad-stairs'); return { on: !b.disabled && b.classList.contains('here'), text: b.textContent }; });
+      ok(`${vp.name}: on stairs down the stairs button lights up as Descend`, lit.on && /Descend/.test(lit.text));
+    }
     if (vp.isMobile) await page.click('.pad-stairs');
     else await page.keyboard.press('>');
     ok(`${vp.name}: descending past a live shrine asks first`, await page.isVisible('.modal.confirm'));
     await shot(page, `${vp.name}-2h-confirm`);
     await page.click('.modal.confirm [data-cmd="dismiss"]');
     ok(`${vp.name}: Stay keeps you here`, (await page.evaluate(() => window.unfolding.game.run.depth)) === depthBefore);
-    if (vp.isMobile) await page.click('.pad-stairs');
-    else await page.keyboard.press('>');
+    // Phone: the pad's button. Desktop: the one floating over the map.
+    await page.click(vp.isMobile ? '.pad-stairs' : '.stairs-fab');
     await page.click('[data-cmd="stairs-confirmed"]');
     ok(`${vp.name}: Descend anyway descends`, (await page.evaluate(() => window.unfolding.game.run.depth)) === depthBefore + 1);
 
@@ -401,10 +452,10 @@ try {
     });
     ok(`${vp.name}: you arrive on stairs up`, onUp);
     if (vp.isMobile) {
-      ok(`${vp.name}: the stairs button says Climb up`, (await page.textContent('.pad-stairs')) === 'Climb up');
+      ok(`${vp.name}: the stairs button says Ascend`, /Ascend/.test((await page.textContent('.pad-stairs')) ?? ''));
       await page.click('.pad-stairs');
     } else await page.keyboard.press('<');
-    ok(`${vp.name}: climbing past a live shrine asks first`, /Climb up anyway/.test((await page.textContent('.modal.confirm')) ?? ''));
+    ok(`${vp.name}: climbing past a live shrine asks first`, /Ascend anyway/.test((await page.textContent('.modal.confirm')) ?? ''));
     await page.click('[data-cmd="stairs-confirmed"]');
     const up = await page.evaluate(() => { const g = window.unfolding.game, f = g.run.floor, p = g.run.player; return { depth: g.run.depth, onDown: p.x === f.stairs.x && p.y === f.stairs.y }; });
     ok(`${vp.name}: climbing returns to the floor above, on its stairs down`, up.depth === depthBefore && up.onDown);
@@ -447,8 +498,9 @@ try {
       ok(`${vp.name}: codex opens`, await page.isVisible('.modal.codex'));
       await page.keyboard.press('Escape');
     }
-    await page.click('text=Save & quit');
+    await page.click('.tb-leave');
     ok(`${vp.name}: title lists the world with a resumable run`, await page.isVisible('text=Resume'));
+    ok(`${vp.name}: title offers one-tap Continue`, await page.isVisible('.continue-hero [data-cmd="resume"]'));
     await page.click('text=Resume');
     ok(`${vp.name}: resumed run keeps the rules`, (await page.evaluate(() => window.unfolding.game.world.rules.length)) === 6);
 
@@ -576,6 +628,77 @@ try {
     await shot(page, `${vp.name}-7c-shop`);
     await page.click('.modal.shop [data-cmd="leave-shop"]');
     ok(`${vp.name}: leaving the shop closes it`, !(await page.isVisible('.modal.shop')));
+
+    // ---- Phase 3: the Tide Clock shows, and the Heart ends an Age -----------
+    await page.evaluate(() => {
+      const a = window.unfolding;
+      a.game.world.genome.axioms.time = 'tide';
+      a.refresh();
+    });
+    ok(`${vp.name}: a tide world shows its clock`, (await page.$('.means.tide')) !== null);
+    // A space schism shrine, then Drift rearranging the floor.
+    await page.evaluate(() => {
+      const a = window.unfolding, g = a.game;
+      g.world.genome.axioms.time = 'turns';
+      delete g.world.genome.axioms.space;
+      for (const m of g.run.monsters) m.stun = 9999;
+      g.run.floor.schism = null;
+      g.placeSchism();
+      const sc = g.run.floor.schism;
+      g.events.splice(0);
+      a.overlays = [];
+      g.run.pending = null;
+      g.run.player.x = sc.pos.x;
+      g.run.player.y = sc.pos.y;
+      g.enterTile();
+      a.refresh();
+    });
+    ok(`${vp.name}: a schism shrine asks what shape the world should take`, await page.isVisible('.modal.schism >> text=What shape should'));
+    await shot(page, `${vp.name}-7c2-space-schism`);
+    await page.click('.modal.schism [data-harm="drift"]');
+    const shifted = await page.evaluate(() => {
+      const a = window.unfolding, g = a.game;
+      const before = g.run.floor.tiles.join('');
+      g.shiftFloor();
+      a.overlays = [];
+      a.refresh();
+      return { space: g.world.genome.axioms.space, changed: g.run.floor.tiles.join('') !== before };
+    });
+    ok(`${vp.name}: choosing Drift settles space, and the floor can rearrange itself`, shifted.space === 'drift' && shifted.changed);
+    ok(`${vp.name}: a drift world shows when the floor next shifts`, (await page.$('.means.tide')) !== null);
+    await page.evaluate(() => { window.unfolding.game.world.genome.axioms.space = 'rooms'; });
+    await page.evaluate(() => {
+      const a = window.unfolding, g = a.game;
+      g.world.genome.axioms.time = 'turns';
+      g.world.heart = g.run.depth + 1;
+      for (const m of g.run.monsters) m.stun = 9999;
+      g.run.pending = null;
+      a.overlays = [];
+      g.run.player.x = g.run.floor.stairs.x;
+      g.run.player.y = g.run.floor.stairs.y;
+      a.act({ type: 'descend' });
+      a.overlays = [];
+      a.refresh();
+    });
+    const heartFloor = await page.evaluate(() => !!window.unfolding.game.run.floor.heart);
+    ok(`${vp.name}: the Heart's floor is the deepest`, heartFloor);
+    await shot(page, `${vp.name}-7d-heart-floor`);
+    await page.evaluate(() => {
+      const a = window.unfolding, g = a.game;
+      for (const m of g.run.monsters) m.stun = 9999;
+      g.run.pending = null;
+      a.overlays = [];
+      g.run.player.x = g.run.floor.stairs.x;
+      g.run.player.y = g.run.floor.stairs.y;
+      a.act({ type: 'descend' });
+    });
+    await page.waitForSelector('.victory-screen', { timeout: 3000 }).catch(() => {});
+    ok(`${vp.name}: reaching the Heart shows the end of the Age`, await page.isVisible('.victory-screen'));
+    await shot(page, `${vp.name}-7e-victory`);
+    await page.click('.victory-screen [data-cmd="heir"]');
+    if (await page.isVisible('.heir-screen')) await page.click('.heir-screen [data-cmd="begin"]');
+    await page.evaluate(() => { const a = window.unfolding; a.overlays = []; a.refresh(); });
+    ok(`${vp.name}: a new Age begins`, await page.evaluate(() => window.unfolding.game?.world.age === 2));
 
     // ---- Every premise speaks its own words -----------------------------
     // New worlds roll their premise; keep making them until each one has shown up.

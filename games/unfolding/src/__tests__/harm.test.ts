@@ -214,7 +214,7 @@ describe('the Means of Harm axiom', () => {
     g.run.player.y = sc.pos.y;
     (g as unknown as { enterTile(): number }).enterTile();
     expect(g.run.pending).toEqual({ kind: 'schism' });
-    const pick = sc.offers.find((h) => h !== 'strike')!;
+    const pick = sc.offers.find((h) => h !== 'strike')! as HarmId;
     g.act({ type: 'schism', harm: pick });
     expect(world.genome.axioms.harm).toBe(pick);
     expect(g.ctx.harm).toBe(pick);

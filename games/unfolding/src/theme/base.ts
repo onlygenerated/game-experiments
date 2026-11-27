@@ -59,6 +59,8 @@ export const ROLE_KEYS = [
   'schism',
   /** Commerce: who sells. */
   'merchant',
+  /** The Heart (M-55): what lies at the bottom of an Age, with its article ("the Corner Office"). */
+  'heart',
 ] as const;
 
 export type RoleKey = (typeof ROLE_KEYS)[number];
@@ -68,7 +70,7 @@ export type Roles = Record<RoleKey, string>;
 export const BASE_TEXT = {
   // --- Arrival -------------------------------------------------------------
   'start.fresh': 'You wake in a quiet room. A {shrine} waits in the corner; the {stairsDown} lead on.',
-  'start.hint': 'Move with the arrow keys or by tapping the map; hold a spot to walk there. Step onto the {shrine} (Ω) to change the world.',
+  'start.hint': 'Tap the map to walk there (or use the arrow keys); hold a spot to inspect it. Step onto the {shrine} (Ω) to change the world.',
   'start.heir': '{name} arrives in {world}, {heir} to {n} rules.',
   'intrusion.restorative': 'The {restoratives} here come from {donor}.',
   'intrusion.foes': 'The {foes} here come from {donor}.',
@@ -198,6 +200,40 @@ export const BASE_TEXT = {
   'armor.breaks': 'Your {item} falls apart.',
   'starving': 'You are {starving}.',
   'death': 'It ends — {cause}.',
+  // --- The Heart (M-55) ----------------------------------------------------
+  'heart.near': 'This is the deepest {floor} of the Age. {Heart} (♥) waits at its far end.',
+  'heart.here': '{Heart} is here. Press > to reach it, and end this Age.',
+  'heart.win': '{name} reaches {heart}. This Age is over.',
+  'cause.won': 'reached {heart} on {depth} {n}',
+  'age.begin': 'Age {age} begins. {name} reached {heart} in the last one.',
+  'age.reset.rules': 'The world lets go of its rules, but keeps its {graves}.',
+  'age.reset.all': 'The world lets go of its rules and how it works, but keeps its {graves}.',
+  'look.heart': '{Heart}',
+  'look.heart.line': 'The end of this Age. Step on it and press > to win.',
+  'hud.heart.depth': '{Heart} lies on {depth} {n}.',
+  // --- Shape of Space and Flow of Time: schisms and Drift ---------------
+  'axiom.space': 'HOW SPACE WORKS — {name}: {tagline}',
+  'axiom.time': 'HOW TIME WORKS — {name}: {tagline}',
+  'axiom.space.next': 'Every new {floor} from here on takes this shape; those already walked stay as they were.',
+  'schism.appears.space': 'A {schism} rises on this {floor}. It will settle the shape of every {floor} in this world, for good.',
+  'schism.appears.time': 'A {schism} rises on this {floor}. It will settle how time passes in this world, for good.',
+  'schism.open.space': 'The {schism} asks what shape this world should take. Every {heir} after you inherits the answer.',
+  'schism.open.time': 'The {schism} asks how time should pass here. Every {heir} after you inherits the answer.',
+  'look.schism.line.space': 'Step onto it to settle the shape of this world. Offers: {list}.',
+  'look.schism.line.time': 'Step onto it to settle how time passes in this world. Offers: {list}.',
+  'drift.soon': 'The walls creak. This {floor} is about to rearrange itself.',
+  'drift.shift': 'The {floor} rearranges itself. The way you came is gone; the {stairsDown} stayed put.',
+  'hud.drift': 'shifts in {n} turns',
+  // --- Flow of Time: Tide Clock (M-24) -----------------------------------
+  'axiom.tide': 'HOW TIME WORKS — {name}: {tagline}',
+  'tide.1': 'The clock reaches its first mark. More {foes} arrive.',
+  'tide.2': 'The clock reaches its second mark. Every {foe} on this {floor} knows where you are.',
+  'tide.3': 'The clock has run out. This {floor} will hurt you until you leave it.',
+  'tide.hurt': 'Time is up here. −1 {hp}.',
+  'cause.tide': 'out of time on {depth} {n}',
+  'hud.tide': '{n} turns to the next mark',
+  'hud.tide.struck': 'Time is up: leave this {floor}',
+  'hud.tide.waits': 'Starts when {foes} arrive',
   'cause.slain': 'undone by {a} {foe} on {depth} {n}',
   'cause.starved': '{starving} on {depth} {n}',
   'cause.burned': 'caught by {a} {ember} {stone} on {depth} {n}',
@@ -297,6 +333,7 @@ export const BASE_TEXT = {
   'screen.graves.many': '{n} {graves}',
   'screen.resume': 'Resume {name} · {depth} {n}',
   'screen.fell': '{name} fell — {cause}. Their {grave} remains where they fell.',
+  'screen.won': '{name} reached {heart} — the last Age is over.',
   'screen.graveNow': 'Their {grave} now lies on {depth} {n}. The world keeps every rule it has learned.',
 
   // --- Look ----------------------------------------------------------------
@@ -419,6 +456,13 @@ export const THEMED_KEYS = [
   'schism.appears',
   'schism.open',
   'adopt.commerce',
+  'heart.win',
+  'tide.1',
+  'tide.2',
+  'tide.3',
+  'tide.hurt',
+  'cause.tide',
+  'drift.shift',
 ] as const satisfies readonly MessageKey[];
 
 export type ThemedKey = (typeof THEMED_KEYS)[number];

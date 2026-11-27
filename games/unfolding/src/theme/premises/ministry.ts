@@ -48,6 +48,7 @@ export const MINISTRY: Premise = {
     ammos: 'carbon copies',
     schism: 'Tribunal',
     merchant: 'fee window',
+    heart: 'the Final Stamp',
   },
   foes: {
     rat: { name: 'clerk', plural: 'clerks', glyph: 'c', color: '#c8c2a8' },
@@ -212,6 +213,15 @@ export const MINISTRY: Premise = {
       },
     },
   },
+  space: {
+    rooms: { name: 'Bureaus', tagline: 'Counters, corridors and numbered doors.', summary: 'Each {floor} is bureaus joined by corridors.' },
+    caverns: { name: 'The Paper Drifts', tagline: 'Decades of filing, heaped into hills.', summary: 'Each {floor} is one wide hall of paper drifts: no doors, no corridors, nowhere to hide.' },
+    drift: { name: 'Reorganisation', tagline: 'Departments merge and split without notice.', summary: 'Every {driftEvery} turns, the rooms you aren\'t in change places and the corridors reroute. The {stairsDown}, the {shrine} and the room you\'re in stay put.' },
+  },
+  time: {
+    turns: { name: 'The Queue', tagline: 'Please wait. Your turn will come.', summary: 'Nothing happens until you act, however long you take.' },
+    tide: { name: 'Office Hours', tagline: 'Closing soon.', summary: 'Every {floor} keeps a clock once {foes} exist. At {tide1} turns more {foes} arrive; at {tide2} every {foe} hunts you; from {tide3}, the shutters come down: −1 {hp} every {tideHurtEvery} turns until you leave.' },
+  },
   tiles: {
     void: '#0a0a08',
     floor: '#181814',
@@ -283,6 +293,13 @@ export const MINISTRY: Premise = {
     'starving': 'You feel faint.',
     'death': 'You are filed under Pending — {cause}.',
     'cause.slain': 'rejected by {a} {foe} in office {n}',
+    'drift.shift': 'A memo: this {floor} has been reorganised. Please update your records.',
+    'heart.win': '{name} receives the Final Stamp. APPROVED. This Age is over.',
+    'tide.1': 'Someone turns the sign to CLOSING SOON. More {foes} join the queue.',
+    'tide.2': 'Every {foe} in this {floor} has your number now.',
+    'tide.3': 'The shutters are coming down on this {floor}. Leave before you are locked in!',
+    'tide.hurt': 'A shutter clips you. −1 {hp}.',
+    'cause.tide': 'locked in after hours in office {n}',
     'cause.starved': 'fainted in the queue in office {n}',
     'cause.burned': 'overwhelmed by urgent matters in office {n}',
     'note.halls': 'This office opens up right away — and its lower-office door moves somewhere you haven’t been.',
