@@ -727,6 +727,18 @@ p.gloss {
   padding: 0 10px;
   white-space: nowrap;
 }
+/* Stairs: dim until you stand on them, then lit in the stairs' own gold. */
+/* Wide enough for its longest label, so lighting up never shifts the pad. */
+.pad-actions button.pad-stairs {
+  min-width: 96px;
+}
+.pad-actions button.pad-stairs.here {
+  background: #f2c46d;
+  border-color: #f2c46d;
+  color: #2a1e08;
+  font-weight: 700;
+  box-shadow: 0 0 0 3px rgba(242, 196, 109, 0.25);
+}
 .pad-actions button.on,
 .topbar button.on {
   border-color: var(--accent);
@@ -1287,6 +1299,34 @@ button.linkish:hover:not(:disabled) {
   opacity: 0.8;
 }
 .fire-fab[hidden] {
+  display: none;
+}
+/* Descend / Ascend: on the map, bottom centre, only while you stand on stairs. */
+.stairs-fab {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 3;
+  min-height: 52px;
+  padding: 8px 22px;
+  border-radius: 14px;
+  background: #f2c46d;
+  border: 1px solid #f2c46d;
+  color: #2a1e08;
+  font-size: 17px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.7);
+}
+.stairs-fab:hover:not(:disabled) {
+  background: #f7d38a;
+  border-color: #f7d38a;
+}
+.stairs-fab:active:not(:disabled) {
+  transform: translateX(-50%) translateY(1px);
+}
+.stairs-fab[hidden] {
   display: none;
 }
 /* Make room for it when both are showing. */
